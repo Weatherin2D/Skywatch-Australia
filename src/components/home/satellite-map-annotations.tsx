@@ -138,8 +138,8 @@ export function SatelliteMapAnnotations({
                 key={`state-${i}`}
                 d={d}
                 fill="none"
-                stroke="rgba(255,255,255,0.55)"
-                strokeWidth={0.18}
+                stroke="rgba(255,255,255,0.7)"
+                strokeWidth={1.25}
                 vectorEffect="non-scaling-stroke"
               />
             ))
@@ -151,7 +151,9 @@ export function SatelliteMapAnnotations({
                 d={d}
                 fill="none"
                 stroke="#ffffff"
-                strokeWidth={0.45}
+                strokeWidth={2.25}
+                strokeLinejoin="round"
+                strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
               />
             ))
