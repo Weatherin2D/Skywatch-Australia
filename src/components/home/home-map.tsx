@@ -15,6 +15,11 @@ import "leaflet/dist/leaflet.css";
 type Props = {
   mode: MapMode;
   showRadarOverlay?: boolean;
+  /** Leaflet tile URL template for the active weather frame */
+  frameTileUrl?: string | null;
+  frameKey?: string | number;
+  frameOpacity?: number;
+  legend?: "radar" | "satellite" | null;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -70,8 +75,24 @@ function DemoRadarBlobs() {
   );
 }
 
-export function HomeMap({ mode, showRadarOverlay = false }: Props) {
-  const satellite = mode === "Satellite";
+export function HomeMap({
+  mode,
+  showRadarOverlay = false,
+  frameTileUrl = null,
+  frameKey,
+  frameOpacity = 0.85,
+  legend = null,
+}: Props) {
+  const satelliteLoop = mode === "Satellite";
+  // Satellite IR loop: dark gray basemap + weather tiles (not static Esri imagery)
+  const basemapUrl = satelliteLoop
+    ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+    : mode === "Radar"
+      ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+      : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+
+  // Keep classic imagery only when Satellite is selected but no IR frame yet
+  const useEsriImagery = mode === "Satellite" && !frameTileUrl;
 
   return (
     <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden">
@@ -82,20 +103,35 @@ export function HomeMap({ mode, showRadarOverlay = false }: Props) {
         scrollWheelZoom
         zoomControl
         attributionControl
+        maxZoom={16}
       >
         <TileLayer
-          key={satellite ? "sat" : "map"}
+          key={useEsriImagery ? "sat-esri" : "base"}
           url={
-            satellite
+            useEsriImagery
               ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+              : basemapUrl
           }
           attribution="Tiles &copy; Esri"
           maxZoom={16}
         />
+        {frameTileUrl ? (
+          <TileLayer
+            key={`wx-${frameKey ?? frameTileUrl}`}
+            url={frameTileUrl}
+            opacity={frameOpacity}
+            maxZoom={satelliteLoop ? 6 : 12}
+            maxNativeZoom={satelliteLoop ? 6 : 12}
+            attribution={
+              satelliteLoop
+                ? 'Infrared &copy; <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> / RainViewer'
+                : "Radar &copy; RainViewer"
+            }
+          />
+        ) : null}
         <MapModeEffect mode={mode} />
         <MapTools />
-        {showRadarOverlay ? <DemoRadarBlobs /> : null}
+        {showRadarOverlay && mode === "Radar" ? <DemoRadarBlobs /> : null}
         {CITY_MARKERS.map((city) => (
           <CircleMarker
             key={city.name}
@@ -120,7 +156,7 @@ export function HomeMap({ mode, showRadarOverlay = false }: Props) {
         ))}
       </MapContainer>
 
-      {showRadarOverlay ? (
+      {legend === "radar" || (showRadarOverlay && mode === "Radar") ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
           <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
             Radar intensity
@@ -135,6 +171,25 @@ export function HomeMap({ mode, showRadarOverlay = false }: Props) {
           <div className="mt-1 flex justify-between text-[10px] text-white/75">
             <span>Light</span>
             <span>Heavy</span>
+          </div>
+        </div>
+      ) : null}
+
+      {legend === "satellite" || (satelliteLoop && frameTileUrl) ? (
+        <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
+          <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
+            Infrared · clouds
+          </p>
+          <div className="flex h-2 w-36 overflow-hidden">
+            <span className="flex-1 bg-[#1a1a2e]" />
+            <span className="flex-1 bg-[#4a5568]" />
+            <span className="flex-1 bg-[#a0aec0]" />
+            <span className="flex-1 bg-[#e2e8f0]" />
+            <span className="flex-1 bg-white" />
+          </div>
+          <div className="mt-1 flex justify-between text-[10px] text-white/75">
+            <span>Warm / clear</span>
+            <span>Cold cloud tops</span>
           </div>
         </div>
       ) : null}

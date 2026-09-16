@@ -8,12 +8,10 @@ import {
   CloudLightning,
   CloudRain,
   CloudSun,
-  Droplets,
   Gauge,
   Pause,
   Play,
   Sun,
-  Wind,
 } from "lucide-react";
 import Link from "next/link";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
@@ -29,9 +27,14 @@ import {
   type LayerId,
   type MapMode,
 } from "@/components/home/mock-data";
+import { useWeatherMaps } from "@/hooks/use-weather-maps";
+import {
+  formatFrameTimeAEST,
+  frameIndexToScrub,
+  scrubToFrameIndex,
+  timelineEdgeLabels,
+} from "@/lib/weather/maps";
 import { cn } from "@/lib/utils";
-
-const TIMELINE_LABELS = ["12pm", "3pm", "6pm", "9pm", "12am"] as const;
 
 function Toggle({
   on,
@@ -114,9 +117,54 @@ export function HomeDashboard() {
   });
   const [mode, setMode] = useState<MapMode>("Satellite");
   const [playing, setPlaying] = useState(false);
-  const [scrub, setScrub] = useState(28);
+  const [scrub, setScrub] = useState(100);
+  const [frameIndex, setFrameIndex] = useState(0);
 
+  const {
+    satelliteFrames,
+    loading: mapsLoading,
+    error: mapsError,
+    satelliteSource,
+  } = useWeatherMaps();
+
+  const showLoopUi = mode === "Satellite" || mode === "Radar";
+  const showSatelliteLoop = mode === "Satellite";
   const showRadarUi = mode === "Radar";
+
+  const loopFrames = showSatelliteLoop ? satelliteFrames : [];
+  const activeFrame = loopFrames[frameIndex] ?? null;
+
+  useEffect(() => {
+    if (loopFrames.length === 0) {
+      setFrameIndex(0);
+      return;
+    }
+    const next = scrubToFrameIndex(scrub, loopFrames.length);
+    setFrameIndex(next);
+  }, [scrub, loopFrames.length]);
+
+  useEffect(() => {
+    if (loopFrames.length === 0) return;
+    setScrub(100);
+    setFrameIndex(loopFrames.length - 1);
+  }, [loopFrames.length, mode]);
+
+  useEffect(() => {
+    if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
+    const id = window.setInterval(() => {
+      setFrameIndex((prev) => {
+        const next = prev + 1;
+        if (next >= loopFrames.length) {
+          setPlaying(false);
+          setScrub(100);
+          return loopFrames.length - 1;
+        }
+        setScrub(frameIndexToScrub(next, loopFrames.length));
+        return next;
+      });
+    }, 550);
+    return () => window.clearInterval(id);
+  }, [playing, showSatelliteLoop, loopFrames.length]);
 
   useEffect(() => {
     if (!playing || !showRadarUi) return;
@@ -127,24 +175,31 @@ export function HomeDashboard() {
   }, [playing, showRadarUi]);
 
   useEffect(() => {
-    if (!showRadarUi) setPlaying(false);
-  }, [showRadarUi]);
+    if (!showLoopUi) setPlaying(false);
+  }, [showLoopUi]);
 
   const scrubLabel = useMemo(() => {
-    const hours = [
-      "12:00 PM",
-      "3:00 PM",
-      "4:30 PM",
-      "6:00 PM",
-      "9:00 PM",
-      "12:00 AM",
-    ];
-    const idx = Math.min(
-      hours.length - 1,
-      Math.floor((scrub / 100) * (hours.length - 1)),
-    );
-    return `${hours[idx]} AEST`;
-  }, [scrub]);
+    if (showSatelliteLoop) {
+      if (mapsLoading && loopFrames.length === 0) return "Loading…";
+      if (mapsError && loopFrames.length === 0) return "Unavailable";
+      if (!activeFrame) return "No frames";
+      return formatFrameTimeAEST(activeFrame.time);
+    }
+    if (showRadarUi) return "Demo loop";
+    return "";
+  }, [
+    showSatelliteLoop,
+    showRadarUi,
+    mapsLoading,
+    mapsError,
+    activeFrame,
+    loopFrames.length,
+  ]);
+
+  const edgeLabels = useMemo(
+    () => timelineEdgeLabels(loopFrames),
+    [loopFrames],
+  );
 
   function setLayer(id: LayerId, on: boolean) {
     setLayers((prev) => ({ ...prev, [id]: on }));
@@ -221,10 +276,78 @@ export function HomeDashboard() {
             <HomeMapDynamic
               mode={mode}
               showRadarOverlay={showRadarUi || layers.rainfall}
+              frameTileUrl={
+                showSatelliteLoop ? (activeFrame?.tileUrlTemplate ?? null) : null
+              }
+              frameKey={
+                showSatelliteLoop && activeFrame
+                  ? `${activeFrame.time}-${satelliteSource ?? "wx"}`
+                  : undefined
+              }
+              frameOpacity={0.9}
+              legend={
+                showSatelliteLoop && activeFrame
+                  ? "satellite"
+                  : showRadarUi
+                    ? "radar"
+                    : null
+              }
             />
           </div>
 
-          {showRadarUi ? (
+          {showSatelliteLoop ? (
+            <div className="flex items-center gap-3 border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] px-3 py-2.5 text-white">
+              <button
+                type="button"
+                onClick={() => setPlaying((p) => !p)}
+                disabled={loopFrames.length === 0}
+                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--bom-blue)] disabled:opacity-40"
+                aria-label={playing ? "Pause timeline" : "Play timeline"}
+              >
+                {playing ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4 translate-x-px" />
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/80">
+                  <span className="font-semibold text-white">{scrubLabel}</span>
+                  <span>
+                    {mapsLoading && loopFrames.length === 0
+                      ? "Loading satellite frames…"
+                      : mapsError && loopFrames.length === 0
+                        ? "Satellite loop unavailable"
+                        : "Satellite IR loop"}
+                  </span>
+                </div>
+                {mapsError && loopFrames.length === 0 ? (
+                  <p className="text-xs text-[var(--bom-yellow)]">{mapsError}</p>
+                ) : (
+                  <>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={scrub}
+                      disabled={loopFrames.length === 0}
+                      onChange={(e) => {
+                        setPlaying(false);
+                        setScrub(Number(e.target.value));
+                      }}
+                      className="w-full accent-[var(--bom-yellow)] disabled:opacity-40"
+                      aria-label="Satellite IR timeline"
+                    />
+                    <div className="mt-1 flex justify-between text-[10px] text-white/70">
+                      <span>{edgeLabels.start}</span>
+                      <span className="hidden sm:inline">{edgeLabels.mid}</span>
+                      <span>{edgeLabels.end}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : showRadarUi ? (
             <div className="flex items-center gap-3 border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] px-3 py-2.5 text-white">
               <button
                 type="button"
@@ -255,18 +378,18 @@ export function HomeDashboard() {
                   className="w-full accent-[var(--bom-yellow)]"
                   aria-label="Radar timeline"
                 />
-                <div className="mt-1 flex justify-between text-[10px] text-white/70">
-                  {TIMELINE_LABELS.map((t) => (
-                    <span key={t}>{t}</span>
-                  ))}
-                </div>
+                <p className="mt-1 text-[10px] text-white/70">
+                  Live radar tiles land in a later pass — demo cells only for now.
+                </p>
               </div>
             </div>
           ) : (
             <p className="border border-[var(--bom-blue)]/15 bg-white px-3 py-2 text-xs text-[var(--muted-foreground)]">
-              Select <span className="font-semibold text-[var(--bom-blue)]">Radar</span>{" "}
-              view to open the playback timeline. Overlays on the left can be mixed
-              with Map or Satellite.
+              Select{" "}
+              <span className="font-semibold text-[var(--bom-blue)]">Satellite</span>{" "}
+              for the infrared loop, or{" "}
+              <span className="font-semibold text-[var(--bom-blue)]">Radar</span> for
+              the demo playback strip. Overlays on the left can be mixed with Map.
             </p>
           )}
         </div>

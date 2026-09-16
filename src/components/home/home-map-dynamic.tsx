@@ -18,9 +18,26 @@ const HomeMap = dynamic(
 export function HomeMapDynamic({
   mode,
   showRadarOverlay,
+  frameTileUrl,
+  frameKey,
+  frameOpacity,
+  legend,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
+  frameTileUrl?: string | null;
+  frameKey?: string | number;
+  frameOpacity?: number;
+  legend?: "radar" | "satellite" | null;
 }) {
-  return <HomeMap mode={mode} showRadarOverlay={showRadarOverlay} />;
+  return (
+    <HomeMap
+      mode={mode}
+      showRadarOverlay={showRadarOverlay}
+      frameTileUrl={frameTileUrl}
+      frameKey={frameKey}
+      frameOpacity={frameOpacity}
+      legend={legend}
+    />
+  );
 }
