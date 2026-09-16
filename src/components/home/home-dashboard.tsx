@@ -158,6 +158,8 @@ export function HomeDashboard() {
   const {
     strikes: lightningStrikes,
     attribution: lightningAttribution,
+    status: lightningStatus,
+    live: lightningLive,
   } = useLightning(showLightning);
 
   const satProductMeta = getSatelliteProduct(satProduct);
@@ -544,6 +546,8 @@ export function HomeDashboard() {
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}
               lightningAttribution={lightningAttribution}
+              lightningStatus={lightningStatus}
+              lightningLive={lightningLive}
             />
           </div>
 

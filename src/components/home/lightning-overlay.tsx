@@ -147,9 +147,13 @@ export function LeafletLightningOverlay({
 export function LightningLegend({
   strikes,
   attribution,
+  status,
+  live,
 }: {
   strikes: LightningStrike[];
   attribution?: string | null;
+  status?: "connecting" | "live" | "reconnecting" | "error" | null;
+  live?: boolean;
 }) {
   const now = Math.floor(Date.now() / 1000);
   const counts = { now: 0, recent: 0, aging: 0, old: 0 };
@@ -157,34 +161,68 @@ export function LightningLegend({
     counts[strikeAgeBand(strikeAgeSeconds(s, now))] += 1;
   }
 
+  const statusLabel =
+    status === "live"
+      ? "LIVE"
+      : status === "reconnecting"
+        ? "RECONNECTING"
+        : status === "connecting"
+          ? "CONNECTING"
+          : status === "error"
+            ? "OFFLINE"
+            : live
+              ? "LIVE"
+              : "…";
+
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-[1000] border border-white/25 bg-black/70 px-2.5 py-2 text-white backdrop-blur-sm">
-      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--bom-yellow)]">
-        Lightning tracker
-      </p>
-      <ul className="space-y-1 text-[10px] text-white/90">
-        <li className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#fff59d] shadow-[0_0_6px_#fff59d]" />
-          &lt; 2 min · {counts.now}
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#ffca28]" />
-          &lt; 10 min · {counts.recent}
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#ff7043]" />
-          &lt; 20 min · {counts.aging}
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#ce93d8] opacity-70" />
-          &lt; 30 min · {counts.old}
-        </li>
-      </ul>
+      <div className="mb-1.5 flex items-center gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--bom-yellow)]">
+          Lightning tracker
+        </p>
+        <span
+          className={
+            status === "live"
+              ? "rounded-sm bg-emerald-500/90 px-1 py-px text-[8px] font-bold tracking-wide text-black"
+              : status === "error"
+                ? "rounded-sm bg-red-500/90 px-1 py-px text-[8px] font-bold tracking-wide text-white"
+                : "rounded-sm bg-amber-400/90 px-1 py-px text-[8px] font-bold tracking-wide text-black"
+          }
+        >
+          {statusLabel}
+        </span>
+      </div>
+      {strikes.length === 0 ? (
+        <p className="max-w-[12rem] text-[10px] leading-snug text-white/75">
+          {status === "live" || status === "reconnecting"
+            ? "No strikes over Australia in the last 30 min — listening live…"
+            : "Connecting to live lightning feed…"}
+        </p>
+      ) : (
+        <ul className="space-y-1 text-[10px] text-white/90">
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[#fff59d] shadow-[0_0_6px_#fff59d]" />
+            &lt; 2 min · {counts.now}
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[#ffca28]" />
+            &lt; 10 min · {counts.recent}
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[#ff7043]" />
+            &lt; 20 min · {counts.aging}
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[#ce93d8] opacity-70" />
+            &lt; 30 min · {counts.old}
+          </li>
+        </ul>
+      )}
       <p className="mt-1.5 text-[9px] text-white/60">
-        {strikes.length} strikes · last 30 min
+        {strikes.length} strikes · last 30 min · updates ~3s
       </p>
       {attribution ? (
-        <p className="mt-0.5 max-w-[11rem] text-[8px] leading-snug text-white/45">
+        <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">
           {attribution}
         </p>
       ) : null}

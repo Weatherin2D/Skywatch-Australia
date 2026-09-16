@@ -1,27 +1,26 @@
 import { NextResponse } from "next/server";
-import {
-  buildLightningStrikes,
-  type LightningPayload,
-} from "@/lib/weather/lightning";
+import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
+import type { LightningPayload } from "@/lib/weather/lightning";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const runtime = "nodejs";
 
 export async function GET() {
-  const now = Math.floor(Date.now() / 1000);
-  const strikes = buildLightningStrikes(now, 30);
+  const snap = getLiveLightningSnapshot();
   const payload: LightningPayload = {
-    generated: now,
-    source: "skywatch-tracker",
-    windowMinutes: 30,
-    strikes,
-    attribution:
-      "SkyWatch Lightning Tracker — storm-cell model for eastern Australia",
+    generated: snap.generated,
+    source: snap.source,
+    status: snap.status,
+    windowMinutes: snap.windowMinutes,
+    strikes: snap.strikes,
+    attribution: snap.attribution,
+    receivedTotal: snap.receivedTotal,
   };
 
   return NextResponse.json(payload, {
     headers: {
-      "Cache-Control": "public, s-maxage=8, stale-while-revalidate=8",
+      "Cache-Control": "no-store, max-age=0",
     },
   });
 }

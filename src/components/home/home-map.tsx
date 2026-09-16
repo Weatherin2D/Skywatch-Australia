@@ -40,6 +40,8 @@ type Props = {
   showLightning?: boolean;
   lightningStrikes?: LightningStrike[];
   lightningAttribution?: string | null;
+  lightningStatus?: "connecting" | "live" | "reconnecting" | "error" | null;
+  lightningLive?: boolean;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -176,6 +178,8 @@ export function HomeMap({
   showLightning = false,
   lightningStrikes = [],
   lightningAttribution = null,
+  lightningStatus = null,
+  lightningLive = false,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
 
@@ -203,10 +207,12 @@ export function HomeMap({
           strikes={lightningStrikes}
           enabled={showLightning}
         />
-        {showLightning && lightningStrikes.length > 0 ? (
+        {showLightning ? (
           <LightningLegend
             strikes={lightningStrikes}
             attribution={lightningAttribution}
+            status={lightningStatus}
+            live={lightningLive}
           />
         ) : null}
       </div>
@@ -239,10 +245,12 @@ export function HomeMap({
         <MapTools />
       </MapContainer>
 
-      {showLightning && lightningStrikes.length > 0 ? (
+      {showLightning ? (
         <LightningLegend
           strikes={lightningStrikes}
           attribution={lightningAttribution}
+          status={lightningStatus}
+          live={lightningLive}
         />
       ) : null}
 
