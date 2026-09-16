@@ -30,13 +30,17 @@ import {
 } from "@/components/home/mock-data";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import {
+  DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
+  PLAYBACK_SPEEDS,
   SATELLITE_PRODUCTS,
   formatFrameTimeAEST,
   frameIndexToScrub,
+  getPlaybackSpeed,
   getSatelliteProduct,
   scrubToFrameIndex,
   timelineEdgeLabels,
+  type PlaybackSpeedId,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
 import { cn } from "@/lib/utils";
@@ -129,6 +133,9 @@ export function HomeDashboard() {
   const [playing, setPlaying] = useState(false);
   const [scrub, setScrub] = useState(100);
   const [frameIndex, setFrameIndex] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
+    DEFAULT_PLAYBACK_SPEED,
+  );
 
   const {
     satelliteFrames,
@@ -138,6 +145,7 @@ export function HomeDashboard() {
   } = useWeatherMaps(satProduct);
 
   const satProductMeta = getSatelliteProduct(satProduct);
+  const playback = getPlaybackSpeed(playbackSpeed);
   const showLoopUi = mode === "Satellite" || mode === "Radar";
   const showSatelliteLoop = mode === "Satellite";
   const showRadarUi = mode === "Radar";
@@ -169,26 +177,23 @@ export function HomeDashboard() {
     if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
     const id = window.setInterval(() => {
       setFrameIndex((prev) => {
-        const next = prev + 1;
-        if (next >= loopFrames.length) {
-          setPlaying(false);
-          setScrub(100);
-          return loopFrames.length - 1;
-        }
+        // Advance through every frame, then wrap to the start
+        const next = prev + 1 >= loopFrames.length ? 0 : prev + 1;
         setScrub(frameIndexToScrub(next, loopFrames.length));
         return next;
       });
-    }, 550);
+    }, playback.msPerFrame);
     return () => window.clearInterval(id);
-  }, [playing, showSatelliteLoop, loopFrames.length]);
+  }, [playing, showSatelliteLoop, loopFrames.length, playback.msPerFrame]);
 
   useEffect(() => {
     if (!playing || !showRadarUi) return;
+    const step = Math.max(1, Math.round(2 * (450 / playback.msPerFrame)));
     const id = window.setInterval(() => {
-      setScrub((v) => (v >= 100 ? 0 : v + 2));
-    }, 400);
+      setScrub((v) => (v >= 100 ? 0 : Math.min(100, v + step)));
+    }, playback.msPerFrame);
     return () => window.clearInterval(id);
-  }, [playing, showRadarUi]);
+  }, [playing, showRadarUi, playback.msPerFrame]);
 
   useEffect(() => {
     if (!showLoopUi) setPlaying(false);
@@ -439,7 +444,19 @@ export function HomeDashboard() {
             <div className="flex items-center gap-3 border border-white/25 bg-[var(--bom-blue)] px-3 py-2.5 text-[var(--brand)]">
               <button
                 type="button"
-                onClick={() => setPlaying((p) => !p)}
+                onClick={() => {
+                  setPlaying((p) => {
+                    if (!p && loopFrames.length > 0) {
+                      // Start (or restart) from the first frame when at the end
+                      if (frameIndex >= loopFrames.length - 1) {
+                        setFrameIndex(0);
+                        setScrub(0);
+                      }
+                      return true;
+                    }
+                    return !p;
+                  });
+                }}
                 disabled={loopFrames.length === 0}
                 className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
@@ -451,9 +468,38 @@ export function HomeDashboard() {
                 )}
               </button>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
                   <span className="font-semibold text-[var(--brand)]">{scrubLabel}</span>
-                  <span>{loopStatusLabel}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="hidden sm:inline">{loopStatusLabel}</span>
+                    {loopFrames.length > 0 ? (
+                      <span className="text-[10px] text-[var(--brand)]/65">
+                        Frame {frameIndex + 1}/{loopFrames.length}
+                      </span>
+                    ) : null}
+                    <div
+                      className="inline-flex items-center gap-0.5"
+                      role="group"
+                      aria-label="Animation speed"
+                    >
+                      {PLAYBACK_SPEEDS.map((speed) => (
+                        <button
+                          key={speed.id}
+                          type="button"
+                          onClick={() => setPlaybackSpeed(speed.id)}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
+                            playbackSpeed === speed.id
+                              ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                              : "bg-[var(--navy-deep)] text-[var(--brand)]/80 hover:bg-[var(--page)]/10",
+                          )}
+                          aria-pressed={playbackSpeed === speed.id}
+                        >
+                          {speed.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 {mapsError && loopFrames.length === 0 ? (
                   <p className="text-xs text-[var(--brand)]">{mapsError}</p>
@@ -502,9 +548,33 @@ export function HomeDashboard() {
                 )}
               </button>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between text-xs text-[var(--brand)]/80">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
                   <span className="font-semibold text-[var(--brand)]">{scrubLabel}</span>
-                  <span>Radar loop (demo)</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>Radar loop (demo)</span>
+                    <div
+                      className="inline-flex items-center gap-0.5"
+                      role="group"
+                      aria-label="Animation speed"
+                    >
+                      {PLAYBACK_SPEEDS.map((speed) => (
+                        <button
+                          key={speed.id}
+                          type="button"
+                          onClick={() => setPlaybackSpeed(speed.id)}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
+                            playbackSpeed === speed.id
+                              ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                              : "bg-[var(--navy-deep)] text-[var(--brand)]/80 hover:bg-[var(--page)]/10",
+                          )}
+                          aria-pressed={playbackSpeed === speed.id}
+                        >
+                          {speed.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <input
                   type="range"

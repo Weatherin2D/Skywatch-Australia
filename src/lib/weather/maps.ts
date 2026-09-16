@@ -103,12 +103,13 @@ export const GIBS_AU_ASPECT =
 export function gibsHimawariWmsUrl(
   isoTime: string,
   product: SatelliteProductId = DEFAULT_SATELLITE_PRODUCT,
+  options?: { width?: number },
 ): string {
   const meta = getSatelliteProduct(product);
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
-  const width = 1280;
+  const width = options?.width ?? 1280;
   const height = Math.max(1, Math.round(width / GIBS_AU_ASPECT));
   const params = new URLSearchParams({
     SERVICE: "WMS",
@@ -125,6 +126,24 @@ export function gibsHimawariWmsUrl(
     TIME: isoTime,
   });
   return `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?${params.toString()}`;
+}
+
+/** Playback speeds for satellite/radar loops (ms per frame). */
+export const PLAYBACK_SPEEDS = [
+  { id: "0.5", label: "0.5×", msPerFrame: 900 },
+  { id: "1", label: "1×", msPerFrame: 450 },
+  { id: "2", label: "2×", msPerFrame: 220 },
+  { id: "4", label: "4×", msPerFrame: 110 },
+] as const;
+
+export type PlaybackSpeedId = (typeof PLAYBACK_SPEEDS)[number]["id"];
+
+export const DEFAULT_PLAYBACK_SPEED: PlaybackSpeedId = "1";
+
+export function getPlaybackSpeed(
+  id: PlaybackSpeedId = DEFAULT_PLAYBACK_SPEED,
+): (typeof PLAYBACK_SPEEDS)[number] {
+  return PLAYBACK_SPEEDS.find((s) => s.id === id) ?? PLAYBACK_SPEEDS[1]!;
 }
 
 export function rainviewerTileUrl(

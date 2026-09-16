@@ -115,12 +115,12 @@ export function HomeMap({
         {frameImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            key={frameKey ?? frameImageUrl}
             src={frameImageUrl}
             alt={frameAlt}
             className="absolute inset-0 h-full w-full object-fill select-none"
             style={{ opacity: frameOpacity }}
             draggable={false}
+            decoding="async"
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] text-sm text-white/70">
