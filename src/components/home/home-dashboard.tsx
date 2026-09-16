@@ -29,6 +29,7 @@ import {
   type MapMode,
 } from "@/components/home/mock-data";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
+import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import {
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
@@ -131,11 +132,13 @@ export function HomeDashboard() {
   const [satMenuOpen, setSatMenuOpen] = useState(false);
   const satMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
-  const [scrub, setScrub] = useState(100);
   const [frameIndex, setFrameIndex] = useState(0);
+  const [radarScrub, setRadarScrub] = useState(100);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
     DEFAULT_PLAYBACK_SPEED,
   );
+  const frameIndexRef = useRef(0);
+  frameIndexRef.current = frameIndex;
 
   const {
     satelliteFrames,
@@ -152,45 +155,96 @@ export function HomeDashboard() {
 
   const loopFrames = showSatelliteLoop ? satelliteFrames : [];
   const activeFrame = loopFrames[frameIndex] ?? null;
+  const scrub =
+    loopFrames.length > 0
+      ? frameIndexToScrub(frameIndex, loopFrames.length)
+      : 100;
 
+  const {
+    readyCount,
+    total: preloadTotal,
+    isUrlReady,
+  } = useFramePreloader(loopFrames, showSatelliteLoop);
+  const readyGateRef = useRef({ isUrlReady });
+  readyGateRef.current = { isUrlReady };
+
+  // Jump to latest frame when the product/mode loop set changes
   useEffect(() => {
     if (loopFrames.length === 0) {
       setFrameIndex(0);
       return;
     }
-    const next = scrubToFrameIndex(scrub, loopFrames.length);
-    setFrameIndex(next);
-  }, [scrub, loopFrames.length]);
-
-  useEffect(() => {
-    if (loopFrames.length === 0) return;
-    setScrub(100);
+    setPlaying(false);
     setFrameIndex(loopFrames.length - 1);
   }, [loopFrames.length, mode, satProduct]);
 
-  useEffect(() => {
-    setPlaying(false);
-    setScrub(100);
-  }, [satProduct]);
-
+  // Ready-gated satellite playback: advance only when the next frame is cached
   useEffect(() => {
     if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
-    const id = window.setInterval(() => {
-      setFrameIndex((prev) => {
-        // Advance through every frame, then wrap to the start
-        const next = prev + 1 >= loopFrames.length ? 0 : prev + 1;
-        setScrub(frameIndexToScrub(next, loopFrames.length));
-        return next;
-      });
-    }, playback.msPerFrame);
-    return () => window.clearInterval(id);
-  }, [playing, showSatelliteLoop, loopFrames.length, playback.msPerFrame]);
+
+    let cancelled = false;
+    let timer = 0;
+
+    const schedule = (delay: number, fn: () => void) => {
+      timer = window.setTimeout(fn, delay);
+    };
+
+    const tick = () => {
+      if (cancelled) return;
+      const prev = frameIndexRef.current;
+      let next = (prev + 1) % loopFrames.length;
+      // Prefer the immediate next frame; if it is not ready yet, wait on it
+      // rather than skipping ahead (so every frame is shown once cached).
+      const url = loopFrames[next]?.imageUrl;
+
+      const apply = () => {
+        if (cancelled) return;
+        setFrameIndex(next);
+        schedule(playback.msPerFrame, tick);
+      };
+
+      if (!url || readyGateRef.current.isUrlReady(url)) {
+        apply();
+        return;
+      }
+
+      const img = new window.Image();
+      let settled = false;
+      const finish = () => {
+        if (settled || cancelled) return;
+        settled = true;
+        apply();
+      };
+      const wait = window.setTimeout(finish, Math.max(playback.msPerFrame * 3, 1500));
+      img.onload = () => {
+        window.clearTimeout(wait);
+        if (typeof img.decode === "function") {
+          void img.decode().then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+      img.onerror = () => {
+        window.clearTimeout(wait);
+        // Skip broken frame
+        next = (next + 1) % loopFrames.length;
+        finish();
+      };
+      img.src = url;
+    };
+
+    schedule(playback.msPerFrame, tick);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [playing, showSatelliteLoop, loopFrames, playback.msPerFrame]);
 
   useEffect(() => {
     if (!playing || !showRadarUi) return;
-    const step = Math.max(1, Math.round(2 * (450 / playback.msPerFrame)));
+    const step = Math.max(1, Math.round(2 * (500 / playback.msPerFrame)));
     const id = window.setInterval(() => {
-      setScrub((v) => (v >= 100 ? 0 : Math.min(100, v + step)));
+      setRadarScrub((v) => (v >= 100 ? 0 : Math.min(100, v + step)));
     }, playback.msPerFrame);
     return () => window.clearInterval(id);
   }, [playing, showRadarUi, playback.msPerFrame]);
@@ -252,6 +306,9 @@ export function HomeDashboard() {
       }
       return mapsError ? "Satellite loop unavailable" : "No frames available";
     }
+    if (preloadTotal > 0 && readyCount < preloadTotal) {
+      return `Caching ${readyCount}/${preloadTotal} · ${satProductMeta.loopLabel}`;
+    }
     return satProductMeta.loopLabel;
   }, [
     mapsLoading,
@@ -259,6 +316,8 @@ export function HomeDashboard() {
     loopFrames.length,
     satProductMeta.daytimeOnly,
     satProductMeta.loopLabel,
+    preloadTotal,
+    readyCount,
   ]);
 
   function setLayer(id: LayerId, on: boolean) {
@@ -450,14 +509,13 @@ export function HomeDashboard() {
                       // Start (or restart) from the first frame when at the end
                       if (frameIndex >= loopFrames.length - 1) {
                         setFrameIndex(0);
-                        setScrub(0);
                       }
                       return true;
                     }
                     return !p;
                   });
                 }}
-                disabled={loopFrames.length === 0}
+                disabled={loopFrames.length === 0 || readyCount === 0}
                 className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
               >
@@ -519,7 +577,11 @@ export function HomeDashboard() {
                       disabled={loopFrames.length === 0}
                       onChange={(e) => {
                         setPlaying(false);
-                        setScrub(Number(e.target.value));
+                        const next = scrubToFrameIndex(
+                          Number(e.target.value),
+                          loopFrames.length,
+                        );
+                        setFrameIndex(next);
                       }}
                       className="w-full accent-[var(--bom-yellow)] disabled:opacity-40"
                       aria-label={`${satProductMeta.label} satellite timeline`}
@@ -580,10 +642,10 @@ export function HomeDashboard() {
                   type="range"
                   min={0}
                   max={100}
-                  value={scrub}
+                  value={radarScrub}
                   onChange={(e) => {
                     setPlaying(false);
-                    setScrub(Number(e.target.value));
+                    setRadarScrub(Number(e.target.value));
                   }}
                   className="w-full accent-[var(--bom-yellow)]"
                   aria-label="Radar timeline"

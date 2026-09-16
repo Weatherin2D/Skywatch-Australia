@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -18,7 +18,7 @@ type Props = {
   showRadarOverlay?: boolean;
   /** Leaflet tile URL template for RainViewer frames */
   frameTileUrl?: string | null;
-  /** Full-frame IR image (GIBS WMS) */
+  /** Full-frame IR image (GIBS WMS via proxy) */
   frameImageUrl?: string | null;
   frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
@@ -88,18 +88,85 @@ function cityPinStyle(lat: number, lon: number) {
   return { left: `${x}%`, top: `${y}%` };
 }
 
+/**
+ * Double-buffered frame view: keep the last good frame painted while the next
+ * image downloads/decodes, then swap atomically to avoid black flashes.
+ */
+function SatelliteFrameView({
+  url,
+  alt,
+  opacity = 1,
+}: {
+  url: string | null;
+  alt: string;
+  opacity?: number;
+}) {
+  const [displayUrl, setDisplayUrl] = useState<string | null>(url);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!url) {
+      setDisplayUrl(null);
+      setPendingUrl(null);
+      return;
+    }
+    if (url === displayUrl) return;
+
+    let cancelled = false;
+    setPendingUrl(url);
+    const img = new window.Image();
+    img.decoding = "async";
+    const commit = () => {
+      if (cancelled) return;
+      setDisplayUrl(url);
+      setPendingUrl(null);
+    };
+    img.onload = () => {
+      if (typeof img.decode === "function") {
+        void img.decode().then(commit).catch(commit);
+      } else {
+        commit();
+      }
+    };
+    img.onerror = () => {
+      if (!cancelled) setPendingUrl(null);
+    };
+    img.src = url;
+    return () => {
+      cancelled = true;
+    };
+  }, [url, displayUrl]);
+
+  if (!displayUrl) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] text-sm text-white/70">
+        {pendingUrl ? "Loading frame…" : "Loading satellite frames…"}
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={displayUrl}
+      alt={alt}
+      className="absolute inset-0 h-full w-full object-fill select-none"
+      style={{ opacity }}
+      draggable={false}
+    />
+  );
+}
+
 export function HomeMap({
   mode,
   showRadarOverlay = false,
   frameTileUrl = null,
   frameImageUrl = null,
-  frameKey,
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
   legend = null,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
-  const useEsriImagery = mode === "Satellite" && !frameImageUrl && !frameTileUrl;
 
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
@@ -112,21 +179,11 @@ export function HomeMap({
         style={{ aspectRatio: String(GIBS_AU_ASPECT) }}
         data-map-mode="Satellite"
       >
-        {frameImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={frameImageUrl}
-            alt={frameAlt}
-            className="absolute inset-0 h-full w-full object-fill select-none"
-            style={{ opacity: frameOpacity }}
-            draggable={false}
-            decoding="async"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] text-sm text-white/70">
-            Loading satellite frames…
-          </div>
-        )}
+        <SatelliteFrameView
+          url={frameImageUrl}
+          alt={frameAlt}
+          opacity={frameOpacity}
+        />
 
         {CITY_MARKERS.map((city) => (
           <span
@@ -149,66 +206,33 @@ export function HomeMap({
         minZoom={3}
         maxZoom={16}
         className="h-full w-full"
-        scrollWheelZoom
-        doubleClickZoom
-        touchZoom
-        boxZoom
-        keyboard
-        dragging
-        zoomControl
+        zoomControl={false}
         attributionControl
-        maxBounds={[
-          [-55, 90],
-          [5, 180],
-        ]}
-        maxBoundsViscosity={0.85}
       >
-        <TileLayer
-          key={useEsriImagery ? "sat-esri" : "base"}
-          url={
-            useEsriImagery
-              ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              : basemapUrl
-          }
-          attribution="Tiles &copy; Esri"
-          maxZoom={16}
-        />
-        {frameTileUrl ? (
-          <TileLayer
-            key={`wx-tile-${frameKey ?? frameTileUrl}`}
-            url={frameTileUrl}
-            opacity={frameOpacity}
-            maxZoom={12}
-            maxNativeZoom={10}
-            errorTileUrl="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            attribution="Radar &copy; RainViewer"
-          />
-        ) : null}
         <MapModeEffect mode={mode} />
-        <MapTools />
-        {showRadarOverlay && mode === "Radar" ? <DemoRadarBlobs /> : null}
+        <TileLayer url={basemapUrl} attribution="Esri" />
+        {frameTileUrl ? (
+          <TileLayer key={frameTileUrl} url={frameTileUrl} opacity={0.75} />
+        ) : null}
+        {showRadarOverlay || mode === "Radar" ? <DemoRadarBlobs /> : null}
         {CITY_MARKERS.map((city) => (
           <CircleMarker
             key={city.name}
             center={[city.lat, city.lon]}
             radius={4}
             pathOptions={{
-              color: "#fff",
+              color: "#ffe000",
               fillColor: "#ffe000",
-              fillOpacity: 1,
+              fillOpacity: 0.9,
               weight: 1,
             }}
           >
-            <Tooltip
-              direction="top"
-              offset={[0, -6]}
-              opacity={0.95}
-              permanent={false}
-            >
+            <Tooltip direction="top" offset={[0, -6]}>
               {city.name}
             </Tooltip>
           </CircleMarker>
         ))}
+        <MapTools />
       </MapContainer>
 
       {legend === "radar" || (showRadarOverlay && mode === "Radar") ? (

@@ -7,21 +7,23 @@ import {
   getSatelliteProduct,
   isSatelliteProductId,
   rainviewerTileUrl,
+  satelliteFrameProxyUrl,
   toIsoZ,
   type SatelliteProductId,
   type WeatherFrame,
   type WeatherMapsPayload,
 } from "@/lib/weather/maps";
+import { warmFramesInBackground } from "@/lib/weather/fetch-frame";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const RAINVIEWER_URL = "https://api.rainviewer.com/public/weather-maps.json";
 const GIBS_STEP_MS = 10 * 60 * 1000;
-const GIBS_FRAME_COUNT = 18;
 const GIBS_PROBE_MAX = 12;
 const GIBS_PROBE_BATCH = 4;
 const GIBS_PROBE_WIDTH = 96;
+const FRAME_COUNT = 18;
 
 type RainViewerMaps = {
   generated?: number;
@@ -55,14 +57,13 @@ async function probeGibsWms(
         method: "GET",
         headers: { "User-Agent": "SkyWatchAustralia/1.0" },
         cache: "no-store",
-        signal: AbortSignal.timeout(4500),
+        signal: AbortSignal.timeout(4000),
       },
     );
     if (!res.ok) return false;
     const type = res.headers.get("content-type") ?? "";
     if (!type.includes("image")) return false;
     const buf = Buffer.from(await res.arrayBuffer());
-    // Tiny empty / not-yet-available Himawari frames are near-black and very small
     if (buf.length < 600) return false;
     let nonBlack = 0;
     for (let i = 40; i < Math.min(buf.length, 2500); i += 11) {
@@ -90,26 +91,24 @@ async function findLatestGibsTime(
         (await probeGibsWms(toIsoZ(ms), product)) ? ms : null,
       ),
     );
-    // Newest-first batch: first hit is the latest available
     const hit = results.find((ms) => ms != null);
     if (hit != null) return hit;
   }
   return null;
 }
 
-async function buildGibsFrames(
+function buildFramesAtLatest(
   product: SatelliteProductId,
-): Promise<WeatherFrame[]> {
-  const latestMs = await findLatestGibsTime(product);
-  if (latestMs == null) return [];
-
+  latestMs: number,
+  count = FRAME_COUNT,
+): WeatherFrame[] {
   const frames: WeatherFrame[] = [];
-  for (let i = GIBS_FRAME_COUNT - 1; i >= 0; i--) {
+  for (let i = count - 1; i >= 0; i--) {
     const ms = latestMs - i * GIBS_STEP_MS;
-    const iso = toIsoZ(ms);
+    const time = Math.floor(ms / 1000);
     frames.push({
-      time: Math.floor(ms / 1000),
-      imageUrl: gibsHimawariWmsUrl(iso, product),
+      time,
+      imageUrl: satelliteFrameProxyUrl(product, time),
       imageBounds: GIBS_AU_BOUNDS,
     });
   }
@@ -130,23 +129,37 @@ function normalizeRainviewerFrames(
 }
 
 /**
- * Build every satellite product in parallel. GIBS image frames are used for the
- * locked full-bleed loop (RainViewer IR is tile-only and does not fit that path).
+ * One shared Himawari timeline for all products, then parallel URL assembly.
+ * Probe infrared first (most reliable), fall back to other layers.
  */
 async function buildAllSatelliteProducts(): Promise<{
   products: WeatherMapsPayload["satellite"]["products"];
   source: WeatherMapsPayload["satellite"]["source"];
 }> {
   const products = emptyProductFrames();
-  const built = await Promise.all(
-    SATELLITE_PRODUCTS.map(async (meta) => {
-      const frames = await buildGibsFrames(meta.id);
-      return [meta.id, frames] as const;
-    }),
-  );
-  for (const [id, frames] of built) {
-    products[id] = { frames };
+
+  const latestMs =
+    (await findLatestGibsTime("infrared")) ??
+    (await findLatestGibsTime("airmass")) ??
+    (await findLatestGibsTime("visible"));
+
+  if (latestMs == null) {
+    return { products, source: "gibs-himawari" };
   }
+
+  for (const meta of SATELLITE_PRODUCTS) {
+    products[meta.id] = {
+      frames: buildFramesAtLatest(meta.id, latestMs),
+    };
+  }
+
+  // Warm infrared (default) into the server frame cache immediately
+  warmFramesInBackground(
+    "infrared",
+    products.infrared.frames.map((f) => f.time),
+    3,
+  );
+
   return { products, source: "gibs-himawari" };
 }
 
@@ -175,19 +188,20 @@ export async function GET(request: NextRequest) {
       })
       .catch(() => null);
 
-    const [rv, satellite] = await Promise.all([
-      rvPromise,
-      wantAll
-        ? buildAllSatelliteProducts()
-        : buildGibsFrames(product).then((frames) => {
-            const products = emptyProductFrames();
-            products[product] = { frames };
-            return {
-              products,
-              source: "gibs-himawari" as const,
+    const satellitePromise = wantAll
+      ? buildAllSatelliteProducts()
+      : (async () => {
+          const products = emptyProductFrames();
+          const latestMs = await findLatestGibsTime(product);
+          if (latestMs != null) {
+            products[product] = {
+              frames: buildFramesAtLatest(product, latestMs),
             };
-          }),
-    ]);
+          }
+          return { products, source: "gibs-himawari" as const };
+        })();
+
+    const [rv, satellite] = await Promise.all([rvPromise, satellitePromise]);
 
     const host = rv?.host ?? "https://tilecache.rainviewer.com";
     const generated = rv?.generated ?? Math.floor(Date.now() / 1000);

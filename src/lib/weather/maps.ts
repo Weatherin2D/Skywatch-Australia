@@ -100,6 +100,9 @@ export const GIBS_AU_ASPECT =
     return (maxx - minx) / (maxy - miny);
   })();
 
+/** Display width for full satellite frames (balanced sharpness vs load time). */
+export const GIBS_DISPLAY_WIDTH = 1024;
+
 export function gibsHimawariWmsUrl(
   isoTime: string,
   product: SatelliteProductId = DEFAULT_SATELLITE_PRODUCT,
@@ -109,7 +112,7 @@ export function gibsHimawariWmsUrl(
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
-  const width = options?.width ?? 1280;
+  const width = options?.width ?? GIBS_DISPLAY_WIDTH;
   const height = Math.max(1, Math.round(width / GIBS_AU_ASPECT));
   const params = new URLSearchParams({
     SERVICE: "WMS",
@@ -128,12 +131,24 @@ export function gibsHimawariWmsUrl(
   return `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?${params.toString()}`;
 }
 
+/** Same-origin frame URL used by the player (proxied + cached). */
+export function satelliteFrameProxyUrl(
+  product: SatelliteProductId,
+  timeUnix: number,
+): string {
+  const q = new URLSearchParams({
+    product,
+    time: String(timeUnix),
+  });
+  return `/api/weather/frame?${q.toString()}`;
+}
+
 /** Playback speeds for satellite/radar loops (ms per frame). */
 export const PLAYBACK_SPEEDS = [
-  { id: "0.5", label: "0.5×", msPerFrame: 900 },
-  { id: "1", label: "1×", msPerFrame: 450 },
-  { id: "2", label: "2×", msPerFrame: 220 },
-  { id: "4", label: "4×", msPerFrame: 110 },
+  { id: "0.5", label: "0.5×", msPerFrame: 1000 },
+  { id: "1", label: "1×", msPerFrame: 500 },
+  { id: "2", label: "2×", msPerFrame: 280 },
+  { id: "4", label: "4×", msPerFrame: 160 },
 ] as const;
 
 export type PlaybackSpeedId = (typeof PLAYBACK_SPEEDS)[number]["id"];
