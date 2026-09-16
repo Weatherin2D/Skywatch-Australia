@@ -15,12 +15,14 @@ import {
   Sun,
   Wind,
 } from "lucide-react";
+import Link from "next/link";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
+  CAPITAL_NOW,
   HIGHLIGHTS,
   MAP_MODES,
   MODEL_ROWS,
-  QUICK_VIEW,
+  SYDNEY_NOW,
   WARNINGS,
   WEEK_FORECAST,
   WEATHER_LAYERS,
@@ -107,22 +109,26 @@ function warningTone(tone: string) {
 export function HomeDashboard() {
   const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
     const init = {} as Record<LayerId, boolean>;
-    for (const layer of WEATHER_LAYERS) {
-      init[layer.id] = layer.id === "radar" || layer.id === "warnings";
-    }
+    for (const layer of WEATHER_LAYERS) init[layer.id] = false;
     return init;
   });
   const [mode, setMode] = useState<MapMode>("Satellite");
   const [playing, setPlaying] = useState(false);
   const [scrub, setScrub] = useState(28);
 
+  const showRadarUi = mode === "Radar";
+
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !showRadarUi) return;
     const id = window.setInterval(() => {
       setScrub((v) => (v >= 100 ? 0 : v + 2));
     }, 400);
     return () => window.clearInterval(id);
-  }, [playing]);
+  }, [playing, showRadarUi]);
+
+  useEffect(() => {
+    if (!showRadarUi) setPlaying(false);
+  }, [showRadarUi]);
 
   const scrubLabel = useMemo(() => {
     const hours = [
@@ -146,44 +152,30 @@ export function HomeDashboard() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-8 pt-4 sm:px-4">
-      <div className="animate-fade-up space-y-2">
+      <div className="animate-fade-up space-y-1">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--bom-blue)] sm:text-4xl">
-          SkyWatch Australia
+          National overview
         </h1>
         <p className="text-[var(--muted-foreground)] sm:text-lg">
-          Australian weather, observed and forecast.
+          {SYDNEY_NOW.dateHeading} — Australian weather, observed and forecast.
         </p>
-        <div className="flex flex-wrap gap-2 pt-1">
-          {[
-            "Rain radars",
-            "Satellite images",
-            "Weather maps",
-            "Warnings",
-            "Forecasts",
-          ].map((label) => (
-            <button
-              key={label}
-              type="button"
-              className="inline-flex items-center gap-1 bg-[var(--bom-blue-mid)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--bom-blue)]"
-              onClick={() => undefined}
-            >
-              <ChevronRight className="h-4 w-4" aria-hidden />
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="animate-fade-up-delay grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
         <div className="space-y-3">
-          <Panel title="Weather Layers">
+          <Panel title="Map overlays">
+            <p className="mb-2 text-[11px] text-white/70">
+              Extra layers on top of Map / Satellite / Radar.
+            </p>
             <ul className="space-y-2.5">
               {WEATHER_LAYERS.map((layer) => (
                 <li
                   key={layer.id}
                   className="flex items-center justify-between gap-2 text-sm text-white/80"
                 >
-                  <span className={cn(layers[layer.id] && "font-semibold text-white")}>
+                  <span
+                    className={cn(layers[layer.id] && "font-semibold text-white")}
+                  >
                     {layer.label}
                   </span>
                   <Toggle
@@ -196,20 +188,6 @@ export function HomeDashboard() {
             </ul>
           </Panel>
 
-          <Panel title="Quick View">
-            <ul className="space-y-2 text-sm">
-              {QUICK_VIEW.map((row) => (
-                <li
-                  key={row.label}
-                  className="flex items-center justify-between gap-2 border-b border-white/15 pb-2 last:border-0 last:pb-0"
-                >
-                  <span className="text-white/75">{row.label}</span>
-                  <span className="font-bold text-white">{row.value}</span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-
           <div className="border border-[var(--bom-blue)]/20 bg-[var(--bom-blue)] px-3 py-3 text-xs text-white/85">
             <p className="font-bold text-white">Australia-wide coverage</p>
             <p className="mt-1">From tropical coasts to alpine peaks.</p>
@@ -217,7 +195,10 @@ export function HomeDashboard() {
         </div>
 
         <div className="flex min-h-[420px] flex-col gap-2 xl:min-h-[560px]">
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-[var(--bom-blue)]">
+              View
+            </span>
             {MAP_MODES.map((m) => (
               <button
                 key={m}
@@ -237,65 +218,80 @@ export function HomeDashboard() {
           </div>
 
           <div className="min-h-0 flex-1 border-2 border-[var(--bom-blue)] bg-[var(--navy-deep)]">
-            <HomeMapDynamic mode={mode} />
+            <HomeMapDynamic
+              mode={mode}
+              showRadarOverlay={showRadarUi || layers.rainfall}
+            />
           </div>
 
-          <div className="flex items-center gap-3 border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] px-3 py-2.5 text-white">
-            <button
-              type="button"
-              onClick={() => setPlaying((p) => !p)}
-              className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--bom-blue)]"
-              aria-label={playing ? "Pause timeline" : "Play timeline"}
-            >
-              {playing ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4 translate-x-px" />
-              )}
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="mb-1 flex items-center justify-between text-xs text-white/80">
-                <span className="font-semibold text-white">{scrubLabel}</span>
-                <span>Radar loop (demo)</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={scrub}
-                onChange={(e) => {
-                  setPlaying(false);
-                  setScrub(Number(e.target.value));
-                }}
-                className="w-full accent-[var(--bom-yellow)]"
-                aria-label="Radar timeline"
-              />
-              <div className="mt-1 flex justify-between text-[10px] text-white/70">
-                {TIMELINE_LABELS.map((t) => (
-                  <span key={t}>{t}</span>
-                ))}
+          {showRadarUi ? (
+            <div className="flex items-center gap-3 border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] px-3 py-2.5 text-white">
+              <button
+                type="button"
+                onClick={() => setPlaying((p) => !p)}
+                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--bom-blue)]"
+                aria-label={playing ? "Pause timeline" : "Play timeline"}
+              >
+                {playing ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4 translate-x-px" />
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between text-xs text-white/80">
+                  <span className="font-semibold text-white">{scrubLabel}</span>
+                  <span>Radar loop (demo)</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={scrub}
+                  onChange={(e) => {
+                    setPlaying(false);
+                    setScrub(Number(e.target.value));
+                  }}
+                  className="w-full accent-[var(--bom-yellow)]"
+                  aria-label="Radar timeline"
+                />
+                <div className="mt-1 flex justify-between text-[10px] text-white/70">
+                  {TIMELINE_LABELS.map((t) => (
+                    <span key={t}>{t}</span>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <p className="border border-[var(--bom-blue)]/15 bg-white px-3 py-2 text-xs text-[var(--muted-foreground)]">
+              Select <span className="font-semibold text-[var(--bom-blue)]">Radar</span>{" "}
+              view to open the playback timeline. Overlays on the left can be mixed
+              with Map or Satellite.
+            </p>
+          )}
         </div>
 
         <div className="space-y-3">
           <Panel>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-lg font-bold text-white">Sydney, NSW</p>
-                <p className="text-xs text-white/70">Tue, demo · 4:32 PM AEST</p>
+                <p className="text-lg font-bold text-white">{SYDNEY_NOW.place}</p>
+                <p className="text-xs text-white/70">{SYDNEY_NOW.clockLabel}</p>
               </div>
               <CloudSun className="h-10 w-10 text-[var(--bom-yellow)]" />
             </div>
-            <p className="mt-1 text-4xl font-bold text-white">22°C</p>
-            <p className="text-sm text-white/80">Partly cloudy</p>
+            <p className="mt-1 text-4xl font-bold text-white">
+              {SYDNEY_NOW.tempC}°C
+            </p>
+            <p className="text-sm text-white/80">{SYDNEY_NOW.condition}</p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               {[
-                ["Feels like", "21°C"],
-                ["Humidity", "68%"],
-                ["Wind", "18 km/h SSW"],
-                ["Rain (today)", "0 mm"],
+                ["Feels like", `${SYDNEY_NOW.feelsLikeC}°C`],
+                ["Humidity", `${SYDNEY_NOW.humidityPct}%`],
+                ["Wind", SYDNEY_NOW.wind],
+                ["Gusts", SYDNEY_NOW.gusts],
+                ["Rain (today)", `${SYDNEY_NOW.rainTodayMm} mm`],
+                ["Pressure", `${SYDNEY_NOW.pressureHpa} hPa`],
               ].map(([k, v]) => (
                 <div key={k} className="bg-[var(--bom-blue)]/50 px-2 py-1.5">
                   <p className="text-white/70">{k}</p>
@@ -303,13 +299,32 @@ export function HomeDashboard() {
                 </div>
               ))}
             </div>
+            <div className="mt-3 flex gap-3 border-t border-white/15 pt-2 text-xs text-white/85">
+              <span>
+                Min{" "}
+                <strong className="text-white">{SYDNEY_NOW.minC}°</strong>
+              </span>
+              <span>
+                Max{" "}
+                <strong className="text-[var(--bom-yellow)]">
+                  {SYDNEY_NOW.maxC}°
+                </strong>
+              </span>
+              <span>
+                Rain chance{" "}
+                <strong className="text-white">{SYDNEY_NOW.rainChancePct}%</strong>
+              </span>
+              <span>
+                UV <strong className="text-white">{SYDNEY_NOW.uv}</strong>
+              </span>
+            </div>
           </Panel>
 
           <Panel title="Severe Weather Warnings">
             <ul className="space-y-2">
               {WARNINGS.map((w) => (
                 <li
-                  key={w.title}
+                  key={w.id}
                   className="flex gap-2 bg-[var(--bom-blue)]/40 p-2"
                 >
                   <span
@@ -327,6 +342,12 @@ export function HomeDashboard() {
                 </li>
               ))}
             </ul>
+            <Link
+              href="/severe-weather"
+              className="mt-2 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
+            >
+              All warnings →
+            </Link>
           </Panel>
 
           <Panel title="Storm Tracker">
@@ -338,7 +359,7 @@ export function HomeDashboard() {
                 <div className="h-16 w-28 rounded-full bg-[radial-gradient(circle_at_40%_40%,#ef4444_0%,#eab308_35%,#22c55e_65%,transparent_70%)] opacity-90" />
               </div>
               <div className="space-y-1 bg-[var(--bom-blue)]/60 p-2 text-xs">
-                <p className="font-bold text-white">Storm 1427</p>
+                <p className="font-bold text-white">Storm 1427 · eastern NSW</p>
                 <p className="text-white/75">Moving SE · 28 km/h</p>
                 <p className="text-white/75">Lightning 12/min · Hail: Large</p>
                 <p className="text-white/75">Max wind 95 km/h · Rain 42 mm/h</p>
@@ -346,11 +367,11 @@ export function HomeDashboard() {
             </div>
           </Panel>
 
-          <Panel title="Today’s Highlights">
+          <Panel title="Briefing notes">
             <ul className="space-y-2">
               {HIGHLIGHTS.map((item) => (
                 <li key={item} className="flex gap-2 text-sm text-white/85">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--bom-yellow)]" />
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--bom-yellow)]" />
                   <span>{item}</span>
                 </li>
               ))}
@@ -359,38 +380,26 @@ export function HomeDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Panel title="Sydney Today">
-          <div className="flex items-center gap-3">
-            <CloudSun className="h-12 w-12 text-[var(--bom-yellow)]" />
-            <div>
-              <p className="text-2xl font-bold text-white">
-                <span className="text-white/80">16°</span>{" "}
-                <span className="text-[var(--bom-yellow)]">22°</span>
+      <Panel title={`Capital cities — ${SYDNEY_NOW.dateHeading}`}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          {CAPITAL_NOW.map((c) => (
+            <div
+              key={c.city}
+              className="bg-[var(--bom-blue)]/45 px-2 py-2 text-center"
+            >
+              <p className="text-xs font-bold text-white">{c.city}</p>
+              <p className="text-xl font-bold text-[var(--bom-yellow)]">
+                {c.tempC}°
               </p>
-              <p className="text-sm text-white/80">Partly cloudy</p>
+              <p className="text-[10px] text-white/75">{c.wind}</p>
+              <p className="text-[10px] text-white/70">{c.condition}</p>
             </div>
-          </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="bg-[var(--bom-blue)]/50 p-2">
-              <Droplets className="mx-auto mb-1 h-3.5 w-3.5 text-[var(--bom-yellow)]" />
-              <p className="text-white/70">Rain</p>
-              <p className="font-bold text-white">10%</p>
-            </div>
-            <div className="bg-[var(--bom-blue)]/50 p-2">
-              <Sun className="mx-auto mb-1 h-3.5 w-3.5 text-[var(--bom-yellow)]" />
-              <p className="text-white/70">UV</p>
-              <p className="font-bold text-white">6 High</p>
-            </div>
-            <div className="bg-[var(--bom-blue)]/50 p-2">
-              <Wind className="mx-auto mb-1 h-3.5 w-3.5 text-[var(--bom-yellow)]" />
-              <p className="text-white/70">Wind</p>
-              <p className="font-bold text-white">18</p>
-            </div>
-          </div>
-        </Panel>
+          ))}
+        </div>
+      </Panel>
 
-        <Panel title="7 Day Forecast">
+      <div className="grid gap-3 md:grid-cols-3">
+        <Panel title="7 Day Forecast — Sydney">
           <div className="flex justify-between gap-1 overflow-x-auto">
             {WEEK_FORECAST.map((d) => (
               <div
@@ -399,7 +408,9 @@ export function HomeDashboard() {
               >
                 <span className="text-white/70">{d.day}</span>
                 <DayIcon kind={d.icon} />
-                <span className="font-bold text-[var(--bom-yellow)]">{d.high}°</span>
+                <span className="font-bold text-[var(--bom-yellow)]">
+                  {d.high}°
+                </span>
                 <span className="text-white/80">{d.low}°</span>
               </div>
             ))}
@@ -421,8 +432,12 @@ export function HomeDashboard() {
                 {MODEL_ROWS.map((row) => (
                   <tr key={row.metric} className="border-t border-white/15">
                     <td className="py-1.5 text-white/75">{row.metric}</td>
-                    <td className="py-1.5 font-semibold text-white">{row.ecmwf}</td>
-                    <td className="py-1.5 font-semibold text-white">{row.access}</td>
+                    <td className="py-1.5 font-semibold text-white">
+                      {row.ecmwf}
+                    </td>
+                    <td className="py-1.5 font-semibold text-white">
+                      {row.access}
+                    </td>
                     <td className="py-1.5 font-semibold text-white">{row.gfs}</td>
                   </tr>
                 ))}
@@ -431,7 +446,7 @@ export function HomeDashboard() {
           </div>
         </Panel>
 
-        <Panel title="Sydney’s Climate">
+        <Panel title="Upper air — Sydney (demo)">
           <div className="relative h-36 overflow-hidden border border-white/20 bg-[var(--navy-deep)]">
             <svg viewBox="0 0 200 120" className="h-full w-full opacity-90">
               <rect width="200" height="120" fill="#001a3a" />

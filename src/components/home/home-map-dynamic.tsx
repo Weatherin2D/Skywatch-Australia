@@ -15,6 +15,12 @@ const HomeMap = dynamic(
   },
 );
 
-export function HomeMapDynamic({ mode }: { mode: MapMode }) {
-  return <HomeMap mode={mode} />;
+export function HomeMapDynamic({
+  mode,
+  showRadarOverlay,
+}: {
+  mode: MapMode;
+  showRadarOverlay?: boolean;
+}) {
+  return <HomeMap mode={mode} showRadarOverlay={showRadarOverlay} />;
 }

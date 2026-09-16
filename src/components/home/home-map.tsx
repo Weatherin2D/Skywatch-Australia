@@ -8,18 +8,18 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
-import { Layers, LocateFixed } from "lucide-react";
+import { LocateFixed } from "lucide-react";
 import { CITY_MARKERS, type MapMode } from "@/components/home/mock-data";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
   mode: MapMode;
+  showRadarOverlay?: boolean;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
   const map = useMap();
   useEffect(() => {
-    // Placeholder for future overlay switching by mode
     map.getContainer().dataset.mapMode = mode;
   }, [map, mode]);
   return null;
@@ -28,7 +28,7 @@ function MapModeEffect({ mode }: { mode: MapMode }) {
 function MapTools() {
   const map = useMap();
   return (
-    <div className="absolute left-3 top-14 z-[1000] flex flex-col gap-2">
+    <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2">
       <button
         type="button"
         className="flex h-9 w-9 items-center justify-center border border-white/30 bg-[var(--bom-blue)] text-white shadow transition hover:bg-[var(--bom-blue-mid)] hover:text-[var(--bom-yellow)]"
@@ -37,26 +37,18 @@ function MapTools() {
       >
         <LocateFixed className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        className="flex h-9 w-9 items-center justify-center border border-white/30 bg-[var(--bom-blue)] text-white shadow transition hover:bg-[var(--bom-blue-mid)] hover:text-[var(--bom-yellow)]"
-        aria-label="Layer stack"
-        onClick={() => undefined}
-      >
-        <Layers className="h-4 w-4" />
-      </button>
     </div>
   );
 }
 
 function DemoRadarBlobs() {
   const cells = [
-    { lat: -28.2, lon: 152.8, r: 90000, color: "#22c55e" },
-    { lat: -29.1, lon: 151.9, r: 70000, color: "#eab308" },
-    { lat: -30.4, lon: 150.6, r: 55000, color: "#ef4444" },
-    { lat: -32.6, lon: 151.2, r: 80000, color: "#84cc16" },
-    { lat: -33.5, lon: 150.4, r: 45000, color: "#f59e0b" },
-    { lat: -26.8, lon: 152.1, r: 60000, color: "#22c55e" },
+    { lat: -28.2, lon: 152.8, color: "#22c55e" },
+    { lat: -29.1, lon: 151.9, color: "#eab308" },
+    { lat: -30.4, lon: 150.6, color: "#ef4444" },
+    { lat: -32.6, lon: 151.2, color: "#84cc16" },
+    { lat: -33.5, lon: 150.4, color: "#f59e0b" },
+    { lat: -26.8, lon: 152.1, color: "#22c55e" },
   ];
   return (
     <>
@@ -78,7 +70,7 @@ function DemoRadarBlobs() {
   );
 }
 
-export function HomeMap({ mode }: Props) {
+export function HomeMap({ mode, showRadarOverlay = false }: Props) {
   const satellite = mode === "Satellite";
 
   return (
@@ -103,9 +95,7 @@ export function HomeMap({ mode }: Props) {
         />
         <MapModeEffect mode={mode} />
         <MapTools />
-        {(mode === "Radar" || mode === "Map" || mode === "Rainfall") && (
-          <DemoRadarBlobs />
-        )}
+        {showRadarOverlay ? <DemoRadarBlobs /> : null}
         {CITY_MARKERS.map((city) => (
           <CircleMarker
             key={city.name}
@@ -113,7 +103,7 @@ export function HomeMap({ mode }: Props) {
             radius={4}
             pathOptions={{
               color: "#fff",
-              fillColor: "#00aeef",
+              fillColor: "#ffe000",
               fillOpacity: 1,
               weight: 1,
             }}
@@ -130,26 +120,24 @@ export function HomeMap({ mode }: Props) {
         ))}
       </MapContainer>
 
-      <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
-        <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
-          Intensity
-        </p>
-        <div className="flex h-2 w-36 overflow-hidden">
-          <span className="flex-1 bg-emerald-400" />
-          <span className="flex-1 bg-lime-400" />
-          <span className="flex-1 bg-yellow-400" />
-          <span className="flex-1 bg-orange-400" />
-          <span className="flex-1 bg-red-500" />
+      {showRadarOverlay ? (
+        <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
+          <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
+            Radar intensity
+          </p>
+          <div className="flex h-2 w-36 overflow-hidden">
+            <span className="flex-1 bg-emerald-400" />
+            <span className="flex-1 bg-lime-400" />
+            <span className="flex-1 bg-yellow-400" />
+            <span className="flex-1 bg-orange-400" />
+            <span className="flex-1 bg-red-500" />
+          </div>
+          <div className="mt-1 flex justify-between text-[10px] text-white/75">
+            <span>Light</span>
+            <span>Heavy</span>
+          </div>
         </div>
-        <div className="mt-1 flex justify-between text-[10px] text-white/75">
-          <span>Light</span>
-          <span>Heavy</span>
-        </div>
-      </div>
-
-      <div className="pointer-events-none absolute left-3 top-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-2.5 py-1 text-xs text-white/80">
-        Mode: <span className="font-semibold text-white">{mode}</span>
-      </div>
+      ) : null}
     </div>
   );
 }
