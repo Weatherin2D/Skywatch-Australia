@@ -275,7 +275,7 @@ export function HomeDashboard() {
           <div
             className={cn(
               "border-2 border-[var(--bom-blue)] bg-[var(--navy-deep)]",
-              showSatelliteLoop ? "w-full" : "min-h-[360px] flex-1",
+              showSatelliteLoop ? "w-full overflow-hidden bg-black" : "min-h-[360px] flex-1 bg-[var(--navy-deep)]",
             )}
           >
             <HomeMapDynamic
@@ -298,13 +298,7 @@ export function HomeDashboard() {
                   : undefined
               }
               frameOpacity={1}
-              legend={
-                showSatelliteLoop && activeFrame
-                  ? "satellite"
-                  : showRadarUi
-                    ? "radar"
-                    : null
-              }
+              legend={showRadarUi ? "radar" : null}
             />
           </div>
 
