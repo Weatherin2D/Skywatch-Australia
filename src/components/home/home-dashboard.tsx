@@ -249,7 +249,7 @@ export function HomeDashboard() {
           </div>
         </div>
 
-        <div className="flex min-h-[420px] flex-col gap-2 xl:min-h-[560px]">
+        <div className="flex min-h-[380px] flex-col gap-2 xl:min-h-[520px]">
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-[var(--bom-blue)]">
               View

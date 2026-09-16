@@ -120,11 +120,12 @@ export function HomeMap({
             key={`wx-${frameKey ?? frameTileUrl}`}
             url={frameTileUrl}
             opacity={frameOpacity}
-            maxZoom={satelliteLoop ? 6 : 12}
-            maxNativeZoom={satelliteLoop ? 6 : 12}
+            maxZoom={12}
+            maxNativeZoom={satelliteLoop ? 6 : 10}
+            errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5mZ3oAAAAASUVORK5CYII="
             attribution={
               satelliteLoop
-                ? 'Infrared &copy; <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> / RainViewer'
+                ? 'Infrared &copy; <a href="https://earthdata.nasa.gov/gibs">NASA GIBS / Himawari</a> · RainViewer'
                 : "Radar &copy; RainViewer"
             }
           />
@@ -178,18 +179,18 @@ export function HomeMap({
       {legend === "satellite" || (satelliteLoop && frameTileUrl) ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
           <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
-            Infrared · clouds
+            Infrared · cloud tops
           </p>
           <div className="flex h-2 w-36 overflow-hidden">
-            <span className="flex-1 bg-[#1a1a2e]" />
-            <span className="flex-1 bg-[#4a5568]" />
-            <span className="flex-1 bg-[#a0aec0]" />
-            <span className="flex-1 bg-[#e2e8f0]" />
-            <span className="flex-1 bg-white" />
+            <span className="flex-1 bg-[#1b2838]" />
+            <span className="flex-1 bg-[#3d7ea6]" />
+            <span className="flex-1 bg-[#c4d66a]" />
+            <span className="flex-1 bg-[#e8a03c]" />
+            <span className="flex-1 bg-[#c43c3c]" />
           </div>
           <div className="mt-1 flex justify-between text-[10px] text-white/75">
-            <span>Warm / clear</span>
-            <span>Cold cloud tops</span>
+            <span>Clear / warm</span>
+            <span>Cold tops</span>
           </div>
         </div>
       ) : null}
