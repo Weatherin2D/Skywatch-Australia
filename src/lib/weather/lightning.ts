@@ -20,6 +20,8 @@ export type LightningPayload = {
   receivedTotal?: number;
 };
 
+export type LightningAgeBand = "new" | "earlier" | "old";
+
 /** Match the national satellite frame. */
 export const LIGHTNING_AU_BOUNDS = {
   west: 105,
@@ -28,16 +30,28 @@ export const LIGHTNING_AU_BOUNDS = {
   north: -5,
 } as const;
 
-export function strikeAgeSeconds(strike: LightningStrike, nowSec: number) {
-  return Math.max(0, nowSec - strike.time);
+export function strikeAgeSeconds(strike: LightningStrike, refTimeSec: number) {
+  return Math.max(0, refTimeSec - strike.time);
 }
 
-/** Visual class by age for the tracker legend / markers. */
-export function strikeAgeBand(
-  ageSec: number,
-): "now" | "recent" | "aging" | "old" {
-  if (ageSec < 120) return "now";
-  if (ageSec < 10 * 60) return "recent";
-  if (ageSec < 20 * 60) return "aging";
+/**
+ * Age vs reference time (active satellite frame, or wall clock on Map/Radar).
+ * white = new, yellow = earlier, red = long ago
+ */
+export function strikeAgeBand(ageSec: number): LightningAgeBand {
+  if (ageSec < 120) return "new";
+  if (ageSec < 15 * 60) return "earlier";
   return "old";
+}
+
+/** Strikes that exist at `refTime` within the rolling lookback window. */
+export function filterStrikesAtTime(
+  strikes: LightningStrike[],
+  refTime: number,
+  windowMinutes = 30,
+): LightningStrike[] {
+  const cutoff = refTime - windowMinutes * 60;
+  return strikes
+    .filter((s) => s.time <= refTime && s.time >= cutoff)
+    .sort((a, b) => b.time - a.time);
 }

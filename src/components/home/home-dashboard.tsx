@@ -548,6 +548,9 @@ export function HomeDashboard() {
               lightningAttribution={lightningAttribution}
               lightningStatus={lightningStatus}
               lightningLive={lightningLive}
+              lightningReferenceTime={
+                showSatelliteLoop ? (activeFrame?.time ?? null) : null
+              }
             />
           </div>
 

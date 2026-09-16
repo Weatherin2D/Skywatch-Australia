@@ -204,43 +204,80 @@
   padding: 0;
 }
 
-@keyframes skywatch-lightning-pulse {
-  0% {
-    transform: translate(-50%, -50%) scale(0.55);
-    opacity: 0.95;
-  }
-  70% {
-    transform: translate(-50%, -50%) scale(1.35);
-    opacity: 0.15;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.55);
-    opacity: 0;
-  }
+/* Lightning crosshair: + with centre gap, coloured via `color` */
+.skywatch-lightning-crosshair {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
 }
 
-.skywatch-lightning-ring {
-  animation: skywatch-lightning-pulse 1.1s ease-out infinite;
+.skywatch-lightning-crosshair::before,
+.skywatch-lightning-crosshair::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  border-radius: 0.5px;
 }
 
-.skywatch-lightning-dot {
-  animation: skywatch-lightning-flash 1.6s ease-in-out infinite;
+/* Horizontal arms */
+.skywatch-lightning-crosshair::before {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: var(--lg-thick, 1.5px);
+  transform: translateY(-50%);
+  background: linear-gradient(
+    to right,
+    currentColor 0,
+    currentColor calc(50% - var(--lg-gap, 2px)),
+    transparent calc(50% - var(--lg-gap, 2px)),
+    transparent calc(50% + var(--lg-gap, 2px)),
+    currentColor calc(50% + var(--lg-gap, 2px)),
+    currentColor 100%
+  );
 }
 
-@keyframes skywatch-lightning-flash {
+/* Vertical arms */
+.skywatch-lightning-crosshair::after {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: var(--lg-thick, 1.5px);
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    currentColor 0,
+    currentColor calc(50% - var(--lg-gap, 2px)),
+    transparent calc(50% - var(--lg-gap, 2px)),
+    transparent calc(50% + var(--lg-gap, 2px)),
+    currentColor calc(50% + var(--lg-gap, 2px)),
+    currentColor 100%
+  );
+}
+
+.skywatch-lightning-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+@keyframes skywatch-lightning-crosshair-pulse {
   0%,
   100% {
-    opacity: 0.75;
+    opacity: 1;
+    transform: scale(1);
   }
   40% {
-    opacity: 1;
-  }
-  55% {
-    opacity: 0.35;
+    opacity: 0.45;
+    transform: scale(1.15);
   }
   70% {
     opacity: 1;
+    transform: scale(1);
   }
+}
+
+.skywatch-lightning-crosshair--new {
+  animation: skywatch-lightning-crosshair-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes fade-up {

@@ -35,6 +35,7 @@ export function HomeMapDynamic({
   lightningAttribution,
   lightningStatus,
   lightningLive,
+  lightningReferenceTime,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -51,6 +52,7 @@ export function HomeMapDynamic({
   lightningAttribution?: string | null;
   lightningStatus?: "connecting" | "live" | "reconnecting" | "error" | null;
   lightningLive?: boolean;
+  lightningReferenceTime?: number | null;
 }) {
   return (
     <HomeMap
@@ -69,6 +71,7 @@ export function HomeMapDynamic({
       lightningAttribution={lightningAttribution}
       lightningStatus={lightningStatus}
       lightningLive={lightningLive}
+      lightningReferenceTime={lightningReferenceTime}
     />
   );
 }
