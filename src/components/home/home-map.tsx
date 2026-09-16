@@ -19,8 +19,14 @@ import {
   LightningLegend,
   SatelliteLightningOverlay,
 } from "@/components/home/lightning-overlay";
+import {
+  LeafletSynopticOverlay,
+  SatelliteSynopticOverlay,
+  SynopticLegend,
+} from "@/components/home/synoptic-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
 import type { LightningStrike } from "@/lib/weather/lightning";
+import type { SynopticFrame } from "@/lib/weather/synoptic";
 import { GIBS_AU_ASPECT } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
@@ -46,6 +52,13 @@ type Props = {
   lightningReferenceTime?: number | null;
   /** True while Satellite loop is active (legend: synced to frame). */
   lightningFrameSynced?: boolean;
+  showSynoptic?: boolean;
+  synopticFrames?: SynopticFrame[];
+  synopticAttribution?: string | null;
+  synopticLoading?: boolean;
+  synopticError?: string | null;
+  /** Frame time for chart pick; null = wall clock. */
+  synopticReferenceTime?: number | null;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -186,6 +199,12 @@ export function HomeMap({
   lightningLive = false,
   lightningReferenceTime = null,
   lightningFrameSynced = false,
+  showSynoptic = false,
+  synopticFrames = [],
+  synopticAttribution = null,
+  synopticLoading = false,
+  synopticError = null,
+  synopticReferenceTime = null,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
 
@@ -205,6 +224,11 @@ export function HomeMap({
           alt={frameAlt}
           opacity={frameOpacity}
         />
+        <SatelliteSynopticOverlay
+          frames={synopticFrames}
+          enabled={showSynoptic}
+          referenceTime={synopticReferenceTime}
+        />
         <SatelliteMapAnnotations
           settings={mapSettings}
           cities={CITY_MARKERS}
@@ -214,6 +238,15 @@ export function HomeMap({
           enabled={showLightning}
           referenceTime={lightningReferenceTime}
         />
+        {showSynoptic ? (
+          <SynopticLegend
+            frames={synopticFrames}
+            attribution={synopticAttribution}
+            referenceTime={synopticReferenceTime}
+            loading={synopticLoading}
+            error={synopticError}
+          />
+        ) : null}
         {showLightning ? (
           <LightningLegend
             strikes={lightningStrikes}
@@ -246,6 +279,11 @@ export function HomeMap({
           <TileLayer key={frameTileUrl} url={frameTileUrl} opacity={0.75} />
         ) : null}
         {showRadarOverlay || mode === "Radar" ? <DemoRadarBlobs /> : null}
+        <LeafletSynopticOverlay
+          frames={synopticFrames}
+          enabled={showSynoptic}
+          referenceTime={synopticReferenceTime}
+        />
         <LeafletMapAnnotations settings={mapSettings} />
         <LeafletLightningOverlay
           strikes={lightningStrikes}
@@ -254,6 +292,16 @@ export function HomeMap({
         />
         <MapTools />
       </MapContainer>
+
+      {showSynoptic ? (
+        <SynopticLegend
+          frames={synopticFrames}
+          attribution={synopticAttribution}
+          referenceTime={synopticReferenceTime}
+          loading={synopticLoading}
+          error={synopticError}
+        />
+      ) : null}
 
       {showLightning ? (
         <LightningLegend

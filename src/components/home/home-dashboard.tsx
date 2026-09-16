@@ -35,6 +35,7 @@ import {
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import { useLightning } from "@/hooks/use-lightning";
+import { useSynoptic } from "@/hooks/use-synoptic";
 import {
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
@@ -161,6 +162,14 @@ export function HomeDashboard() {
     status: lightningStatus,
     live: lightningLive,
   } = useLightning(showLightning);
+
+  const showSynoptic = layers.synoptic;
+  const {
+    frames: synopticFrames,
+    attribution: synopticAttribution,
+    loading: synopticLoading,
+    error: synopticError,
+  } = useSynoptic(showSynoptic);
 
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
@@ -556,6 +565,18 @@ export function HomeDashboard() {
                   : null
               }
               lightningFrameSynced={showSatelliteLoop}
+              showSynoptic={showSynoptic}
+              synopticFrames={synopticFrames}
+              synopticAttribution={synopticAttribution}
+              synopticLoading={synopticLoading}
+              synopticError={synopticError}
+              synopticReferenceTime={
+                showSatelliteLoop
+                  ? frameIndex >= loopFrames.length - 1
+                    ? null
+                    : (activeFrame?.time ?? null)
+                  : null
+              }
             />
           </div>
 

@@ -1,5 +1,6 @@
 export const WEATHER_LAYERS = [
   { id: "lightning", label: "Lightning tracker" },
+  { id: "synoptic", label: "Synoptic chart" },
   { id: "rainfall", label: "Rainfall (accumulation)" },
   { id: "wind", label: "Wind" },
   { id: "gusts", label: "Wind Gusts" },

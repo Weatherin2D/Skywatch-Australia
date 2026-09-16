@@ -6,6 +6,7 @@ import type {
   MapSettingsState,
 } from "@/components/home/mock-data";
 import type { LightningStrike } from "@/lib/weather/lightning";
+import type { SynopticFrame } from "@/lib/weather/synoptic";
 
 const HomeMap = dynamic(
   () => import("@/components/home/home-map").then((m) => m.HomeMap),
@@ -37,6 +38,12 @@ export function HomeMapDynamic({
   lightningLive,
   lightningReferenceTime,
   lightningFrameSynced,
+  showSynoptic,
+  synopticFrames,
+  synopticAttribution,
+  synopticLoading,
+  synopticError,
+  synopticReferenceTime,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -55,6 +62,12 @@ export function HomeMapDynamic({
   lightningLive?: boolean;
   lightningReferenceTime?: number | null;
   lightningFrameSynced?: boolean;
+  showSynoptic?: boolean;
+  synopticFrames?: SynopticFrame[];
+  synopticAttribution?: string | null;
+  synopticLoading?: boolean;
+  synopticError?: string | null;
+  synopticReferenceTime?: number | null;
 }) {
   return (
     <HomeMap
@@ -75,6 +88,12 @@ export function HomeMapDynamic({
       lightningLive={lightningLive}
       lightningReferenceTime={lightningReferenceTime}
       lightningFrameSynced={lightningFrameSynced}
+      showSynoptic={showSynoptic}
+      synopticFrames={synopticFrames}
+      synopticAttribution={synopticAttribution}
+      synopticLoading={synopticLoading}
+      synopticError={synopticError}
+      synopticReferenceTime={synopticReferenceTime}
     />
   );
 }
