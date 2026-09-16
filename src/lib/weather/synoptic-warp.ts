@@ -4,85 +4,30 @@ import {
   GIBS_AU_BOUNDS,
   GIBS_DISPLAY_WIDTH,
 } from "@/lib/weather/maps";
+import fit from "@/lib/weather/synoptic-fit.json";
 
 /**
- * OpenCPN weatherfax GCPs for BoM colour MSLP (IDY00030 / MSLPC).
- * Polar stereographic mapping — see weatherfax_pi CoordinateSets.xml.
+ * Empirical registration of BoM colour MSLP (IDY00030) into the national
+ * GIBS Mercator frame. OpenCPN polar GCPs do not match the current chart
+ * crop; instead we bake a mainland land-mask similarity fit (see
+ * scripts/fit-synoptic.cjs).
+ *
+ * Mapping (chart px → mercator overlay px):
+ *   ox = scX * (x - chartCx) + tx
+ *   oy = scY * (y - chartCy) + ty
  */
-const FAX = {
-  width: 640,
-  height: 432,
-  poleX: 293,
-  poleY: 1040,
-  inputEquator: -831,
-  trueRatio: 1,
-  /** Input pixels ↔ geographic control points */
-  g1: { px: 287, py: 206, lat: -50, lon: 130 },
-  g2: { px: 117, py: 24, lat: -10, lon: 100 },
+const FIT = {
+  scX: fit.scX,
+  scY: fit.scY,
+  tx: fit.tx,
+  ty: fit.ty,
+  chartCx: fit.chartCx,
+  chartCy: fit.chartCy,
+  chartW: fit.chartW,
+  chartH: fit.chartH,
+  outW: fit.outW,
+  outH: fit.outH,
 } as const;
-
-function latToMercY(latDeg: number) {
-  const s = Math.sin((latDeg * Math.PI) / 180);
-  return 0.5 * Math.log((1 + s) / (1 - s));
-}
-
-function mercYToLat(y: number) {
-  return (180 / Math.PI) * (2 * Math.atan(Math.exp(y)) - Math.PI / 2);
-}
-
-function inputToMercRaw(px: number, py: number, imgW: number, imgH: number) {
-  const inputheight = FAX.inputEquator - FAX.poleY;
-  let dx = (px - FAX.poleX) * FAX.trueRatio;
-  const dy = py - FAX.poleY;
-  const theta = Math.atan2(dx, Math.abs(dy));
-  const x = theta * imgW;
-  const z = Math.hypot(dx, dy) / inputheight;
-  const q = (4 / Math.PI) * Math.atan(z);
-  const pp = q + (inputheight > 0 ? -1 : 1);
-  const s = Math.sin(pp * (Math.PI / 2));
-  const y = 0.5 * Math.log((1 + s) / (1 - s)) * imgH;
-  return { x, y };
-}
-
-type Calib = {
-  a: number;
-  b: number;
-  c: number;
-  d: number;
-  imgW: number;
-  imgH: number;
-  inputheight: number;
-};
-
-function buildCalibration(imgW: number, imgH: number): Calib {
-  const inputheight = FAX.inputEquator - FAX.poleY;
-  const g1m = inputToMercRaw(FAX.g1.px, FAX.g1.py, imgW, imgH);
-  const g2m = inputToMercRaw(FAX.g2.px, FAX.g2.py, imgW, imgH);
-  const g1my = latToMercY(FAX.g1.lat);
-  const g2my = latToMercY(FAX.g2.lat);
-  const a = (FAX.g2.lon - FAX.g1.lon) / (g2m.x - g1m.x);
-  const b = FAX.g1.lon - a * g1m.x;
-  const c = (g2my - g1my) / (g2m.y - g1m.y);
-  const d = g1my - c * g1m.y;
-  return { a, b, c, d, imgW, imgH, inputheight };
-}
-
-function latLonToInput(lat: number, lon: number, calib: Calib) {
-  const geoY = latToMercY(lat);
-  const mx = (lon - calib.b) / calib.a;
-  let my = (geoY - calib.d) / calib.c;
-  my /= calib.imgH;
-  const pp = (4 / Math.PI) * Math.atan(Math.exp(my)) - 1;
-  const q =
-    calib.inputheight > 0 ? 1 + pp : 1 - pp;
-  const z = Math.tan((q * Math.PI) / 4);
-  const dist = z * calib.inputheight;
-  const theta = mx / calib.imgW;
-  let dx = Math.abs(dist) * Math.sin(theta);
-  const dy = dist * Math.cos(theta);
-  dx /= FAX.trueRatio;
-  return { px: dx + FAX.poleX, py: dy + FAX.poleY };
-}
 
 function sampleBilinear(
   data: Buffer,
@@ -122,27 +67,51 @@ function sampleBilinear(
 }
 
 /**
- * Warp BoM polar-stereographic MSLP PNG into Web Mercator covering
- * GIBS_AU_BOUNDS so ImageOverlay / satellite object-fill align with coasts.
+ * Warp BoM MSLP PNG into Web Mercator covering GIBS_AU_BOUNDS so ImageOverlay
+ * / satellite object-fit align with the national coast outline.
  */
 export function warpSynopticToGibsMercator(sourcePng: Buffer): Buffer {
   const src = PNG.sync.read(sourcePng);
-  const calib = buildCalibration(src.width, src.height);
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const outW = GIBS_DISPLAY_WIDTH;
   const outH = Math.max(1, Math.round(outW / GIBS_AU_ASPECT));
   const out = new PNG({ width: outW, height: outH });
-  const myNorth = latToMercY(north);
-  const mySouth = latToMercY(south);
+
+  // Scale fit (computed at FIT.chartW×FIT.chartH → FIT.outW×FIT.outH) if the
+  // upstream PNG or display size differs slightly.
+  const sxChart = src.width / FIT.chartW;
+  const syChart = src.height / FIT.chartH;
+  const sxOut = outW / FIT.outW;
+  const syOut = outH / FIT.outH;
+
+  const scX = FIT.scX * (sxOut / sxChart);
+  const scY = FIT.scY * (syOut / syChart);
+  const tx = FIT.tx * sxOut;
+  const ty = FIT.ty * syOut;
+  const cx = FIT.chartCx * sxChart;
+  const cy = FIT.chartCy * syChart;
+
+  // Skip the chart legend strip (bottom ~16% on the reference 432-tall PNG).
+  const legendTop = src.height * (1 - 70 / FIT.chartH);
 
   for (let j = 0; j < outH; j++) {
-    const my = myNorth + ((j + 0.5) / outH) * (mySouth - myNorth);
-    const lat = mercYToLat(my);
     for (let i = 0; i < outW; i++) {
-      const lon = west + ((i + 0.5) / outW) * (east - west);
-      const { px, py } = latLonToInput(lat, lon, calib);
-      const rgb = sampleBilinear(src.data as Buffer, src.width, src.height, px, py);
+      const x = (i + 0.5 - tx) / scX + cx;
+      const y = (j + 0.5 - ty) / scY + cy;
       const o = (j * outW + i) * 4;
+      if (y >= legendTop) {
+        out.data[o] = 0;
+        out.data[o + 1] = 0;
+        out.data[o + 2] = 0;
+        out.data[o + 3] = 0;
+        continue;
+      }
+      const rgb = sampleBilinear(
+        src.data as Buffer,
+        src.width,
+        src.height,
+        x,
+        y,
+      );
       if (!rgb) {
         out.data[o] = 0;
         out.data[o + 1] = 0;

@@ -24,6 +24,8 @@ const cache = new Map<
 >();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_MAX = 16;
+/** Bump when synoptic-fit.json / warp math changes so stale frames are dropped. */
+const WARP_CACHE_EPOCH = "affine-v2";
 
 function pruneCache() {
   if (cache.size <= CACHE_MAX) return;
@@ -42,7 +44,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid synoptic time" }, { status: 400 });
   }
 
-  const hit = cache.get(stamp);
+  const cacheKey = `${WARP_CACHE_EPOCH}:${stamp}`;
+  const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.cachedAt < CACHE_TTL_MS) {
     return new NextResponse(new Uint8Array(hit.body), {
       status: 200,
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": hit.contentType,
         "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         "X-Synoptic-Cache": "HIT",
-        "X-Synoptic-Warp": "mercator-gibs",
+        "X-Synoptic-Warp": WARP_CACHE_EPOCH,
         "Content-Length": String(hit.body.length),
       },
     });
@@ -78,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     const body = warpSynopticToGibsMercator(raw);
     const contentType = "image/png";
-    cache.set(stamp, { body, contentType, cachedAt: Date.now() });
+    cache.set(cacheKey, { body, contentType, cachedAt: Date.now() });
     pruneCache();
 
     return new NextResponse(new Uint8Array(body), {
@@ -87,7 +90,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         "X-Synoptic-Cache": "MISS",
-        "X-Synoptic-Warp": "mercator-gibs",
+        "X-Synoptic-Warp": WARP_CACHE_EPOCH,
         "Content-Length": String(body.length),
       },
     });
