@@ -14,12 +14,60 @@ export type WeatherFrame = {
   imageBounds?: [[number, number], [number, number]];
 };
 
+export type SatelliteProductId = "visible" | "infrared" | "airmass";
+
+export type SatelliteProductMeta = {
+  id: SatelliteProductId;
+  label: string;
+  loopLabel: string;
+  gibsLayer: string;
+  /** Daytime-only products may return empty frames overnight */
+  daytimeOnly?: boolean;
+};
+
+export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
+  {
+    id: "visible",
+    label: "Visible",
+    loopLabel: "Visible loop",
+    gibsLayer: "Himawari_AHI_Band3_Red_Visible_1km",
+    daytimeOnly: true,
+  },
+  {
+    id: "infrared",
+    label: "Infrared",
+    loopLabel: "Infrared loop",
+    gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
+  },
+  {
+    id: "airmass",
+    label: "Air Mass",
+    loopLabel: "Air Mass loop",
+    gibsLayer: "Himawari_AHI_Air_Mass",
+  },
+] as const;
+
+export const DEFAULT_SATELLITE_PRODUCT: SatelliteProductId = "infrared";
+
+export function isSatelliteProductId(value: string): value is SatelliteProductId {
+  return SATELLITE_PRODUCTS.some((p) => p.id === value);
+}
+
+export function getSatelliteProduct(
+  id: SatelliteProductId = DEFAULT_SATELLITE_PRODUCT,
+): SatelliteProductMeta {
+  return SATELLITE_PRODUCTS.find((p) => p.id === id) ?? SATELLITE_PRODUCTS[1]!;
+}
+
 export type WeatherMapsPayload = {
   generated: number;
   host: string;
   satellite: {
-    infrared: WeatherFrame[];
+    product: SatelliteProductId;
     source: "rainviewer" | "gibs-himawari";
+    /** Active product frames (also mirrored under products[product]) */
+    frames: WeatherFrame[];
+    products: Record<SatelliteProductId, { frames: WeatherFrame[] }>;
   };
   radar: {
     past: WeatherFrame[];
@@ -35,6 +83,14 @@ export const GIBS_AU_BOUNDS: [[number, number], [number, number]] = [
   [-5, 165],
 ];
 
+export function lonLatToWebMercator(lon: number, lat: number): [number, number] {
+  const x = (lon * 20037508.34) / 180;
+  let y =
+    Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180);
+  y = (y * 20037508.34) / 180;
+  return [x, y];
+}
+
 /** Mercator width/height ratio of GIBS_AU_BOUNDS — keep WMS + map CSS in sync. */
 export const GIBS_AU_ASPECT =
   (() => {
@@ -44,15 +100,11 @@ export const GIBS_AU_ASPECT =
     return (maxx - minx) / (maxy - miny);
   })();
 
-export function lonLatToWebMercator(lon: number, lat: number): [number, number] {
-  const x = (lon * 20037508.34) / 180;
-  let y =
-    Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180);
-  y = (y * 20037508.34) / 180;
-  return [x, y];
-}
-
-export function gibsHimawariWmsUrl(isoTime: string): string {
+export function gibsHimawariWmsUrl(
+  isoTime: string,
+  product: SatelliteProductId = DEFAULT_SATELLITE_PRODUCT,
+): string {
+  const meta = getSatelliteProduct(product);
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
@@ -62,7 +114,7 @@ export function gibsHimawariWmsUrl(isoTime: string): string {
     SERVICE: "WMS",
     REQUEST: "GetMap",
     VERSION: "1.1.1",
-    LAYERS: "Himawari_AHI_Band13_Clean_Infrared",
+    LAYERS: meta.gibsLayer,
     STYLES: "",
     FORMAT: "image/png",
     TRANSPARENT: "FALSE",

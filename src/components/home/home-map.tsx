@@ -11,7 +11,6 @@ import {
 import { LocateFixed } from "lucide-react";
 import { CITY_MARKERS, type MapMode } from "@/components/home/mock-data";
 import { GIBS_AU_ASPECT, GIBS_AU_BOUNDS } from "@/lib/weather/maps";
-import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
@@ -24,6 +23,7 @@ type Props = {
   frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
   frameOpacity?: number;
+  frameAlt?: string;
   legend?: "radar" | "satellite" | null;
 };
 
@@ -95,6 +95,7 @@ export function HomeMap({
   frameImageUrl = null,
   frameKey,
   frameOpacity = 1,
+  frameAlt = "Satellite loop frame",
   legend = null,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
@@ -103,7 +104,7 @@ export function HomeMap({
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
 
-  // Satellite IR: full-bleed image, no zoom/pan, fills the border with no letterbox
+  // Satellite: full-bleed image, no zoom/pan, fills the border with no letterbox
   if (satelliteLoop) {
     return (
       <div
@@ -116,7 +117,7 @@ export function HomeMap({
           <img
             key={frameKey ?? frameImageUrl}
             src={frameImageUrl}
-            alt="Satellite infrared loop frame"
+            alt={frameAlt}
             className="absolute inset-0 h-full w-full object-fill select-none"
             style={{ opacity: frameOpacity }}
             draggable={false}

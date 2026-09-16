@@ -23,6 +23,7 @@ export function HomeMapDynamic({
   frameImageBounds,
   frameKey,
   frameOpacity,
+  frameAlt,
   legend,
 }: {
   mode: MapMode;
@@ -32,6 +33,7 @@ export function HomeMapDynamic({
   frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
   frameOpacity?: number;
+  frameAlt?: string;
   legend?: "radar" | "satellite" | null;
 }) {
   return (
@@ -43,6 +45,7 @@ export function HomeMapDynamic({
       frameImageBounds={frameImageBounds}
       frameKey={frameKey}
       frameOpacity={frameOpacity}
+      frameAlt={frameAlt}
       legend={legend}
     />
   );

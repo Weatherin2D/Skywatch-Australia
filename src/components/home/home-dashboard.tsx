@@ -29,10 +29,14 @@ import {
 } from "@/components/home/mock-data";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import {
+  DEFAULT_SATELLITE_PRODUCT,
+  SATELLITE_PRODUCTS,
   formatFrameTimeAEST,
   frameIndexToScrub,
+  getSatelliteProduct,
   scrubToFrameIndex,
   timelineEdgeLabels,
+  type SatelliteProductId,
 } from "@/lib/weather/maps";
 import { cn } from "@/lib/utils";
 
@@ -116,6 +120,9 @@ export function HomeDashboard() {
     return init;
   });
   const [mode, setMode] = useState<MapMode>("Satellite");
+  const [satProduct, setSatProduct] = useState<SatelliteProductId>(
+    DEFAULT_SATELLITE_PRODUCT,
+  );
   const [playing, setPlaying] = useState(false);
   const [scrub, setScrub] = useState(100);
   const [frameIndex, setFrameIndex] = useState(0);
@@ -125,8 +132,9 @@ export function HomeDashboard() {
     loading: mapsLoading,
     error: mapsError,
     satelliteSource,
-  } = useWeatherMaps();
+  } = useWeatherMaps(satProduct);
 
+  const satProductMeta = getSatelliteProduct(satProduct);
   const showLoopUi = mode === "Satellite" || mode === "Radar";
   const showSatelliteLoop = mode === "Satellite";
   const showRadarUi = mode === "Radar";
@@ -147,7 +155,12 @@ export function HomeDashboard() {
     if (loopFrames.length === 0) return;
     setScrub(100);
     setFrameIndex(loopFrames.length - 1);
-  }, [loopFrames.length, mode]);
+  }, [loopFrames.length, mode, satProduct]);
+
+  useEffect(() => {
+    setPlaying(false);
+    setScrub(100);
+  }, [satProduct]);
 
   useEffect(() => {
     if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
@@ -182,7 +195,10 @@ export function HomeDashboard() {
     if (showSatelliteLoop) {
       if (mapsLoading && loopFrames.length === 0) return "Loading…";
       if (mapsError && loopFrames.length === 0) return "Unavailable";
-      if (!activeFrame) return "No frames";
+      if (!activeFrame) {
+        if (satProductMeta.daytimeOnly) return "No daytime frames";
+        return "No frames";
+      }
       return formatFrameTimeAEST(activeFrame.time);
     }
     if (showRadarUi) return "Demo loop";
@@ -194,12 +210,30 @@ export function HomeDashboard() {
     mapsError,
     activeFrame,
     loopFrames.length,
+    satProductMeta.daytimeOnly,
   ]);
 
   const edgeLabels = useMemo(
     () => timelineEdgeLabels(loopFrames),
     [loopFrames],
   );
+
+  const loopStatusLabel = useMemo(() => {
+    if (mapsLoading && loopFrames.length === 0) return "Loading satellite frames…";
+    if (loopFrames.length === 0) {
+      if (satProductMeta.daytimeOnly) {
+        return "Visible unavailable for this period";
+      }
+      return mapsError ? "Satellite loop unavailable" : "No frames available";
+    }
+    return satProductMeta.loopLabel;
+  }, [
+    mapsLoading,
+    mapsError,
+    loopFrames.length,
+    satProductMeta.daytimeOnly,
+    satProductMeta.loopLabel,
+  ]);
 
   function setLayer(id: LayerId, on: boolean) {
     setLayers((prev) => ({ ...prev, [id]: on }));
@@ -272,10 +306,35 @@ export function HomeDashboard() {
             ))}
           </div>
 
+          {showSatelliteLoop ? (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-[var(--bom-blue)]">
+                Product
+              </span>
+              {SATELLITE_PRODUCTS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSatProduct(p.id)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold transition sm:text-sm",
+                    satProduct === p.id
+                      ? "bg-[var(--bom-blue)] text-[var(--bom-yellow)]"
+                      : "bg-white text-[var(--bom-blue)] ring-1 ring-[var(--bom-blue)]/25 hover:bg-[var(--bom-blue)]/5",
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <div
             className={cn(
               "border-2 border-[var(--bom-blue)] bg-[var(--navy-deep)]",
-              showSatelliteLoop ? "w-full overflow-hidden bg-black" : "min-h-[360px] flex-1 bg-[var(--navy-deep)]",
+              showSatelliteLoop
+                ? "w-full overflow-hidden bg-black"
+                : "min-h-[360px] flex-1 bg-[var(--navy-deep)]",
             )}
           >
             <HomeMapDynamic
@@ -294,10 +353,11 @@ export function HomeDashboard() {
               }
               frameKey={
                 showSatelliteLoop && activeFrame
-                  ? `${activeFrame.time}-${satelliteSource ?? "wx"}`
+                  ? `${satProduct}-${activeFrame.time}-${satelliteSource ?? "wx"}`
                   : undefined
               }
               frameOpacity={1}
+              frameAlt={`${satProductMeta.label} satellite loop frame`}
               legend={showRadarUi ? "radar" : null}
             />
           </div>
@@ -320,16 +380,16 @@ export function HomeDashboard() {
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/80">
                   <span className="font-semibold text-white">{scrubLabel}</span>
-                  <span>
-                    {mapsLoading && loopFrames.length === 0
-                      ? "Loading satellite frames…"
-                      : mapsError && loopFrames.length === 0
-                        ? "Satellite loop unavailable"
-                        : "Satellite IR loop"}
-                  </span>
+                  <span>{loopStatusLabel}</span>
                 </div>
                 {mapsError && loopFrames.length === 0 ? (
                   <p className="text-xs text-[var(--bom-yellow)]">{mapsError}</p>
+                ) : loopFrames.length === 0 && !mapsLoading ? (
+                  <p className="text-xs text-white/75">
+                    {satProductMeta.daytimeOnly
+                      ? "Visible imagery needs daylight over Australia — try Infrared or Air Mass."
+                      : "No frames for this product right now."}
+                  </p>
                 ) : (
                   <>
                     <input
@@ -343,7 +403,7 @@ export function HomeDashboard() {
                         setScrub(Number(e.target.value));
                       }}
                       className="w-full accent-[var(--bom-yellow)] disabled:opacity-40"
-                      aria-label="Satellite IR timeline"
+                      aria-label={`${satProductMeta.label} satellite timeline`}
                     />
                     <div className="mt-1 flex justify-between text-[10px] text-white/70">
                       <span>{edgeLabels.start}</span>
@@ -394,7 +454,7 @@ export function HomeDashboard() {
             <p className="border border-[var(--bom-blue)]/15 bg-white px-3 py-2 text-xs text-[var(--muted-foreground)]">
               Select{" "}
               <span className="font-semibold text-[var(--bom-blue)]">Satellite</span>{" "}
-              for the infrared loop, or{" "}
+              for Visible / Infrared / Air Mass loops, or{" "}
               <span className="font-semibold text-[var(--bom-blue)]">Radar</span> for
               the demo playback strip. Overlays on the left can be mixed with Map.
             </p>
