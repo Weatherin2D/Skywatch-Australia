@@ -10,10 +10,10 @@ const FOOTER_LINKS = [
 
 export function SiteFooter() {
   return (
-    <footer className="mt-auto border-t-4 border-[var(--bom-blue)] bg-white text-[var(--bom-blue)]">
+    <footer className="mt-auto border-t-4 border-[var(--bom-blue)] bg-[var(--page)] text-[var(--ink)]">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-3 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-        <SkyWatchLogo size="sm" inverted />
-        <p className="text-center text-xs text-[var(--muted-foreground)] sm:text-sm">
+        <SkyWatchLogo size="sm" />
+        <p className="text-center text-xs text-[var(--ink)]/70 sm:text-sm">
           Bureau of Meteorology data · Supporting a more weather aware Australia
         </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-semibold">

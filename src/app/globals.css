@@ -46,6 +46,8 @@
   --color-bom-yellow: var(--bom-yellow);
   --color-bom-blue: var(--bom-blue);
   --color-bom-blue-mid: var(--bom-blue-mid);
+  --color-ink: var(--ink);
+  --color-brand: var(--brand);
   --color-page: var(--page);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -57,46 +59,48 @@
 }
 
 :root {
-  /* Classic BoM-inspired palette */
-  --navy-deep: #001a3a;
-  --navy: #003087;
-  --bom-blue: #003087;
-  --bom-blue-mid: #1a6bb5;
-  --panel: #1a6bb5;
+  /* White ↔ dark-blue swap. --brand stays navy for text on light/yellow. */
+  --brand: #003087;
+  --ink: #ffffff;
+  --navy-deep: #f4f7fb;
+  --navy: #ffffff;
+  --bom-blue: #ffffff;
+  --bom-blue-mid: #002766;
+  --panel: #002766;
   --sky: #ffe000;
   --bom-yellow: #ffe000;
-  --page: #eef2f6;
-  --background: #eef2f6;
-  --foreground: #0b1f3a;
-  --card: #1a6bb5;
+  --page: #003087;
+  --background: #003087;
+  --foreground: #ffffff;
+  --card: #002766;
   --card-foreground: #ffffff;
   --popover: #ffffff;
-  --popover-foreground: #0b1f3a;
-  --primary: #003087;
-  --primary-foreground: #ffffff;
-  --secondary: #0055a5;
+  --popover-foreground: #003087;
+  --primary: #ffffff;
+  --primary-foreground: #003087;
+  --secondary: #1a6bb5;
   --secondary-foreground: #ffffff;
-  --muted: #d7e2ee;
-  --muted-foreground: #3d5570;
+  --muted: #1a4a8c;
+  --muted-foreground: #c5d4e8;
   --accent: #ffe000;
   --accent-foreground: #003087;
-  --destructive: #c62828;
-  --border: #9bb4d0;
-  --input: #ffffff;
-  --ring: #003087;
-  --chart-1: #003087;
+  --destructive: #ff6b6b;
+  --border: #5a7ab0;
+  --input: #003087;
+  --ring: #ffe000;
+  --chart-1: #ffffff;
   --chart-2: #1a6bb5;
   --chart-3: #ffe000;
-  --chart-4: #c62828;
-  --chart-5: #2e7d32;
+  --chart-4: #ff6b6b;
+  --chart-5: #7dcea0;
   --radius: 0.125rem;
-  --sidebar: #003087;
-  --sidebar-foreground: #ffffff;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #003087;
   --sidebar-primary: #ffe000;
   --sidebar-primary-foreground: #003087;
-  --sidebar-accent: #0055a5;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1a4a8c;
+  --sidebar-accent: #eef3f9;
+  --sidebar-accent-foreground: #003087;
+  --sidebar-border: #c5d4e8;
   --sidebar-ring: #ffe000;
 }
 
@@ -127,9 +131,9 @@
 }
 
 .skywatch-map .leaflet-control-zoom a {
-  background: #003087 !important;
-  color: #ffffff !important;
-  border: 1px solid #1a4a8c !important;
+  background: #ffffff !important;
+  color: #003087 !important;
+  border: 1px solid #c5d4e8 !important;
   width: 34px !important;
   height: 34px !important;
   line-height: 34px !important;
@@ -138,13 +142,13 @@
 }
 
 .skywatch-map .leaflet-control-zoom a:hover {
-  background: #1a6bb5 !important;
-  color: #ffe000 !important;
+  background: #eef3f9 !important;
+  color: #003087 !important;
 }
 
 .skywatch-map .leaflet-control-attribution {
-  background: rgba(0, 48, 135, 0.85) !important;
-  color: #d7e2ee !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #003087 !important;
   font-size: 10px !important;
 }
 

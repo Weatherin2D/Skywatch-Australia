@@ -24,8 +24,7 @@ export function SkyWatchLogo({
     <div className={cn("flex items-center gap-2.5", className)}>
       <span
         className={cn(
-          "relative inline-flex shrink-0 items-center justify-center rounded-sm",
-          inverted ? "bg-[var(--bom-blue)] text-white" : "bg-[var(--bom-yellow)] text-[var(--bom-blue)]",
+          "relative inline-flex shrink-0 items-center justify-center rounded-sm bg-[var(--bom-yellow)] text-[var(--brand)]",
           markSize,
           markClassName,
         )}
@@ -39,7 +38,7 @@ export function SkyWatchLogo({
           />
           <path
             d="M23 18l2.2 7.2H19l8 10-2.4-7.6H31L23 18z"
-            fill={inverted ? "#ffe000" : "#003087"}
+            fill="#003087"
           />
         </svg>
       </span>
@@ -47,7 +46,7 @@ export function SkyWatchLogo({
         <span
           className={cn(
             "font-[family-name:var(--font-display)] font-bold tracking-tight",
-            inverted ? "text-[var(--bom-blue)]" : "text-white",
+            inverted ? "text-[var(--brand)]" : "text-white",
             textSize,
           )}
         >

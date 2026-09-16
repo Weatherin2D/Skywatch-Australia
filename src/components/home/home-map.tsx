@@ -41,7 +41,7 @@ function MapTools() {
     <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2">
       <button
         type="button"
-        className="flex h-9 w-9 items-center justify-center border border-white/30 bg-[var(--bom-blue)] text-white shadow transition hover:bg-[var(--bom-blue-mid)] hover:text-[var(--bom-yellow)]"
+        className="flex h-9 w-9 items-center justify-center border border-[var(--brand)]/20 bg-[var(--bom-blue)] text-[var(--brand)] shadow transition hover:bg-[var(--navy-deep)] hover:text-[var(--brand)]"
         aria-label="Recentre on Australia"
         onClick={() => map.setView([-25.5, 134.5], 4, { animate: true })}
       >
@@ -212,8 +212,8 @@ export function HomeMap({
       </MapContainer>
 
       {legend === "radar" || (showRadarOverlay && mode === "Radar") ? (
-        <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
+        <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-[var(--brand)]/20 bg-[var(--bom-blue)]/95 px-3 py-2 text-[var(--brand)]">
+          <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--brand)]/80">
             Radar intensity
           </p>
           <div className="flex h-2 w-36 overflow-hidden">
@@ -223,7 +223,7 @@ export function HomeMap({
             <span className="flex-1 bg-orange-400" />
             <span className="flex-1 bg-red-500" />
           </div>
-          <div className="mt-1 flex justify-between text-[10px] text-white/75">
+          <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/75">
             <span>Light</span>
             <span>Heavy</span>
           </div>

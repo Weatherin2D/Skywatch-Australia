@@ -29,7 +29,10 @@ export function SiteNav() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Primary" className="bg-[var(--bom-blue-mid)] text-white">
+    <nav
+      aria-label="Primary"
+      className="bg-[var(--navy-deep)] text-[var(--brand)]"
+    >
       <div className="mx-auto flex w-full max-w-[1600px] gap-0 overflow-x-auto px-1 sm:px-2">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active =
@@ -43,8 +46,8 @@ export function SiteNav() {
               className={cn(
                 "flex shrink-0 items-center gap-1.5 border-b-[3px] px-3 py-2.5 text-sm font-semibold transition",
                 active
-                  ? "border-[var(--bom-yellow)] bg-[var(--bom-blue)]/30 text-white"
-                  : "border-transparent text-white/90 hover:bg-[var(--bom-blue)]/25 hover:text-white",
+                  ? "border-[var(--bom-yellow)] bg-[var(--page)]/10 text-[var(--brand)]"
+                  : "border-transparent text-[var(--brand)]/85 hover:bg-[var(--page)]/8 hover:text-[var(--brand)]",
               )}
             >
               <Icon className="h-4 w-4 opacity-90" aria-hidden />

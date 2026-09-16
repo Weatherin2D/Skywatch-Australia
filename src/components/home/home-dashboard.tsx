@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
   ChevronRight,
   Cloud,
   CloudLightning,
@@ -14,6 +14,7 @@ import {
   Sun,
 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
   CAPITAL_NOW,
@@ -58,7 +59,7 @@ function Toggle({
       onClick={() => onChange(!on)}
       className={cn(
         "relative h-5 w-9 shrink-0 rounded-sm transition",
-        on ? "bg-[var(--bom-yellow)]" : "bg-[var(--bom-blue)]/50",
+        on ? "bg-[var(--bom-yellow)]" : "bg-white/25",
       )}
     >
       <span
@@ -83,12 +84,12 @@ function Panel({
   return (
     <section
       className={cn(
-        "border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] p-3 text-white",
+        "border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]",
         className,
       )}
     >
       {title ? (
-        <h2 className="mb-2.5 border-b border-white/20 pb-1.5 text-sm font-bold tracking-wide text-white">
+        <h2 className="mb-2.5 border-b border-white/15 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)]">
           {title}
         </h2>
       ) : null}
@@ -107,7 +108,7 @@ function DayIcon({ kind }: { kind: string }) {
 }
 
 function warningTone(tone: string) {
-  if (tone === "amber") return "bg-[var(--bom-yellow)] text-[var(--bom-blue)]";
+  if (tone === "amber") return "bg-[var(--bom-yellow)] text-[var(--brand)]";
   if (tone === "violet") return "bg-violet-300 text-violet-950";
   if (tone === "cyan") return "bg-cyan-200 text-cyan-950";
   return "bg-sky-200 text-sky-950";
@@ -123,6 +124,8 @@ export function HomeDashboard() {
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     DEFAULT_SATELLITE_PRODUCT,
   );
+  const [satMenuOpen, setSatMenuOpen] = useState(false);
+  const satMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [scrub, setScrub] = useState(100);
   const [frameIndex, setFrameIndex] = useState(0);
@@ -191,6 +194,24 @@ export function HomeDashboard() {
     if (!showLoopUi) setPlaying(false);
   }, [showLoopUi]);
 
+  useEffect(() => {
+    if (!satMenuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (!satMenuRef.current?.contains(e.target as Node)) {
+        setSatMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSatMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [satMenuOpen]);
+
   const scrubLabel = useMemo(() => {
     if (showSatelliteLoop) {
       if (mapsLoading && loopFrames.length === 0) return "Loading…";
@@ -253,17 +274,17 @@ export function HomeDashboard() {
       <div className="animate-fade-up-delay grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
         <div className="space-y-3">
           <Panel title="Map overlays">
-            <p className="mb-2 text-[11px] text-white/70">
+            <p className="mb-2 text-[11px] text-[var(--ink)]/70">
               Extra layers on top of Map / Satellite / Radar.
             </p>
             <ul className="space-y-2.5">
               {WEATHER_LAYERS.map((layer) => (
                 <li
                   key={layer.id}
-                  className="flex items-center justify-between gap-2 text-sm text-white/80"
+                  className="flex items-center justify-between gap-2 text-sm text-[var(--ink)]/80"
                 >
                   <span
-                    className={cn(layers[layer.id] && "font-semibold text-white")}
+                    className={cn(layers[layer.id] && "font-semibold text-[var(--ink)]")}
                   >
                     {layer.label}
                   </span>
@@ -277,64 +298,116 @@ export function HomeDashboard() {
             </ul>
           </Panel>
 
-          <div className="border border-[var(--bom-blue)]/20 bg-[var(--bom-blue)] px-3 py-3 text-xs text-white/85">
-            <p className="font-bold text-white">Australia-wide coverage</p>
+          <div className="border border-white/20 bg-[var(--bom-blue)] px-3 py-3 text-xs text-[var(--brand)]/85">
+            <p className="font-bold text-[var(--brand)]">Australia-wide coverage</p>
             <p className="mt-1">From tropical coasts to alpine peaks.</p>
           </div>
         </div>
 
         <div className="flex min-h-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-1">
-            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-[var(--bom-blue)]">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/80">
               View
             </span>
-            {MAP_MODES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={cn(
-                  "inline-flex items-center gap-0.5 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
-                  mode === m
-                    ? "bg-[var(--bom-yellow)] text-[var(--bom-blue)]"
-                    : "bg-[var(--bom-blue)] text-white hover:bg-[var(--bom-blue-mid)]",
-                )}
-              >
-                <ChevronRight className="h-3.5 w-3.5 opacity-80" aria-hidden />
-                {m}
-              </button>
-            ))}
-          </div>
+            {MAP_MODES.map((m) => {
+              if (m === "Satellite") {
+                return (
+                  <div key={m} className="relative" ref={satMenuRef}>
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={satMenuOpen}
+                      onClick={() => {
+                        if (mode === "Satellite") {
+                          setSatMenuOpen((open) => !open);
+                        } else {
+                          setMode("Satellite");
+                          setSatMenuOpen(true);
+                        }
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                        mode === "Satellite"
+                          ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                          : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
+                      )}
+                    >
+                      <ChevronRight
+                        className="h-3.5 w-3.5 opacity-80"
+                        aria-hidden
+                      />
+                      Satellite
+                      <span className="hidden font-normal opacity-80 sm:inline">
+                        · {satProductMeta.label}
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          "h-3.5 w-3.5 opacity-80 transition",
+                          satMenuOpen && "rotate-180",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                    {satMenuOpen ? (
+                      <ul
+                        role="listbox"
+                        aria-label="Satellite product"
+                        className="absolute left-0 top-full z-30 mt-1 min-w-[11rem] border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                      >
+                        {SATELLITE_PRODUCTS.map((p) => (
+                          <li key={p.id} role="option" aria-selected={satProduct === p.id}>
+                            <button
+                              type="button"
+                              className={cn(
+                                "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                                satProduct === p.id
+                                  ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                                  : "hover:bg-[var(--navy-deep)]",
+                              )}
+                              onClick={() => {
+                                setSatProduct(p.id);
+                                setMode("Satellite");
+                                setSatMenuOpen(false);
+                              }}
+                            >
+                              {p.label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                );
+              }
 
-          {showSatelliteLoop ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-[var(--bom-blue)]">
-                Product
-              </span>
-              {SATELLITE_PRODUCTS.map((p) => (
+              return (
                 <button
-                  key={p.id}
+                  key={m}
                   type="button"
-                  onClick={() => setSatProduct(p.id)}
+                  onClick={() => {
+                    setMode(m);
+                    setSatMenuOpen(false);
+                  }}
                   className={cn(
-                    "px-2.5 py-1 text-xs font-semibold transition sm:text-sm",
-                    satProduct === p.id
-                      ? "bg-[var(--bom-blue)] text-[var(--bom-yellow)]"
-                      : "bg-white text-[var(--bom-blue)] ring-1 ring-[var(--bom-blue)]/25 hover:bg-[var(--bom-blue)]/5",
+                    "inline-flex items-center gap-0.5 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                    mode === m
+                      ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                      : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
                   )}
                 >
-                  {p.label}
+                  <ChevronRight className="h-3.5 w-3.5 opacity-80" aria-hidden />
+                  {m}
                 </button>
-              ))}
-            </div>
-          ) : null}
+              );
+            })}
+          </div>
 
           <div
             className={cn(
-              "border-2 border-[var(--bom-blue)] bg-[var(--navy-deep)]",
+              "border-2 border-white/40 bg-[var(--navy-deep)]",
               showSatelliteLoop
                 ? "w-full overflow-hidden bg-black"
-                : "min-h-[360px] flex-1 bg-[var(--navy-deep)]",
+                : "min-h-[360px] flex-1 bg-black",
             )}
           >
             <HomeMapDynamic
@@ -363,12 +436,12 @@ export function HomeDashboard() {
           </div>
 
           {showSatelliteLoop ? (
-            <div className="flex items-center gap-3 border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] px-3 py-2.5 text-white">
+            <div className="flex items-center gap-3 border border-white/25 bg-[var(--bom-blue)] px-3 py-2.5 text-[var(--brand)]">
               <button
                 type="button"
                 onClick={() => setPlaying((p) => !p)}
                 disabled={loopFrames.length === 0}
-                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--bom-blue)] disabled:opacity-40"
+                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
               >
                 {playing ? (
@@ -378,14 +451,14 @@ export function HomeDashboard() {
                 )}
               </button>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/80">
-                  <span className="font-semibold text-white">{scrubLabel}</span>
+                <div className="mb-1 flex items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
+                  <span className="font-semibold text-[var(--brand)]">{scrubLabel}</span>
                   <span>{loopStatusLabel}</span>
                 </div>
                 {mapsError && loopFrames.length === 0 ? (
-                  <p className="text-xs text-[var(--bom-yellow)]">{mapsError}</p>
+                  <p className="text-xs text-[var(--brand)]">{mapsError}</p>
                 ) : loopFrames.length === 0 && !mapsLoading ? (
-                  <p className="text-xs text-white/75">
+                  <p className="text-xs text-[var(--brand)]/75">
                     {satProductMeta.daytimeOnly
                       ? "Visible imagery needs daylight over Australia — try Infrared or Air Mass."
                       : "No frames for this product right now."}
@@ -405,7 +478,7 @@ export function HomeDashboard() {
                       className="w-full accent-[var(--bom-yellow)] disabled:opacity-40"
                       aria-label={`${satProductMeta.label} satellite timeline`}
                     />
-                    <div className="mt-1 flex justify-between text-[10px] text-white/70">
+                    <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/70">
                       <span>{edgeLabels.start}</span>
                       <span className="hidden sm:inline">{edgeLabels.mid}</span>
                       <span>{edgeLabels.end}</span>
@@ -415,11 +488,11 @@ export function HomeDashboard() {
               </div>
             </div>
           ) : showRadarUi ? (
-            <div className="flex items-center gap-3 border border-[var(--bom-blue)]/20 bg-[var(--bom-blue-mid)] px-3 py-2.5 text-white">
+            <div className="flex items-center gap-3 border border-white/25 bg-[var(--bom-blue)] px-3 py-2.5 text-[var(--brand)]">
               <button
                 type="button"
                 onClick={() => setPlaying((p) => !p)}
-                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--bom-blue)]"
+                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)]"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
               >
                 {playing ? (
@@ -429,8 +502,8 @@ export function HomeDashboard() {
                 )}
               </button>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between text-xs text-white/80">
-                  <span className="font-semibold text-white">{scrubLabel}</span>
+                <div className="mb-1 flex items-center justify-between text-xs text-[var(--brand)]/80">
+                  <span className="font-semibold text-[var(--brand)]">{scrubLabel}</span>
                   <span>Radar loop (demo)</span>
                 </div>
                 <input
@@ -445,17 +518,17 @@ export function HomeDashboard() {
                   className="w-full accent-[var(--bom-yellow)]"
                   aria-label="Radar timeline"
                 />
-                <p className="mt-1 text-[10px] text-white/70">
+                <p className="mt-1 text-[10px] text-[var(--brand)]/70">
                   Live radar tiles land in a later pass — demo cells only for now.
                 </p>
               </div>
             </div>
           ) : (
-            <p className="border border-[var(--bom-blue)]/15 bg-white px-3 py-2 text-xs text-[var(--muted-foreground)]">
+            <p className="border border-white/25 bg-[var(--bom-blue-mid)] px-3 py-2 text-xs text-[var(--ink)]/80">
               Select{" "}
-              <span className="font-semibold text-[var(--bom-blue)]">Satellite</span>{" "}
+              <span className="font-semibold text-[var(--ink)]">Satellite</span>{" "}
               for Visible / Infrared / Air Mass loops, or{" "}
-              <span className="font-semibold text-[var(--bom-blue)]">Radar</span> for
+              <span className="font-semibold text-[var(--ink)]">Radar</span> for
               the demo playback strip. Overlays on the left can be mixed with Map.
             </p>
           )}
@@ -465,15 +538,15 @@ export function HomeDashboard() {
           <Panel>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-lg font-bold text-white">{SYDNEY_NOW.place}</p>
-                <p className="text-xs text-white/70">{SYDNEY_NOW.clockLabel}</p>
+                <p className="text-lg font-bold text-[var(--ink)]">{SYDNEY_NOW.place}</p>
+                <p className="text-xs text-[var(--ink)]/70">{SYDNEY_NOW.clockLabel}</p>
               </div>
               <CloudSun className="h-10 w-10 text-[var(--bom-yellow)]" />
             </div>
-            <p className="mt-1 text-4xl font-bold text-white">
+            <p className="mt-1 text-4xl font-bold text-[var(--ink)]">
               {SYDNEY_NOW.tempC}°C
             </p>
-            <p className="text-sm text-white/80">{SYDNEY_NOW.condition}</p>
+            <p className="text-sm text-[var(--ink)]/80">{SYDNEY_NOW.condition}</p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               {[
                 ["Feels like", `${SYDNEY_NOW.feelsLikeC}°C`],
@@ -483,16 +556,16 @@ export function HomeDashboard() {
                 ["Rain (today)", `${SYDNEY_NOW.rainTodayMm} mm`],
                 ["Pressure", `${SYDNEY_NOW.pressureHpa} hPa`],
               ].map(([k, v]) => (
-                <div key={k} className="bg-[var(--bom-blue)]/50 px-2 py-1.5">
-                  <p className="text-white/70">{k}</p>
-                  <p className="font-bold text-white">{v}</p>
+                <div key={k} className="bg-[var(--ink)]/8 px-2 py-1.5">
+                  <p className="text-[var(--ink)]/70">{k}</p>
+                  <p className="font-bold text-[var(--ink)]">{v}</p>
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex gap-3 border-t border-white/15 pt-2 text-xs text-white/85">
+            <div className="mt-3 flex gap-3 border-t border-[var(--ink)]/15 pt-2 text-xs text-[var(--ink)]/85">
               <span>
                 Min{" "}
-                <strong className="text-white">{SYDNEY_NOW.minC}°</strong>
+                <strong className="text-[var(--ink)]">{SYDNEY_NOW.minC}°</strong>
               </span>
               <span>
                 Max{" "}
@@ -502,10 +575,10 @@ export function HomeDashboard() {
               </span>
               <span>
                 Rain chance{" "}
-                <strong className="text-white">{SYDNEY_NOW.rainChancePct}%</strong>
+                <strong className="text-[var(--ink)]">{SYDNEY_NOW.rainChancePct}%</strong>
               </span>
               <span>
-                UV <strong className="text-white">{SYDNEY_NOW.uv}</strong>
+                UV <strong className="text-[var(--ink)]">{SYDNEY_NOW.uv}</strong>
               </span>
             </div>
           </Panel>
@@ -515,7 +588,7 @@ export function HomeDashboard() {
               {WARNINGS.map((w) => (
                 <li
                   key={w.id}
-                  className="flex gap-2 bg-[var(--bom-blue)]/40 p-2"
+                  className="flex gap-2 bg-[var(--ink)]/8 p-2"
                 >
                   <span
                     className={cn(
@@ -526,33 +599,33 @@ export function HomeDashboard() {
                     <AlertTriangle className="h-3.5 w-3.5" />
                   </span>
                   <div>
-                    <p className="text-sm font-bold text-white">{w.title}</p>
-                    <p className="text-xs text-white/75">{w.detail}</p>
+                    <p className="text-sm font-bold text-[var(--ink)]">{w.title}</p>
+                    <p className="text-xs text-[var(--ink)]/75">{w.detail}</p>
                   </div>
                 </li>
               ))}
             </ul>
             <Link
               href="/severe-weather"
-              className="mt-2 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
+              className="mt-2 inline-block text-xs font-semibold text-[var(--ink)] font-semibold hover:underline"
             >
               All warnings →
             </Link>
           </Panel>
 
           <Panel title="Storm Tracker">
-            <div className="overflow-hidden border border-white/20">
+            <div className="overflow-hidden border border-[var(--ink)]/20">
               <div
                 className="flex h-24 items-end justify-center bg-[linear-gradient(135deg,#001a3a,#003087)] p-2"
                 aria-hidden
               >
                 <div className="h-16 w-28 rounded-full bg-[radial-gradient(circle_at_40%_40%,#ef4444_0%,#eab308_35%,#22c55e_65%,transparent_70%)] opacity-90" />
               </div>
-              <div className="space-y-1 bg-[var(--bom-blue)]/60 p-2 text-xs">
-                <p className="font-bold text-white">Storm 1427 · eastern NSW</p>
-                <p className="text-white/75">Moving SE · 28 km/h</p>
-                <p className="text-white/75">Lightning 12/min · Hail: Large</p>
-                <p className="text-white/75">Max wind 95 km/h · Rain 42 mm/h</p>
+              <div className="space-y-1 bg-[var(--ink)]/10 p-2 text-xs">
+                <p className="font-bold text-[var(--ink)]">Storm 1427 · eastern NSW</p>
+                <p className="text-[var(--ink)]/75">Moving SE · 28 km/h</p>
+                <p className="text-[var(--ink)]/75">Lightning 12/min · Hail: Large</p>
+                <p className="text-[var(--ink)]/75">Max wind 95 km/h · Rain 42 mm/h</p>
               </div>
             </div>
           </Panel>
@@ -560,7 +633,7 @@ export function HomeDashboard() {
           <Panel title="Briefing notes">
             <ul className="space-y-2">
               {HIGHLIGHTS.map((item) => (
-                <li key={item} className="flex gap-2 text-sm text-white/85">
+                <li key={item} className="flex gap-2 text-sm text-[var(--ink)]/85">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--bom-yellow)]" />
                   <span>{item}</span>
                 </li>
@@ -575,14 +648,14 @@ export function HomeDashboard() {
           {CAPITAL_NOW.map((c) => (
             <div
               key={c.city}
-              className="bg-[var(--bom-blue)]/45 px-2 py-2 text-center"
+              className="bg-[var(--ink)]/8 px-2 py-2 text-center"
             >
-              <p className="text-xs font-bold text-white">{c.city}</p>
-              <p className="text-xl font-bold text-[var(--bom-yellow)]">
+              <p className="text-xs font-bold text-[var(--ink)]">{c.city}</p>
+              <p className="text-xl font-bold text-[var(--ink)]">
                 {c.tempC}°
               </p>
-              <p className="text-[10px] text-white/75">{c.wind}</p>
-              <p className="text-[10px] text-white/70">{c.condition}</p>
+              <p className="text-[10px] text-[var(--ink)]/75">{c.wind}</p>
+              <p className="text-[10px] text-[var(--ink)]/70">{c.condition}</p>
             </div>
           ))}
         </div>
@@ -596,12 +669,12 @@ export function HomeDashboard() {
                 key={d.day}
                 className="flex min-w-[2.6rem] flex-col items-center gap-1 text-center text-xs"
               >
-                <span className="text-white/70">{d.day}</span>
+                <span className="text-[var(--ink)]/70">{d.day}</span>
                 <DayIcon kind={d.icon} />
                 <span className="font-bold text-[var(--bom-yellow)]">
                   {d.high}°
                 </span>
-                <span className="text-white/80">{d.low}°</span>
+                <span className="text-[var(--ink)]/80">{d.low}°</span>
               </div>
             ))}
           </div>
@@ -610,7 +683,7 @@ export function HomeDashboard() {
         <Panel title="Model Comparison — Sydney">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[240px] text-left text-xs">
-              <thead className="text-white/70">
+              <thead className="text-[var(--ink)]/70">
                 <tr>
                   <th className="pb-2 font-semibold">Metric</th>
                   <th className="pb-2 font-semibold">ECMWF</th>
@@ -620,15 +693,15 @@ export function HomeDashboard() {
               </thead>
               <tbody>
                 {MODEL_ROWS.map((row) => (
-                  <tr key={row.metric} className="border-t border-white/15">
-                    <td className="py-1.5 text-white/75">{row.metric}</td>
-                    <td className="py-1.5 font-semibold text-white">
+                  <tr key={row.metric} className="border-t border-[var(--ink)]/15">
+                    <td className="py-1.5 text-[var(--ink)]/75">{row.metric}</td>
+                    <td className="py-1.5 font-semibold text-[var(--ink)]">
                       {row.ecmwf}
                     </td>
-                    <td className="py-1.5 font-semibold text-white">
+                    <td className="py-1.5 font-semibold text-[var(--ink)]">
                       {row.access}
                     </td>
-                    <td className="py-1.5 font-semibold text-white">{row.gfs}</td>
+                    <td className="py-1.5 font-semibold text-[var(--ink)]">{row.gfs}</td>
                   </tr>
                 ))}
               </tbody>
@@ -637,7 +710,7 @@ export function HomeDashboard() {
         </Panel>
 
         <Panel title="Upper air — Sydney (demo)">
-          <div className="relative h-36 overflow-hidden border border-white/20 bg-[var(--navy-deep)]">
+          <div className="relative h-36 overflow-hidden border border-[var(--ink)]/20 bg-[var(--navy-deep)]">
             <svg viewBox="0 0 200 120" className="h-full w-full opacity-90">
               <rect width="200" height="120" fill="#001a3a" />
               {[20, 40, 60, 80, 100].map((y) => (
@@ -664,7 +737,7 @@ export function HomeDashboard() {
                 strokeWidth="2"
               />
             </svg>
-            <div className="absolute bottom-2 left-2 flex gap-3 text-[10px] text-white/80">
+            <div className="absolute bottom-2 left-2 flex gap-3 text-[10px] text-[var(--ink)]/80">
               <span className="inline-flex items-center gap-1">
                 <Gauge className="h-3 w-3 text-[var(--bom-yellow)]" /> LI −2
               </span>
