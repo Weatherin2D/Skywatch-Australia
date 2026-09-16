@@ -9,8 +9,9 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — Satellite Visible / Infrared / Air Mass loops, map shell, mock panels |
-| `/api/weather/maps` | RainViewer proxy + NASA GIBS Himawari WMS (`?product=visible\|infrared\|airmass`) |
+| `/` | SkyWatch homepage — Himawari satellite loops (Visible, Infrared, Air Mass, Water Vapor, Shortwave IR, Dust, Volcanic Ash), map shell, mock panels |
+| `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
+| `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/weather-map`, `/forecast`, `/severe-weather`, … | Coming soon stubs |
 | `/risk` | Preserved convective outlook (former AusRisk public map) |
 | `/risk/admin` | Preserved outlook admin upload |

@@ -416,7 +416,7 @@ export function HomeDashboard() {
                       <ul
                         role="listbox"
                         aria-label="Satellite product"
-                        className="absolute left-0 top-full z-30 mt-1 min-w-[11rem] border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                        className="absolute left-0 top-full z-30 mt-1 max-h-72 min-w-[13rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
                       >
                         {SATELLITE_PRODUCTS.map((p) => (
                           <li key={p.id} role="option" aria-selected={satProduct === p.id}>

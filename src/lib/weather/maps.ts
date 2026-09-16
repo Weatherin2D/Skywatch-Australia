@@ -14,13 +14,26 @@ export type WeatherFrame = {
   imageBounds?: [[number, number], [number, number]];
 };
 
-export type SatelliteProductId = "visible" | "infrared" | "airmass";
+export type SatelliteProductId =
+  | "visible"
+  | "infrared"
+  | "airmass"
+  | "watervapor"
+  | "shortwave"
+  | "dust"
+  | "ash";
+
+export type SatelliteProvider = "gibs" | "realearth";
 
 export type SatelliteProductMeta = {
   id: SatelliteProductId;
   label: string;
   loopLabel: string;
-  gibsLayer: string;
+  provider: SatelliteProvider;
+  /** NASA GIBS Himawari layer id */
+  gibsLayer?: string;
+  /** SSEC RealEarth Himawari product id */
+  realearthProduct?: string;
   /** Daytime-only products may return empty frames overnight */
   daytimeOnly?: boolean;
 };
@@ -30,6 +43,7 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "visible",
     label: "Visible",
     loopLabel: "Visible loop",
+    provider: "gibs",
     gibsLayer: "Himawari_AHI_Band3_Red_Visible_1km",
     daytimeOnly: true,
   },
@@ -37,13 +51,43 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "infrared",
     label: "Infrared",
     loopLabel: "Infrared loop",
+    provider: "gibs",
     gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
   },
   {
     id: "airmass",
     label: "Air Mass",
     loopLabel: "Air Mass loop",
+    provider: "gibs",
     gibsLayer: "Himawari_AHI_Air_Mass",
+  },
+  {
+    id: "watervapor",
+    label: "Water Vapor",
+    loopLabel: "Water Vapor loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B08",
+  },
+  {
+    id: "shortwave",
+    label: "Shortwave IR",
+    loopLabel: "Shortwave IR loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B07",
+  },
+  {
+    id: "dust",
+    label: "Dust",
+    loopLabel: "Dust loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-dust",
+  },
+  {
+    id: "ash",
+    label: "Volcanic Ash",
+    loopLabel: "Volcanic Ash loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-ash",
   },
 ] as const;
 
@@ -56,7 +100,10 @@ export function isSatelliteProductId(value: string): value is SatelliteProductId
 export function getSatelliteProduct(
   id: SatelliteProductId = DEFAULT_SATELLITE_PRODUCT,
 ): SatelliteProductMeta {
-  return SATELLITE_PRODUCTS.find((p) => p.id === id) ?? SATELLITE_PRODUCTS[1]!;
+  return (
+    SATELLITE_PRODUCTS.find((p) => p.id === id) ??
+    SATELLITE_PRODUCTS.find((p) => p.id === DEFAULT_SATELLITE_PRODUCT)!
+  );
 }
 
 export type WeatherMapsPayload = {
@@ -64,7 +111,7 @@ export type WeatherMapsPayload = {
   host: string;
   satellite: {
     product: SatelliteProductId;
-    source: "rainviewer" | "gibs-himawari";
+    source: "rainviewer" | "gibs-himawari" | "realearth-himawari" | "mixed";
     /** Active product frames (also mirrored under products[product]) */
     frames: WeatherFrame[];
     products: Record<SatelliteProductId, { frames: WeatherFrame[] }>;
@@ -109,6 +156,9 @@ export function gibsHimawariWmsUrl(
   options?: { width?: number },
 ): string {
   const meta = getSatelliteProduct(product);
+  if (!meta.gibsLayer) {
+    throw new Error(`Product ${product} has no GIBS layer`);
+  }
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
@@ -129,6 +179,45 @@ export function gibsHimawariWmsUrl(
     TIME: isoTime,
   });
   return `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?${params.toString()}`;
+}
+
+/** SSEC RealEarth Australia crop for Himawari products. */
+export function realEarthImageUrl(
+  realearthProduct: string,
+  timeUnix: number,
+  options?: { width?: number; height?: number },
+): string {
+  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+  const width = options?.width ?? GIBS_DISPLAY_WIDTH;
+  const height =
+    options?.height ?? Math.max(1, Math.round(width / GIBS_AU_ASPECT));
+  const d = new Date(timeUnix * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const time = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const params = new URLSearchParams({
+    products: realearthProduct,
+    time,
+    bounds: `${south},${west},${north},${east}`,
+    width: String(width),
+    height: String(height),
+  });
+  return `https://realearth.ssec.wisc.edu/api/image?${params.toString()}`;
+}
+
+/** Parse RealEarth time tokens like 20260916.092000 → unix seconds. */
+export function parseRealEarthTimeToken(token: string): number {
+  const m = /^(\d{4})(\d{2})(\d{2})\.(\d{2})(\d{2})(\d{2})$/.exec(token);
+  if (!m) return NaN;
+  return Math.floor(
+    Date.UTC(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6]),
+    ) / 1000,
+  );
 }
 
 /** Same-origin frame URL used by the player (proxied + cached). */

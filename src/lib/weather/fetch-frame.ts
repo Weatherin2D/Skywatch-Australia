@@ -1,6 +1,9 @@
 import {
   GIBS_DISPLAY_WIDTH,
+  GIBS_AU_ASPECT,
   gibsHimawariWmsUrl,
+  getSatelliteProduct,
+  realEarthImageUrl,
   toIsoZ,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
@@ -8,7 +11,26 @@ import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
 
 const MIN_FRAME_BYTES = 8_000;
 
-/** Fetch a Himawari frame from GIBS (or memory cache) and store it. */
+function upstreamUrlFor(
+  product: SatelliteProductId,
+  timeUnix: number,
+): string {
+  const meta = getSatelliteProduct(product);
+  if (meta.provider === "realearth") {
+    if (!meta.realearthProduct) {
+      throw new Error(`Product ${product} missing realearthProduct`);
+    }
+    return realEarthImageUrl(meta.realearthProduct, timeUnix, {
+      width: GIBS_DISPLAY_WIDTH,
+      height: Math.max(1, Math.round(GIBS_DISPLAY_WIDTH / GIBS_AU_ASPECT)),
+    });
+  }
+  return gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
+    width: GIBS_DISPLAY_WIDTH,
+  });
+}
+
+/** Fetch a Himawari frame from GIBS/RealEarth (or memory cache) and store it. */
 export async function fetchAndCacheFrame(
   product: SatelliteProductId,
   timeUnix: number,
@@ -16,17 +38,14 @@ export async function fetchAndCacheFrame(
   const cached = getCachedFrame(product, timeUnix);
   if (cached) return { body: cached.body, contentType: cached.contentType };
 
-  const iso = toIsoZ(timeUnix * 1000);
-  const upstream = gibsHimawariWmsUrl(iso, product, {
-    width: GIBS_DISPLAY_WIDTH,
-  });
+  const upstream = upstreamUrlFor(product, timeUnix);
 
   try {
     const res = await fetch(upstream, {
       headers: { "User-Agent": "SkyWatchAustralia/1.0" },
       cache: "force-cache",
       next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(25000),
     });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "image/png";

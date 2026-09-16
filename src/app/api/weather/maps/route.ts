@@ -6,10 +6,12 @@ import {
   gibsHimawariWmsUrl,
   getSatelliteProduct,
   isSatelliteProductId,
+  parseRealEarthTimeToken,
   rainviewerTileUrl,
   satelliteFrameProxyUrl,
   toIsoZ,
   type SatelliteProductId,
+  type SatelliteProductMeta,
   type WeatherFrame,
   type WeatherMapsPayload,
 } from "@/lib/weather/maps";
@@ -38,11 +40,9 @@ type RainViewerMaps = {
 };
 
 function emptyProductFrames(): WeatherMapsPayload["satellite"]["products"] {
-  return {
-    visible: { frames: [] },
-    infrared: { frames: [] },
-    airmass: { frames: [] },
-  };
+  return Object.fromEntries(
+    SATELLITE_PRODUCTS.map((p) => [p.id, { frames: [] as WeatherFrame[] }]),
+  ) as WeatherMapsPayload["satellite"]["products"];
 }
 
 /** Fast content probe using a tiny WMS render instead of the full frame. */
@@ -97,22 +97,56 @@ async function findLatestGibsTime(
   return null;
 }
 
+function buildFramesFromTimes(
+  product: SatelliteProductId,
+  timesUnix: number[],
+): WeatherFrame[] {
+  return timesUnix.map((time) => ({
+    time,
+    imageUrl: satelliteFrameProxyUrl(product, time),
+    imageBounds: GIBS_AU_BOUNDS,
+  }));
+}
+
 function buildFramesAtLatest(
   product: SatelliteProductId,
   latestMs: number,
   count = FRAME_COUNT,
 ): WeatherFrame[] {
-  const frames: WeatherFrame[] = [];
+  const times: number[] = [];
   for (let i = count - 1; i >= 0; i--) {
-    const ms = latestMs - i * GIBS_STEP_MS;
-    const time = Math.floor(ms / 1000);
-    frames.push({
-      time,
-      imageUrl: satelliteFrameProxyUrl(product, time),
-      imageBounds: GIBS_AU_BOUNDS,
-    });
+    times.push(Math.floor((latestMs - i * GIBS_STEP_MS) / 1000));
   }
-  return frames;
+  return buildFramesFromTimes(product, times);
+}
+
+async function fetchRealEarthTimes(
+  realearthProduct: string,
+  count = FRAME_COUNT,
+): Promise<number[]> {
+  try {
+    const res = await fetch(
+      `https://realearth.ssec.wisc.edu/api/products?products=${encodeURIComponent(realearthProduct)}`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "SkyWatchAustralia/1.0",
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(12000),
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as Array<{ times?: string[] }>;
+    const tokens = data[0]?.times ?? [];
+    const parsed = tokens
+      .map(parseRealEarthTimeToken)
+      .filter((t) => Number.isFinite(t) && t > 0);
+    if (parsed.length === 0) return [];
+    return parsed.slice(-count);
+  } catch {
+    return [];
+  }
 }
 
 function normalizeRainviewerFrames(
@@ -128,9 +162,21 @@ function normalizeRainviewerFrames(
   }));
 }
 
+async function buildProductFrames(
+  meta: SatelliteProductMeta,
+  gibsLatestMs: number | null,
+): Promise<WeatherFrame[]> {
+  if (meta.provider === "realearth" && meta.realearthProduct) {
+    const times = await fetchRealEarthTimes(meta.realearthProduct, FRAME_COUNT);
+    return buildFramesFromTimes(meta.id, times);
+  }
+  if (gibsLatestMs == null) return [];
+  return buildFramesAtLatest(meta.id, gibsLatestMs);
+}
+
 /**
- * One shared Himawari timeline for all products, then parallel URL assembly.
- * Probe infrared first (most reliable), fall back to other layers.
+ * Build every catalog product. GIBS products share one probed timeline;
+ * RealEarth products use SSEC's native 10-minute time list.
  */
 async function buildAllSatelliteProducts(): Promise<{
   products: WeatherMapsPayload["satellite"]["products"];
@@ -138,29 +184,45 @@ async function buildAllSatelliteProducts(): Promise<{
 }> {
   const products = emptyProductFrames();
 
-  const latestMs =
+  const gibsLatestMs =
     (await findLatestGibsTime("infrared")) ??
     (await findLatestGibsTime("airmass")) ??
     (await findLatestGibsTime("visible"));
 
-  if (latestMs == null) {
-    return { products, source: "gibs-himawari" };
-  }
-
-  for (const meta of SATELLITE_PRODUCTS) {
-    products[meta.id] = {
-      frames: buildFramesAtLatest(meta.id, latestMs),
-    };
-  }
-
-  // Warm infrared (default) into the server frame cache immediately
-  warmFramesInBackground(
-    "infrared",
-    products.infrared.frames.map((f) => f.time),
-    3,
+  const built = await Promise.all(
+    SATELLITE_PRODUCTS.map(async (meta) => {
+      const frames = await buildProductFrames(meta, gibsLatestMs);
+      return [meta.id, frames] as const;
+    }),
   );
 
-  return { products, source: "gibs-himawari" };
+  for (const [id, frames] of built) {
+    products[id] = { frames };
+  }
+
+  // Warm the default infrared loop into the server frame cache
+  if (products.infrared.frames.length) {
+    warmFramesInBackground(
+      "infrared",
+      products.infrared.frames.map((f) => f.time),
+      3,
+    );
+  }
+
+  const hasGibs = SATELLITE_PRODUCTS.some(
+    (p) => p.provider === "gibs" && products[p.id].frames.length > 0,
+  );
+  const hasRealEarth = SATELLITE_PRODUCTS.some(
+    (p) => p.provider === "realearth" && products[p.id].frames.length > 0,
+  );
+  const source: WeatherMapsPayload["satellite"]["source"] =
+    hasGibs && hasRealEarth
+      ? "mixed"
+      : hasRealEarth
+        ? "realearth-himawari"
+        : "gibs-himawari";
+
+  return { products, source };
 }
 
 export async function GET(request: NextRequest) {
@@ -192,13 +254,23 @@ export async function GET(request: NextRequest) {
       ? buildAllSatelliteProducts()
       : (async () => {
           const products = emptyProductFrames();
-          const latestMs = await findLatestGibsTime(product);
-          if (latestMs != null) {
-            products[product] = {
-              frames: buildFramesAtLatest(product, latestMs),
-            };
-          }
-          return { products, source: "gibs-himawari" as const };
+          const meta = getSatelliteProduct(product);
+          const gibsLatestMs =
+            meta.provider === "gibs"
+              ? await findLatestGibsTime(
+                  meta.id === "visible" ? "infrared" : meta.id,
+                )
+              : null;
+          products[product] = {
+            frames: await buildProductFrames(meta, gibsLatestMs),
+          };
+          return {
+            products,
+            source:
+              meta.provider === "realearth"
+                ? ("realearth-himawari" as const)
+                : ("gibs-himawari" as const),
+          };
         })();
 
     const [rv, satellite] = await Promise.all([rvPromise, satellitePromise]);
@@ -207,6 +279,7 @@ export async function GET(request: NextRequest) {
     const generated = rv?.generated ?? Math.floor(Date.now() / 1000);
     const activeProduct = wantAll ? DEFAULT_SATELLITE_PRODUCT : product;
     const frames = satellite.products[activeProduct].frames;
+    const activeMeta = getSatelliteProduct(activeProduct);
 
     const payload: WeatherMapsPayload = {
       generated,
@@ -227,7 +300,8 @@ export async function GET(request: NextRequest) {
       headers: {
         "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
         "X-Satellite-Product": wantAll ? "all" : product,
-        "X-Satellite-Layer": getSatelliteProduct(activeProduct).gibsLayer,
+        "X-Satellite-Layer":
+          activeMeta.gibsLayer ?? activeMeta.realearthProduct ?? activeProduct,
       },
     });
   } catch (error) {
