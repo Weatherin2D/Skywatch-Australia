@@ -249,7 +249,7 @@ export function HomeDashboard() {
           </div>
         </div>
 
-        <div className="flex min-h-[380px] flex-col gap-2 xl:min-h-[520px]">
+        <div className="flex min-h-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-[var(--bom-blue)]">
               View
@@ -272,7 +272,12 @@ export function HomeDashboard() {
             ))}
           </div>
 
-          <div className="min-h-0 flex-1 border-2 border-[var(--bom-blue)] bg-[var(--navy-deep)]">
+          <div
+            className={cn(
+              "border-2 border-[var(--bom-blue)] bg-[var(--navy-deep)]",
+              showSatelliteLoop ? "w-full" : "min-h-[360px] flex-1",
+            )}
+          >
             <HomeMapDynamic
               mode={mode}
               showRadarOverlay={showRadarUi || layers.rainfall}

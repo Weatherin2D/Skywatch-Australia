@@ -35,6 +35,15 @@ export const GIBS_AU_BOUNDS: [[number, number], [number, number]] = [
   [-5, 165],
 ];
 
+/** Mercator width/height ratio of GIBS_AU_BOUNDS — keep WMS + map CSS in sync. */
+export const GIBS_AU_ASPECT =
+  (() => {
+    const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+    const [minx, miny] = lonLatToWebMercator(west, south);
+    const [maxx, maxy] = lonLatToWebMercator(east, north);
+    return (maxx - minx) / (maxy - miny);
+  })();
+
 export function lonLatToWebMercator(lon: number, lat: number): [number, number] {
   const x = (lon * 20037508.34) / 180;
   let y =
@@ -47,6 +56,8 @@ export function gibsHimawariWmsUrl(isoTime: string): string {
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
+  const width = 1280;
+  const height = Math.max(1, Math.round(width / GIBS_AU_ASPECT));
   const params = new URLSearchParams({
     SERVICE: "WMS",
     REQUEST: "GetMap",
@@ -54,10 +65,10 @@ export function gibsHimawariWmsUrl(isoTime: string): string {
     LAYERS: "Himawari_AHI_Band13_Clean_Infrared",
     STYLES: "",
     FORMAT: "image/png",
-    TRANSPARENT: "TRUE",
+    TRANSPARENT: "FALSE",
     SRS: "EPSG:3857",
-    WIDTH: "1280",
-    HEIGHT: "720",
+    WIDTH: String(width),
+    HEIGHT: String(height),
     BBOX: `${minx},${miny},${maxx},${maxy}`,
     TIME: isoTime,
   });

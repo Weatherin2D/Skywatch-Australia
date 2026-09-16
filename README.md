@@ -10,7 +10,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | Route | Status |
 |-------|--------|
 | `/` | SkyWatch homepage — Satellite IR loop (real frames), map shell, mock panels |
-| `/api/weather/maps` | RainViewer proxy (+ GIBS Himawari IR fallback when RainViewer satellite is empty) |
+| `/api/weather/maps` | RainViewer proxy (+ NASA GIBS Himawari IR WMS frames when RainViewer satellite is empty) |
 | `/weather-map`, `/forecast`, `/severe-weather`, … | Coming soon stubs |
 | `/risk` | Preserved convective outlook (former AusRisk public map) |
 | `/risk/admin` | Preserved outlook admin upload |

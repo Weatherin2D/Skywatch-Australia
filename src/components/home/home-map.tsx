@@ -9,8 +9,12 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
+import type { LatLngBoundsExpression } from "leaflet";
+import { LatLngBounds } from "leaflet";
 import { LocateFixed } from "lucide-react";
 import { CITY_MARKERS, type MapMode } from "@/components/home/mock-data";
+import { GIBS_AU_ASPECT, GIBS_AU_BOUNDS } from "@/lib/weather/maps";
+import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
@@ -31,6 +35,78 @@ function MapModeEffect({ mode }: { mode: MapMode }) {
   useEffect(() => {
     map.getContainer().dataset.mapMode = mode;
   }, [map, mode]);
+  return null;
+}
+
+/** Lock view to satellite frame bounds — no zoom/pan; image edges match map border. */
+function SatelliteFrameLock({
+  bounds,
+  active,
+}: {
+  bounds: LatLngBoundsExpression;
+  active: boolean;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!active) {
+      map.dragging.enable();
+      map.scrollWheelZoom.enable();
+      map.doubleClickZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+      map.touchZoom.enable();
+      map.options.minZoom = 3;
+      map.options.maxZoom = 16;
+      map.setMinZoom(3);
+      map.setMaxZoom(16);
+      map.setMaxBounds([
+        [-55, 90],
+        [5, 180],
+      ]);
+      return;
+    }
+
+    const latLngBounds = new LatLngBounds(
+      bounds as [[number, number], [number, number]],
+    );
+
+    const lockToFrame = () => {
+      map.invalidateSize({ pan: false });
+      // Fractional zoom so the frame can match the container exactly
+      map.options.zoomSnap = 0;
+      const zoom = map.getBoundsZoom(latLngBounds, false);
+      map.setMinZoom(zoom);
+      map.setMaxZoom(zoom);
+      map.setView(latLngBounds.getCenter(), zoom, { animate: false });
+      map.setMaxBounds(latLngBounds.pad(0.001));
+    };
+
+    map.dragging.disable();
+    map.scrollWheelZoom.disable();
+    map.doubleClickZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+    map.touchZoom.disable();
+
+    lockToFrame();
+    const t1 = window.setTimeout(lockToFrame, 0);
+    const t2 = window.setTimeout(lockToFrame, 100);
+    const t3 = window.setTimeout(lockToFrame, 400);
+
+    const ro = new ResizeObserver(() => {
+      lockToFrame();
+    });
+    ro.observe(map.getContainer());
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      ro.disconnect();
+    };
+  }, [map, active, bounds]);
+
   return null;
 }
 
@@ -92,37 +168,63 @@ export function HomeMap({
   const satelliteLoop = mode === "Satellite";
   const hasWeatherFrame = Boolean(frameTileUrl || frameImageUrl);
   const useEsriImagery = mode === "Satellite" && !hasWeatherFrame;
+  // WMS frames share this fixed Australia bbox — lock the map to it
+  const satelliteBounds = GIBS_AU_BOUNDS;
 
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
 
   return (
-    <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden">
+    <div
+      className={cn(
+        "skywatch-map relative w-full overflow-hidden",
+        satelliteLoop ? null : "h-full min-h-[360px]",
+      )}
+      style={
+        satelliteLoop
+          ? { aspectRatio: String(GIBS_AU_ASPECT) }
+          : undefined
+      }
+    >
       <MapContainer
+        key={satelliteLoop ? "sat-locked" : "map-free"}
         center={[-25.5, 134.5]}
         zoom={4}
-        minZoom={3}
-        maxZoom={16}
-        className="h-full w-full"
-        scrollWheelZoom
-        zoomControl
+        minZoom={satelliteLoop ? 0 : 3}
+        maxZoom={satelliteLoop ? 22 : 16}
+        zoomSnap={satelliteLoop ? 0 : 1}
+        zoomDelta={satelliteLoop ? 0 : 1}
+        className="h-full w-full !bg-[#0a1628]"
+        scrollWheelZoom={!satelliteLoop}
+        doubleClickZoom={!satelliteLoop}
+        touchZoom={!satelliteLoop}
+        boxZoom={!satelliteLoop}
+        keyboard={!satelliteLoop}
+        dragging={!satelliteLoop}
+        zoomControl={!satelliteLoop}
         attributionControl
-        maxBounds={[
-          [-55, 90],
-          [5, 180],
-        ]}
-        maxBoundsViscosity={0.85}
+        {...(satelliteLoop
+          ? {}
+          : {
+              maxBounds: [
+                [-55, 90],
+                [5, 180],
+              ] as [[number, number], [number, number]],
+              maxBoundsViscosity: 0.85,
+            })}
       >
-        <TileLayer
-          key={useEsriImagery ? "sat-esri" : "base"}
-          url={
-            useEsriImagery
-              ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              : basemapUrl
-          }
-          attribution="Tiles &copy; Esri"
-          maxZoom={16}
-        />
+        {satelliteLoop && frameImageUrl && frameImageBounds ? null : (
+          <TileLayer
+            key={useEsriImagery ? "sat-esri" : "base"}
+            url={
+              useEsriImagery
+                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                : basemapUrl
+            }
+            attribution="Tiles &copy; Esri"
+            maxZoom={16}
+          />
+        )}
         {frameTileUrl ? (
           <TileLayer
             key={`wx-tile-${frameKey ?? frameTileUrl}`}
@@ -148,7 +250,8 @@ export function HomeMap({
           />
         ) : null}
         <MapModeEffect mode={mode} />
-        <MapTools />
+        <SatelliteFrameLock bounds={satelliteBounds} active={satelliteLoop} />
+        {!satelliteLoop ? <MapTools /> : null}
         {showRadarOverlay && mode === "Radar" ? <DemoRadarBlobs /> : null}
         {CITY_MARKERS.map((city) => (
           <CircleMarker
