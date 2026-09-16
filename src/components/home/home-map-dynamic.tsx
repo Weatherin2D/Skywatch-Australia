@@ -5,6 +5,7 @@ import type {
   MapMode,
   MapSettingsState,
 } from "@/components/home/mock-data";
+import type { LightningStrike } from "@/lib/weather/lightning";
 
 const HomeMap = dynamic(
   () => import("@/components/home/home-map").then((m) => m.HomeMap),
@@ -29,6 +30,9 @@ export function HomeMapDynamic({
   frameAlt,
   legend,
   mapSettings,
+  showLightning,
+  lightningStrikes,
+  lightningAttribution,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -40,6 +44,9 @@ export function HomeMapDynamic({
   frameAlt?: string;
   legend?: "radar" | "satellite" | null;
   mapSettings: MapSettingsState;
+  showLightning?: boolean;
+  lightningStrikes?: LightningStrike[];
+  lightningAttribution?: string | null;
 }) {
   return (
     <HomeMap
@@ -53,6 +60,9 @@ export function HomeMapDynamic({
       frameAlt={frameAlt}
       legend={legend}
       mapSettings={mapSettings}
+      showLightning={showLightning}
+      lightningStrikes={lightningStrikes}
+      lightningAttribution={lightningAttribution}
     />
   );
 }

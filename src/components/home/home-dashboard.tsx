@@ -34,6 +34,7 @@ import {
 } from "@/components/home/mock-data";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
+import { useLightning } from "@/hooks/use-lightning";
 import {
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
@@ -152,6 +153,12 @@ export function HomeDashboard() {
     error: mapsError,
     satelliteSource,
   } = useWeatherMaps(satProduct);
+
+  const showLightning = layers.lightning;
+  const {
+    strikes: lightningStrikes,
+    attribution: lightningAttribution,
+  } = useLightning(showLightning);
 
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
@@ -534,6 +541,9 @@ export function HomeDashboard() {
               frameAlt={`${satProductMeta.label} satellite loop frame`}
               legend={showRadarUi ? "radar" : null}
               mapSettings={mapSettings}
+              showLightning={showLightning}
+              lightningStrikes={lightningStrikes}
+              lightningAttribution={lightningAttribution}
             />
           </div>
 

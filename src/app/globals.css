@@ -204,8 +204,43 @@
   padding: 0;
 }
 
-.leaflet-tooltip.skywatch-city-tooltip::before {
-  display: none;
+@keyframes skywatch-lightning-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.55);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.35);
+    opacity: 0.15;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.55);
+    opacity: 0;
+  }
+}
+
+.skywatch-lightning-ring {
+  animation: skywatch-lightning-pulse 1.1s ease-out infinite;
+}
+
+.skywatch-lightning-dot {
+  animation: skywatch-lightning-flash 1.6s ease-in-out infinite;
+}
+
+@keyframes skywatch-lightning-flash {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  40% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.35;
+  }
+  70% {
+    opacity: 1;
+  }
 }
 
 @keyframes fade-up {

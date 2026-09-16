@@ -14,7 +14,13 @@ import {
   type MapSettingsState,
 } from "@/components/home/mock-data";
 import { LeafletMapAnnotations } from "@/components/home/leaflet-map-annotations";
+import {
+  LeafletLightningOverlay,
+  LightningLegend,
+  SatelliteLightningOverlay,
+} from "@/components/home/lightning-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
+import type { LightningStrike } from "@/lib/weather/lightning";
 import { GIBS_AU_ASPECT } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
@@ -31,6 +37,9 @@ type Props = {
   frameAlt?: string;
   legend?: "radar" | "satellite" | null;
   mapSettings: MapSettingsState;
+  showLightning?: boolean;
+  lightningStrikes?: LightningStrike[];
+  lightningAttribution?: string | null;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -164,6 +173,9 @@ export function HomeMap({
   frameAlt = "Satellite loop frame",
   legend = null,
   mapSettings,
+  showLightning = false,
+  lightningStrikes = [],
+  lightningAttribution = null,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
 
@@ -187,6 +199,16 @@ export function HomeMap({
           settings={mapSettings}
           cities={CITY_MARKERS}
         />
+        <SatelliteLightningOverlay
+          strikes={lightningStrikes}
+          enabled={showLightning}
+        />
+        {showLightning && lightningStrikes.length > 0 ? (
+          <LightningLegend
+            strikes={lightningStrikes}
+            attribution={lightningAttribution}
+          />
+        ) : null}
       </div>
     );
   }
@@ -210,8 +232,19 @@ export function HomeMap({
         ) : null}
         {showRadarOverlay || mode === "Radar" ? <DemoRadarBlobs /> : null}
         <LeafletMapAnnotations settings={mapSettings} />
+        <LeafletLightningOverlay
+          strikes={lightningStrikes}
+          enabled={showLightning}
+        />
         <MapTools />
       </MapContainer>
+
+      {showLightning && lightningStrikes.length > 0 ? (
+        <LightningLegend
+          strikes={lightningStrikes}
+          attribution={lightningAttribution}
+        />
+      ) : null}
 
       {legend === "radar" || (showRadarOverlay && mode === "Radar") ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-[var(--brand)]/20 bg-[var(--bom-blue)]/95 px-3 py-2 text-[var(--brand)]">
