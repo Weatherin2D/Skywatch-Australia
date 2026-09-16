@@ -1,16 +1,33 @@
 # AusRisk
 
-Public website for Australian severe convective outlooks. Upload a GFC `forecast-cycle` JSON from the admin page; the public homepage shows a zoomable dark map, day tabs, and the risk key (legend). `PLACEHOLDER` legend entries are removed automatically.
+Public Australian severe convective outlooks. The owner publishes GFC `forecast-cycle` JSON from `/admin`; visitors get a zoomable map, day tabs, and a full risk Key.
+
+**Live:** [ausrisk.vercel.app](https://ausrisk.vercel.app)
+
+## What’s in the repo today
+
+| Path | Role |
+|------|------|
+| `src/app/page.tsx` | Public outlook (home) |
+| `src/app/admin/` | Password-protected publish UI |
+| `src/app/api/forecast/` | Public forecast JSON |
+| `src/app/api/admin/` | Login, upload, day manage |
+| `src/components/forecast/` | Map, Key, admin panel |
+| `src/lib/forecast/` | Parse, day-roll, Blob/disk storage |
+| `public/samples/` | Example GFC JSON |
+| `data/` | Local upload store (gitignored file) |
+
+Future marketing/info pages will sit beside these under `src/app/` (e.g. `about/page.tsx`).
 
 ## Features
 
-- Public outlook map with pan / scroll-wheel zoom on a dark basemap
-- Day tabs that auto-roll in **Australia/Sydney** time (yesterday’s Day 2 becomes today’s Day 1)
-- Outlook range capped at **5 days**
-- Admin day picker: choose which day slot (1–5) an upload lands on, with optional merge
-- Remove individual days or wipe the whole outlook
-- Legend built from the AusRisk custom layer in your JSON
-- Password-protected admin upload (`/admin`)
+- Public map (Esri light-gray basemap) with pan / scroll zoom
+- Day tabs; dates roll in **Australia/Sydney** time (max **5** days)
+- Key lists every risk category; **white outline** = used on the selected day
+- Admin publish modes: replace slots from a file (keeps other days) or update one day
+- Remove a day or wipe all
+- `PLACEHOLDER` legend entries stripped on upload
+- Durable storage via **Vercel Blob** in production
 
 ## Run locally
 
@@ -22,34 +39,37 @@ npm run dev
 
 Open [http://127.0.0.1:43127](http://127.0.0.1:43127).
 
-Set a long random `ADMIN_PASSWORD` in `.env.local`.
+Set a long random `ADMIN_PASSWORD` and `ADMIN_SESSION_SECRET` in `.env.local`.
 
-1. Go to `/admin` and sign in
-2. Manage published days (remove one day or wipe all), or upload a new file
-3. Pick the day slot (Day 1–5) the upload should start on
-4. The public homepage updates immediately
+1. Open `/admin` and sign in  
+2. Upload a GFC JSON (or manage / wipe days)  
+3. Choose day slot + publish mode  
+4. Public map updates from `/api/forecast`
 
-An example file lives at `public/samples/example-forecast.json`.
-
-## Deploy on Vercel
+Seed local disk from the sample (optional):
 
 ```bash
-npx vercel login
-npx vercel --prod
+npm run seed
 ```
 
-In the Vercel project settings, add environment variables:
+Example file: `public/samples/example-forecast.json`.
 
-- `ADMIN_PASSWORD` — your long admin password
-- `ADMIN_SESSION_SECRET` — another long random string
-- `BLOB_READ_WRITE_TOKEN` — from a Vercel Blob store (keeps uploads durable across deploys)
+## Deploy (Vercel)
 
-Without Blob storage, local disk works for development only; serverless hosts need Blob (or similar) so forecasts persist.
+Project is set up for Next.js. In Vercel env vars:
+
+| Variable | Purpose |
+|----------|---------|
+| `ADMIN_PASSWORD` | Admin login |
+| `ADMIN_SESSION_SECRET` | Session signing |
+| `BLOB_READ_WRITE_TOKEN` or Blob store + OIDC (`BLOB_STORE_ID`) | Persist forecasts |
+
+Without Blob, uploads work on local disk only and will not survive serverless deploys.
 
 ## Day rolling
 
-On upload, each stored day number is stamped to a Sydney calendar date (`today + day - 1`). On every public load, days with a past `validDate` drop off and remaining days are re-labelled (Day 2 → Day 1, and so on). Only Days 1–5 are kept.
+On upload, each day is stamped to a Sydney calendar date (`today + day − 1`). On each public load, past `validDate`s drop off and remaining days are re-labelled (old Day 2 → Day 1, etc.).
 
 ## Stack
 
-Next.js, TypeScript, Tailwind, shadcn/ui, Leaflet, Vercel Blob (optional for production).
+Next.js (App Router), TypeScript, Tailwind, shadcn/ui, Leaflet, Vercel Blob.

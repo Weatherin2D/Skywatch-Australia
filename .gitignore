@@ -44,3 +44,7 @@ next-env.d.ts
 # uploaded forecasts
 /data/current-forecast.json
 /agent-tools/
+
+# local agent / QA artifacts
+/ausrisk-screenshots/
+/tmp-scaffold/
