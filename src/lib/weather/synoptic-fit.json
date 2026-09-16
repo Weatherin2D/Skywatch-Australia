@@ -1,20 +1,60 @@
 {
-  "mode": "affine_scale",
-  "scX": 2.2532982911451773,
-  "scY": 2.183298291145177,
-  "tx": 501.1588033075468,
-  "ty": 371.93093552205687,
-  "chartCx": 326.85176505677583,
-  "chartCy": 142.60700057521464,
+  "mode": "polar_gcp",
+  "poleX": 293,
+  "poleY": 1040,
+  "inputEquator": -831,
+  "trueRatio": 1,
+  "a": 0.18406480609274592,
+  "b": 129.85989171726197,
+  "c": -0.005456063005504891,
+  "d": 1.2216590007119852,
+  "nudgeX": 0,
+  "nudgeY": -20,
   "chartW": 640,
   "chartH": 432,
-  "outW": 1024,
-  "outH": 851,
-  "iou": 0.8561823802163833,
-  "bounds": {
-    "south": -48,
-    "west": 105,
-    "north": -5,
-    "east": 165
-  }
+  "gcps": [
+    {
+      "px": 406,
+      "py": 17,
+      "lon": 142.53,
+      "lat": -10.69,
+      "name": "CapeYork"
+    },
+    {
+      "px": 162,
+      "py": 124,
+      "lon": 113.16,
+      "lat": -26.15,
+      "name": "SteepPoint"
+    },
+    {
+      "px": 473,
+      "py": 159,
+      "lon": 153.64,
+      "lat": -28.64,
+      "name": "CapeByron"
+    },
+    {
+      "px": 404,
+      "py": 265,
+      "lon": 146.83,
+      "lat": -43.64,
+      "name": "SouthEastCape"
+    },
+    {
+      "px": 189,
+      "py": 209,
+      "lon": 115.14,
+      "lat": -34.37,
+      "name": "CapeLeeuwin"
+    },
+    {
+      "px": 169,
+      "py": 118,
+      "lon": 114.17,
+      "lat": -21.79,
+      "name": "NorthwestCape"
+    }
+  ],
+  "notes": "OpenCPN MSLPC pole/equator; a,b,c,d least-squares from coast tips on current IDY00030 640x432 crop."
 }
