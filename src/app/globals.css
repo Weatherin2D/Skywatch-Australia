@@ -152,6 +152,62 @@
   font-size: 10px !important;
 }
 
+.skywatch-map-label {
+  background: transparent !important;
+  border: none !important;
+}
+
+.skywatch-map-label__text {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.skywatch-map-label__text--state {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.skywatch-map-label__text--ocean {
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(224, 242, 254, 0.92);
+}
+
+.skywatch-city-dot {
+  background: transparent !important;
+  border: none !important;
+}
+
+.skywatch-city-dot__mark {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ffe000;
+  border: 1px solid #fff;
+}
+
+.leaflet-tooltip.skywatch-city-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  padding: 0;
+}
+
+.leaflet-tooltip.skywatch-city-tooltip::before {
+  display: none;
+}
+
 @keyframes fade-up {
   from {
     opacity: 0;

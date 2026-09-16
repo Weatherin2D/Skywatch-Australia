@@ -5,12 +5,17 @@ import {
   MapContainer,
   TileLayer,
   CircleMarker,
-  Tooltip,
   useMap,
 } from "react-leaflet";
 import { LocateFixed } from "lucide-react";
-import { CITY_MARKERS, type MapMode } from "@/components/home/mock-data";
-import { GIBS_AU_ASPECT, GIBS_AU_BOUNDS } from "@/lib/weather/maps";
+import {
+  CITY_MARKERS,
+  type MapMode,
+  type MapSettingsState,
+} from "@/components/home/mock-data";
+import { LeafletMapAnnotations } from "@/components/home/leaflet-map-annotations";
+import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
+import { GIBS_AU_ASPECT } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
@@ -25,6 +30,7 @@ type Props = {
   frameOpacity?: number;
   frameAlt?: string;
   legend?: "radar" | "satellite" | null;
+  mapSettings: MapSettingsState;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -78,14 +84,6 @@ function DemoRadarBlobs() {
       ))}
     </>
   );
-}
-
-/** Project lon/lat into % within the fixed satellite frame for city pins. */
-function cityPinStyle(lat: number, lon: number) {
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
-  const x = ((lon - west) / (east - west)) * 100;
-  const y = ((north - lat) / (north - south)) * 100;
-  return { left: `${x}%`, top: `${y}%` };
 }
 
 /**
@@ -165,6 +163,7 @@ export function HomeMap({
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
   legend = null,
+  mapSettings,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
 
@@ -184,15 +183,10 @@ export function HomeMap({
           alt={frameAlt}
           opacity={frameOpacity}
         />
-
-        {CITY_MARKERS.map((city) => (
-          <span
-            key={city.name}
-            title={city.name}
-            className="pointer-events-none absolute z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[var(--bom-yellow)]"
-            style={cityPinStyle(city.lat, city.lon)}
-          />
-        ))}
+        <SatelliteMapAnnotations
+          settings={mapSettings}
+          cities={CITY_MARKERS}
+        />
       </div>
     );
   }
@@ -215,23 +209,7 @@ export function HomeMap({
           <TileLayer key={frameTileUrl} url={frameTileUrl} opacity={0.75} />
         ) : null}
         {showRadarOverlay || mode === "Radar" ? <DemoRadarBlobs /> : null}
-        {CITY_MARKERS.map((city) => (
-          <CircleMarker
-            key={city.name}
-            center={[city.lat, city.lon]}
-            radius={4}
-            pathOptions={{
-              color: "#ffe000",
-              fillColor: "#ffe000",
-              fillOpacity: 0.9,
-              weight: 1,
-            }}
-          >
-            <Tooltip direction="top" offset={[0, -6]}>
-              {city.name}
-            </Tooltip>
-          </CircleMarker>
-        ))}
+        <LeafletMapAnnotations settings={mapSettings} />
         <MapTools />
       </MapContainer>
 

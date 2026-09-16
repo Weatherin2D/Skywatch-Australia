@@ -1,7 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { MapMode } from "@/components/home/mock-data";
+import type {
+  MapMode,
+  MapSettingsState,
+} from "@/components/home/mock-data";
 
 const HomeMap = dynamic(
   () => import("@/components/home/home-map").then((m) => m.HomeMap),
@@ -25,6 +28,7 @@ export function HomeMapDynamic({
   frameOpacity,
   frameAlt,
   legend,
+  mapSettings,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -35,6 +39,7 @@ export function HomeMapDynamic({
   frameOpacity?: number;
   frameAlt?: string;
   legend?: "radar" | "satellite" | null;
+  mapSettings: MapSettingsState;
 }) {
   return (
     <HomeMap
@@ -47,6 +52,7 @@ export function HomeMapDynamic({
       frameOpacity={frameOpacity}
       frameAlt={frameAlt}
       legend={legend}
+      mapSettings={mapSettings}
     />
   );
 }

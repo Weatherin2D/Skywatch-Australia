@@ -12,6 +12,28 @@ export const WEATHER_LAYERS = [
 
 export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
 
+/** Cartographic toggles for the national map (below weather overlays). */
+export const MAP_SETTINGS = [
+  { id: "cityLabels", label: "City labels" },
+  { id: "stateOutlines", label: "State outlines" },
+  { id: "stateLabels", label: "State labels" },
+  { id: "outlines", label: "Outlines" },
+  { id: "oceanNames", label: "Ocean names" },
+] as const;
+
+export type MapSettingId = (typeof MAP_SETTINGS)[number]["id"];
+
+export type MapSettingsState = Record<MapSettingId, boolean>;
+
+export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
+  cityLabels: false,
+  stateOutlines: false,
+  stateLabels: false,
+  /** Australia coastline is on by default */
+  outlines: true,
+  oceanNames: false,
+};
+
 /** Primary map view — not the same as overlay layers. */
 export const MAP_MODES = ["Map", "Satellite", "Radar"] as const;
 

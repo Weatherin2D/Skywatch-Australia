@@ -18,8 +18,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
   CAPITAL_NOW,
+  DEFAULT_MAP_SETTINGS,
   HIGHLIGHTS,
   MAP_MODES,
+  MAP_SETTINGS,
   MODEL_ROWS,
   SYDNEY_NOW,
   WARNINGS,
@@ -27,6 +29,8 @@ import {
   WEATHER_LAYERS,
   type LayerId,
   type MapMode,
+  type MapSettingId,
+  type MapSettingsState,
 } from "@/components/home/mock-data";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
@@ -125,6 +129,8 @@ export function HomeDashboard() {
     for (const layer of WEATHER_LAYERS) init[layer.id] = false;
     return init;
   });
+  const [mapSettings, setMapSettings] =
+    useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
   const [mode, setMode] = useState<MapMode>("Satellite");
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     DEFAULT_SATELLITE_PRODUCT,
@@ -324,6 +330,10 @@ export function HomeDashboard() {
     setLayers((prev) => ({ ...prev, [id]: on }));
   }
 
+  function setMapSetting(id: MapSettingId, on: boolean) {
+    setMapSettings((prev) => ({ ...prev, [id]: on }));
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-8 pt-4 sm:px-4">
       <div className="animate-fade-up space-y-1">
@@ -356,6 +366,33 @@ export function HomeDashboard() {
                     label={layer.label}
                     on={layers[layer.id]}
                     onChange={(on) => setLayer(layer.id, on)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+
+          <Panel title="Map Settings">
+            <p className="mb-2 text-[11px] text-[var(--ink)]/70">
+              Cartography drawn over the national map.
+            </p>
+            <ul className="space-y-2.5">
+              {MAP_SETTINGS.map((setting) => (
+                <li
+                  key={setting.id}
+                  className="flex items-center justify-between gap-2 text-sm text-[var(--ink)]/80"
+                >
+                  <span
+                    className={cn(
+                      mapSettings[setting.id] && "font-semibold text-[var(--ink)]",
+                    )}
+                  >
+                    {setting.label}
+                  </span>
+                  <Toggle
+                    label={setting.label}
+                    on={mapSettings[setting.id]}
+                    onChange={(on) => setMapSetting(setting.id, on)}
                   />
                 </li>
               ))}
@@ -496,6 +533,7 @@ export function HomeDashboard() {
               frameOpacity={1}
               frameAlt={`${satProductMeta.label} satellite loop frame`}
               legend={showRadarUi ? "radar" : null}
+              mapSettings={mapSettings}
             />
           </div>
 
