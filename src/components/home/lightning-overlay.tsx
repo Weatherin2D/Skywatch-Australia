@@ -3,22 +3,16 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Marker, Tooltip } from "react-leaflet";
 import L from "leaflet";
-import type { LightningAgeBand, LightningStrike } from "@/lib/weather/lightning";
+import type { LightningStrike } from "@/lib/weather/lightning";
 import {
   filterStrikesAtTime,
-  strikeAgeBand,
+  lightningAgeGradientCss,
+  strikeAgeColor,
   strikeAgeSeconds,
+  strikeAgeSize,
+  strikeIsFresh,
 } from "@/lib/weather/lightning";
 import { GIBS_AU_BOUNDS } from "@/lib/weather/maps";
-
-const BAND_STYLE: Record<
-  LightningAgeBand,
-  { color: string; glow: string; size: number }
-> = {
-  new: { color: "#ffffff", glow: "rgba(255,255,255,0.9)", size: 14 },
-  earlier: { color: "#ffca28", glow: "rgba(255,202,40,0.7)", size: 12 },
-  old: { color: "#ef5350", glow: "rgba(239,83,80,0.55)", size: 10 },
-};
 
 function lonLatToPct(lon: number, lat: number) {
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
@@ -93,6 +87,15 @@ function crosshairHtml(color: string, size: number, pulse: boolean) {
   return `<span class="${cls}" style="width:${size}px;height:${size}px;color:${color};--lg-arm:${arm}px;--lg-gap:${gap}px;--lg-thick:${thick}px;filter:drop-shadow(0 0 3px ${color})"></span>`;
 }
 
+function makeCrosshairIcon(color: string, size: number, pulse: boolean) {
+  return L.divIcon({
+    className: "skywatch-lightning-marker",
+    html: crosshairHtml(color, size, pulse),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 /** Satellite-frame lightning crosshairs, aged vs active frame time. */
 export function SatelliteLightningOverlay({
   strikes,
@@ -115,8 +118,8 @@ export function SatelliteLightningOverlay({
     <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
       {visible.map((strike) => {
         const age = strikeAgeSeconds(strike, refTime);
-        const band = strikeAgeBand(age);
-        const style = BAND_STYLE[band];
+        const color = strikeAgeColor(age);
+        const size = strikeAgeSize(age);
         const { x, y } = lonLatToPct(strike.lon, strike.lat);
         return (
           <span
@@ -125,9 +128,9 @@ export function SatelliteLightningOverlay({
             style={{ left: `${x}%`, top: `${y}%` }}
           >
             <CrosshairIcon
-              color={style.color}
-              size={style.size}
-              pulse={band === "new"}
+              color={color}
+              size={size}
+              pulse={strikeIsFresh(age)}
             />
           </span>
         );
@@ -152,32 +155,19 @@ export function LeafletLightningOverlay({
     return filterStrikesAtTime(strikes, refTime, 30).slice(0, 120);
   }, [enabled, strikes, refTime]);
 
-  const icons = useMemo(() => {
-    const map = {} as Record<LightningAgeBand, L.DivIcon>;
-    (Object.keys(BAND_STYLE) as LightningAgeBand[]).forEach((band) => {
-      const style = BAND_STYLE[band];
-      map[band] = L.divIcon({
-        className: "skywatch-lightning-marker",
-        html: crosshairHtml(style.color, style.size, band === "new"),
-        iconSize: [style.size, style.size],
-        iconAnchor: [style.size / 2, style.size / 2],
-      });
-    });
-    return map;
-  }, []);
-
   if (!enabled) return null;
 
   return (
     <>
       {visible.map((strike) => {
         const age = strikeAgeSeconds(strike, refTime);
-        const band = strikeAgeBand(age);
+        const color = strikeAgeColor(age);
+        const size = strikeAgeSize(age);
         return (
           <Marker
-            key={strike.id}
+            key={`${strike.id}-${color}-${size}`}
             position={[strike.lat, strike.lon]}
-            icon={icons[band]}
+            icon={makeCrosshairIcon(color, size, strikeIsFresh(age))}
             interactive
           >
             <Tooltip direction="top" offset={[0, -6]}>
@@ -208,10 +198,6 @@ export function LightningLegend({
 }) {
   const refTime = referenceTime ?? Math.floor(Date.now() / 1000);
   const visible = filterStrikesAtTime(strikes, refTime, 30);
-  const counts = { new: 0, earlier: 0, old: 0 };
-  for (const s of visible) {
-    counts[strikeAgeBand(strikeAgeSeconds(s, refTime))] += 1;
-  }
 
   const statusLabel =
     status === "live"
@@ -247,65 +233,25 @@ export function LightningLegend({
         </span>
       </div>
       {visible.length === 0 ? (
-        <p className="max-w-[12rem] text-[10px] leading-snug text-white/75">
+        <p className="mb-2 max-w-[12rem] text-[10px] leading-snug text-white/75">
           {status === "live" || status === "reconnecting"
             ? frameSynced && referenceTime != null
               ? "No strikes at this frame time — scrub forward as storms develop…"
               : "No strikes over Australia in the last 30 min — listening live…"
             : "Connecting to live lightning feed…"}
         </p>
-      ) : (
-        <ul className="space-y-1 text-[10px] text-white/90">
-          <li className="flex items-center gap-1.5">
-            <span
-              className="skywatch-lightning-crosshair inline-block"
-              style={
-                {
-                  width: 10,
-                  height: 10,
-                  color: "#ffffff",
-                  ["--lg-arm" as string]: "3px",
-                  ["--lg-gap" as string]: "1.5px",
-                  ["--lg-thick" as string]: "1.5px",
-                } as CSSProperties
-              }
-            />
-            New · {counts.new}
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span
-              className="skywatch-lightning-crosshair inline-block"
-              style={
-                {
-                  width: 10,
-                  height: 10,
-                  color: "#ffca28",
-                  ["--lg-arm" as string]: "3px",
-                  ["--lg-gap" as string]: "1.5px",
-                  ["--lg-thick" as string]: "1.5px",
-                } as CSSProperties
-              }
-            />
-            Earlier · {counts.earlier}
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span
-              className="skywatch-lightning-crosshair inline-block"
-              style={
-                {
-                  width: 10,
-                  height: 10,
-                  color: "#ef5350",
-                  ["--lg-arm" as string]: "3px",
-                  ["--lg-gap" as string]: "1.5px",
-                  ["--lg-thick" as string]: "1.5px",
-                } as CSSProperties
-              }
-            />
-            Older · {counts.old}
-          </li>
-        </ul>
-      )}
+      ) : null}
+      <div className="w-[11.5rem]">
+        <div
+          className="h-2 w-full border border-white/20"
+          style={{ background: lightningAgeGradientCss() }}
+          aria-label="Lightning age colour scale from new to 30 minutes"
+        />
+        <div className="mt-1 flex justify-between text-[9px] text-white/75">
+          <span>New</span>
+          <span>30 min</span>
+        </div>
+      </div>
       <p className="mt-1.5 text-[9px] text-white/60">
         {visible.length} strikes · synced to {syncedLabel}
       </p>

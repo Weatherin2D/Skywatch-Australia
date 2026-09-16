@@ -20,8 +20,6 @@ export type LightningPayload = {
   receivedTotal?: number;
 };
 
-export type LightningAgeBand = "new" | "earlier" | "old";
-
 /** Match the national satellite frame. */
 export const LIGHTNING_AU_BOUNDS = {
   west: 105,
@@ -30,18 +28,74 @@ export const LIGHTNING_AU_BOUNDS = {
   north: -5,
 } as const;
 
+/** Default lookback window for age colouring (seconds). */
+export const LIGHTNING_AGE_WINDOW_SEC = 30 * 60;
+
+const GRADIENT_STOPS = [
+  { t: 0, r: 255, g: 255, b: 255 }, // white — newest
+  { t: 0.45, r: 255, g: 202, b: 40 }, // yellow
+  { t: 1, r: 239, g: 83, b: 80 }, // red — oldest
+] as const;
+
+function clamp01(n: number) {
+  return Math.min(1, Math.max(0, n));
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
 export function strikeAgeSeconds(strike: LightningStrike, refTimeSec: number) {
   return Math.max(0, refTimeSec - strike.time);
 }
 
+/** 0 = brand new, 1 = oldest in the window. */
+export function strikeAgeNorm(
+  ageSec: number,
+  windowSec = LIGHTNING_AGE_WINDOW_SEC,
+) {
+  return clamp01(ageSec / windowSec);
+}
+
 /**
- * Age vs reference time (active satellite frame, or wall clock on Map/Radar).
- * white = new, yellow = earlier, red = long ago
+ * Continuous white → yellow → red colour from strike age.
+ * Intermediate ages blend between stops (not discrete bands).
  */
-export function strikeAgeBand(ageSec: number): LightningAgeBand {
-  if (ageSec < 120) return "new";
-  if (ageSec < 15 * 60) return "earlier";
-  return "old";
+export function strikeAgeColor(
+  ageSec: number,
+  windowSec = LIGHTNING_AGE_WINDOW_SEC,
+): string {
+  const t = strikeAgeNorm(ageSec, windowSec);
+  let i = 0;
+  while (i < GRADIENT_STOPS.length - 2 && t > GRADIENT_STOPS[i + 1]!.t) {
+    i += 1;
+  }
+  const a = GRADIENT_STOPS[i]!;
+  const b = GRADIENT_STOPS[i + 1]!;
+  const span = b.t - a.t || 1;
+  const u = clamp01((t - a.t) / span);
+  const r = Math.round(lerp(a.r, b.r, u));
+  const g = Math.round(lerp(a.g, b.g, u));
+  const bl = Math.round(lerp(a.b, b.b, u));
+  return `rgb(${r}, ${g}, ${bl})`;
+}
+
+/** Crosshair size scales slightly as strikes age. */
+export function strikeAgeSize(
+  ageSec: number,
+  windowSec = LIGHTNING_AGE_WINDOW_SEC,
+) {
+  const t = strikeAgeNorm(ageSec, windowSec);
+  return Math.round(lerp(14, 10, t));
+}
+
+export function strikeIsFresh(ageSec: number) {
+  return ageSec < 90;
+}
+
+/** CSS linear-gradient string matching the strike age scale (new → old). */
+export function lightningAgeGradientCss() {
+  return "linear-gradient(to right, #ffffff 0%, #ffca28 45%, #ef5350 100%)";
 }
 
 /** Strikes that exist at `refTime` within the rolling lookback window. */
