@@ -1,23 +1,23 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Syne } from "next/font/google";
+import { Outfit, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 
-const display = Syne({
+const display = Outfit({
   variable: "--font-display",
   subsets: ["latin"],
   weight: ["500", "600", "700", "800"],
 });
 
-const sans = IBM_Plex_Sans({
+const sans = Source_Sans_3({
   variable: "--font-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "AusRisk | Australian Convective Outlooks",
+  title: "SkyWatch Australia | Real weather. Deeper insight.",
   description:
-    "Public severe convective weather outlooks for Australia. Zoom the map and review the AusRisk key.",
+    "Australian weather, observed and forecast — radar, warnings, outlooks, and deeper insight for a safer Australia.",
 };
 
 export default function RootLayout({
@@ -26,8 +26,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} h-full`}>
-      <body className="min-h-full font-sans antialiased">{children}</body>
+    <html lang="en-AU" className={`${display.variable} ${sans.variable} h-full`}>
+      <body className="min-h-full bg-[var(--navy-deep)] font-sans text-foreground antialiased">
+        {children}
+      </body>
     </html>
   );
 }

@@ -88,7 +88,7 @@ export function PublicOutlook() {
           </p>
         </div>
         <a
-          href="/admin"
+          href="/risk/admin"
           className="mb-1 hidden text-xs uppercase tracking-[0.22em] text-neutral-500 transition hover:text-white sm:inline"
         >
           Admin

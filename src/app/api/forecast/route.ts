@@ -18,7 +18,7 @@ export async function GET() {
           days: [],
           defaultDay: null,
           message:
-            "No forecast uploaded yet. The AusRisk admin can publish an outlook from /admin.",
+            "No forecast uploaded yet. Publish an outlook from /risk/admin.",
         },
         { headers: noStoreHeaders() },
       );

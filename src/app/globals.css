@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans), "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-sans), "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-display), "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-display), "Outfit", ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,6 +39,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-sky: var(--sky);
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-panel: var(--panel);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,38 +53,42 @@
 }
 
 :root {
-  --background: #050505;
-  --foreground: #fafafa;
-  --card: #0c0c0c;
-  --card-foreground: #fafafa;
-  --popover: #0c0c0c;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #050505;
-  --secondary: #171717;
-  --secondary-foreground: #fafafa;
-  --muted: #171717;
-  --muted-foreground: #a3a3a3;
-  --accent: #171717;
-  --accent-foreground: #fafafa;
+  --navy-deep: #051020;
+  --navy: #0a1c36;
+  --panel: #0d2240;
+  --sky: #00aeef;
+  --background: #051020;
+  --foreground: #f4f8fc;
+  --card: #0d2240;
+  --card-foreground: #f4f8fc;
+  --popover: #0d2240;
+  --popover-foreground: #f4f8fc;
+  --primary: #00aeef;
+  --primary-foreground: #051020;
+  --secondary: #123054;
+  --secondary-foreground: #f4f8fc;
+  --muted: #123054;
+  --muted-foreground: #9bb0c7;
+  --accent: #00aeef;
+  --accent-foreground: #051020;
   --destructive: #ef4444;
-  --border: #262626;
-  --input: #262626;
-  --ring: #fafafa;
-  --chart-1: #fafafa;
-  --chart-2: #a3a3a3;
-  --chart-3: #737373;
-  --chart-4: #525252;
-  --chart-5: #262626;
-  --radius: 0.25rem;
-  --sidebar: #0c0c0c;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #fafafa;
-  --sidebar-primary-foreground: #050505;
-  --sidebar-accent: #171717;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #262626;
-  --sidebar-ring: #fafafa;
+  --border: #1a3a5c;
+  --input: #1a3a5c;
+  --ring: #00aeef;
+  --chart-1: #00aeef;
+  --chart-2: #38bdf8;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
+  --radius: 0.5rem;
+  --sidebar: #0a1c36;
+  --sidebar-foreground: #f4f8fc;
+  --sidebar-primary: #00aeef;
+  --sidebar-primary-foreground: #051020;
+  --sidebar-accent: #123054;
+  --sidebar-accent-foreground: #f4f8fc;
+  --sidebar-border: #1a3a5c;
+  --sidebar-ring: #00aeef;
 }
 
 @layer base {
@@ -96,19 +104,38 @@
 }
 
 .leaflet-container {
-  background: #e5e5e5;
+  background: #0a1c36;
   font: inherit;
-  filter: grayscale(0.15) contrast(1.05);
+  width: 100%;
+  height: 100%;
 }
 
-.leaflet-control-zoom a {
-  background: #0a0a0a !important;
-  color: #fafafa !important;
-  border-color: #262626 !important;
+.skywatch-map .leaflet-control-zoom {
+  border: none !important;
+  box-shadow: none !important;
+  margin-left: 12px !important;
+  margin-top: 12px !important;
 }
 
-.leaflet-control-zoom a:hover {
-  background: #171717 !important;
+.skywatch-map .leaflet-control-zoom a {
+  background: rgba(5, 16, 32, 0.92) !important;
+  color: #f4f8fc !important;
+  border: 1px solid #1a3a5c !important;
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  font-size: 16px !important;
+}
+
+.skywatch-map .leaflet-control-zoom a:hover {
+  background: #123054 !important;
+  color: #00aeef !important;
+}
+
+.skywatch-map .leaflet-control-attribution {
+  background: rgba(5, 16, 32, 0.75) !important;
+  color: #9bb0c7 !important;
+  font-size: 10px !important;
 }
 
 @keyframes fade-up {
