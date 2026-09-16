@@ -97,14 +97,10 @@ export function HomeMap({ mode }: Props) {
           url={
             satellite
               ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
           }
-          attribution={
-            satellite
-              ? "Tiles &copy; Esri"
-              : '&copy; <a href="https://carto.com/" target="_blank" rel="noreferrer">CARTO</a>'
-          }
-          maxZoom={18}
+          attribution="Tiles &copy; Esri"
+          maxZoom={16}
         />
         <MapModeEffect mode={mode} />
         <MapTools />
