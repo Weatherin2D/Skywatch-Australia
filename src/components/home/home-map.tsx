@@ -99,11 +99,17 @@ export function HomeMap({
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}
+        minZoom={3}
+        maxZoom={16}
         className="h-full w-full"
         scrollWheelZoom
         zoomControl
         attributionControl
-        maxZoom={16}
+        maxBounds={[
+          [-55, 90],
+          [5, 180],
+        ]}
+        maxBoundsViscosity={0.85}
       >
         <TileLayer
           key={useEsriImagery ? "sat-esri" : "base"}
