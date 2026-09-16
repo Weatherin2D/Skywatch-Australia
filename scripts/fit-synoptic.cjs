@@ -1,9 +1,8 @@
 /**
- * Register BoM IDY00030 colour MSLP against the national Australia outline.
+ * Fit BoM IDY00030 colour MSLP to the national GeoJSON outline.
  *
- * Fits south-polar stereographic linear terms (a,b,c,d) from coast-tip GCPs
- * on the current 640×432 chart crop, keeping OpenCPN MSLPC pole/equator.
- * Writes src/lib/weather/synoptic-fit.json (imported by synoptic-warp.ts).
+ * Builds a thin-plate spline (mercator overlay px → chart px) from coast-tip
+ * control points and writes src/lib/weather/synoptic-fit.json for synoptic-warp.ts.
  *
  * Usage: node scripts/fit-synoptic.cjs [/path/to/IDY00030.png]
  */
@@ -13,232 +12,244 @@ const { PNG } = require("pngjs");
 
 const chartPath = process.argv[2] || "/tmp/synoptic.png";
 const src = PNG.sync.read(fs.readFileSync(chartPath));
+const geo = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, "../public/geo/australia-outline.geojson"),
+    "utf8",
+  ),
+);
 const W = src.width;
 const H = src.height;
 
-// OpenCPN weatherfax "Australia BOM - Australia - MSLPC" pole geometry.
-const poleX = 293;
-const poleY = 1040;
-const inputEquator = -831;
-const trueRatio = 1;
+const south = -48;
+const west = 105;
+const north = -5;
+const east = 165;
 
-// Coast tips on the current IDY00030 crop (beige mainland after morph-close).
-const GCPS = [
-  { px: 406, py: 17, lon: 142.53, lat: -10.69, name: "CapeYork" },
-  { px: 162, py: 124, lon: 113.16, lat: -26.15, name: "SteepPoint" },
-  { px: 473, py: 159, lon: 153.64, lat: -28.64, name: "CapeByron" },
-  { px: 404, py: 265, lon: 146.83, lat: -43.64, name: "SouthEastCape" },
-  { px: 189, py: 209, lon: 115.14, lat: -34.37, name: "CapeLeeuwin" },
-  { px: 169, py: 118, lon: 114.17, lat: -21.79, name: "NorthwestCape" },
+function lonLatToWebMercator(lon, lat) {
+  const x = (lon * 20037508.34) / 180;
+  let y =
+    Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180);
+  y = (y * 20037508.34) / 180;
+  return [x, y];
+}
+
+const [minX, minY] = lonLatToWebMercator(west, south);
+const [maxX, maxY] = lonLatToWebMercator(east, north);
+const outW = 1024;
+const outH = Math.round(outW / ((maxX - minX) / (maxY - minY)));
+
+function toPix(lon, lat) {
+  const [x, y] = lonLatToWebMercator(lon, lat);
+  return [
+    ((x - minX) / (maxX - minX)) * outW,
+    ((maxY - y) / (maxY - minY)) * outH,
+  ];
+}
+
+// Mainland beige + morph-close + edge for snapping guesses
+const land0 = new Uint8Array(W * H);
+for (let y = 0; y < H - 70; y++) {
+  for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4;
+    const r = src.data[i];
+    const g = src.data[i + 1];
+    const b = src.data[i + 2];
+    if (r >= 238 && g >= 235 && b >= 210 && b <= 230 && Math.abs(r - g) < 8) {
+      land0[y * W + x] = 1;
+    }
+  }
+}
+function dilate(a, r) {
+  const o = new Uint8Array(a.length);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!a[y * W + x]) continue;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < W && ny < H) o[ny * W + nx] = 1;
+        }
+      }
+    }
+  }
+  return o;
+}
+function erode(a, r) {
+  const o = new Uint8Array(a.length);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let ok = 1;
+      for (let dy = -r; dy <= r && ok; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || !a[ny * W + nx]) {
+            ok = 0;
+            break;
+          }
+        }
+      }
+      o[y * W + x] = ok;
+    }
+  }
+  return o;
+}
+const closed = erode(dilate(land0, 2), 2);
+const seen = new Uint8Array(W * H);
+let largest = [];
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) {
+    const i0 = y * W + x;
+    if (!closed[i0] || seen[i0]) continue;
+    const q = [[x, y]];
+    seen[i0] = 1;
+    const cells = [];
+    while (q.length) {
+      const [cx, cy] = q.pop();
+      cells.push([cx, cy]);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const i = ny * W + nx;
+          if (seen[i] || !closed[i]) continue;
+          seen[i] = 1;
+          q.push([nx, ny]);
+        }
+      }
+    }
+    if (cells.length > largest.length) largest = cells;
+  }
+}
+const mainland = new Uint8Array(W * H);
+for (const [x, y] of largest) mainland[y * W + x] = 1;
+const edge = [];
+for (let y = 1; y < H - 1; y++) {
+  for (let x = 1; x < W - 1; x++) {
+    if (!mainland[y * W + x]) continue;
+    if (
+      !mainland[y * W + x - 1] ||
+      !mainland[y * W + x + 1] ||
+      !mainland[(y - 1) * W + x] ||
+      !mainland[(y + 1) * W + x]
+    ) {
+      edge.push([x, y]);
+    }
+  }
+}
+function snap(px, py, max = 40) {
+  let best = [px, py];
+  let bd = 1e9;
+  for (const [x, y] of edge) {
+    const d = (x - px) ** 2 + (y - py) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = [x, y];
+    }
+  }
+  return Math.sqrt(bd) <= max ? best : [px, py];
+}
+
+const RAW = [
+  [142.53, -10.69, 406, 17, "CapeYork"],
+  [113.16, -26.15, 162, 124, "Steep"],
+  [153.64, -28.64, 473, 159, "Byron"],
+  [146.83, -43.64, 404, 265, "SECape"],
+  [115.14, -34.37, 189, 209, "Leeuwin"],
+  [114.17, -21.79, 169, 118, "NWCape"],
+  [136.93, -11.74, 353, 27, "Arnhem"],
+  [146.39, -39.12, 398, 240, "Wilson"],
+  [150.0, -37.5, 450, 220, "Howe"],
+  [122.0, -17.5, 210, 70, "Kimberley"],
+  [130.0, -31.5, 300, 180, "BightW"],
+  [135.0, -33.0, 330, 195, "BightC"],
+  [138.0, -35.5, 360, 210, "SA"],
+  [145.0, -15.0, 390, 50, "CarpentariaE"],
+  [141.0, -17.0, 370, 55, "CarpentariaW"],
+  [153.0, -26.0, 470, 140, "Fraser"],
+  [121.0, -34.0, 210, 200, "Esperance"],
 ];
 
-function latToMercY(latDeg) {
-  const s = Math.sin((latDeg * Math.PI) / 180);
-  return 0.5 * Math.log((1 + s) / (1 - s));
+const ctrls = RAW.map(([lon, lat, px, py, name]) => {
+  const [mx, my] = toPix(lon, lat);
+  const [sx, sy] = snap(px, py);
+  return { mx, my, px: sx, py: sy, lon, lat, name };
+});
+
+function U(r2) {
+  if (r2 < 1e-12) return 0;
+  const r = Math.sqrt(r2);
+  return r2 * Math.log(r);
 }
 
-function mercYToLat(y) {
-  return (180 / Math.PI) * (2 * Math.atan(Math.exp(y)) - Math.PI / 2);
+function solveTPS(targets) {
+  const n = ctrls.length;
+  const A = Array.from({ length: n + 3 }, () => Array(n + 3).fill(0));
+  const b = Array(n + 3).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const dx = ctrls[i].mx - ctrls[j].mx;
+      const dy = ctrls[i].my - ctrls[j].my;
+      A[i][j] = U(dx * dx + dy * dy);
+    }
+    A[i][n] = 1;
+    A[i][n + 1] = ctrls[i].mx;
+    A[i][n + 2] = ctrls[i].my;
+    A[n][i] = 1;
+    A[n + 1][i] = ctrls[i].mx;
+    A[n + 2][i] = ctrls[i].my;
+    b[i] = targets[i];
+  }
+  const M = n + 3;
+  for (let col = 0; col < M; col++) {
+    let piv = col;
+    for (let r = col + 1; r < M; r++) {
+      if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    }
+    [A[col], A[piv]] = [A[piv], A[col]];
+    [b[col], b[piv]] = [b[piv], b[col]];
+    const div = A[col][col];
+    if (Math.abs(div) < 1e-12) continue;
+    for (let c = col; c < M; c++) A[col][c] /= div;
+    b[col] /= div;
+    for (let r = 0; r < M; r++) {
+      if (r === col) continue;
+      const f = A[r][col];
+      for (let c = col; c < M; c++) A[r][c] -= f * A[col][c];
+      b[r] -= f * b[col];
+    }
+  }
+  return { w: b.slice(0, n), a0: b[n], a1: b[n + 1], a2: b[n + 2] };
 }
 
-function inputToMercRaw(px, py) {
-  const inputheight = inputEquator - poleY;
-  const dx = (px - poleX) * trueRatio;
-  const dy = py - poleY;
-  const theta = Math.atan2(dx, Math.abs(dy));
-  const x = theta * W;
-  const z = Math.hypot(dx, dy) / inputheight;
-  const q = (4 / Math.PI) * Math.atan(z);
-  const pp = q + (inputheight > 0 ? -1 : 1);
-  const s = Math.sin(pp * (Math.PI / 2));
-  const y = 0.5 * Math.log((1 + s) / (1 - s)) * H;
-  return { x, y };
-}
-
-const ms = GCPS.map((p) => ({
-  ...p,
-  m: inputToMercRaw(p.px, p.py),
-  my: latToMercY(p.lat),
-}));
-const n = ms.length;
-let sX = 0;
-let sY = 0;
-let sXX = 0;
-let sXY = 0;
-let sYr = 0;
-let sYY = 0;
-let sXY2 = 0;
-let sYYr = 0;
-for (const p of ms) {
-  sX += p.m.x;
-  sY += p.lon;
-  sXX += p.m.x * p.m.x;
-  sXY += p.m.x * p.lon;
-  sYr += p.m.y;
-  sYY += p.my;
-  sXY2 += p.m.y * p.my;
-  sYYr += p.m.y * p.m.y;
-}
-const a = (n * sXY - sX * sY) / (n * sXX - sX * sX);
-const b = (sY - a * sX) / n;
-const c = (n * sXY2 - sYr * sYY) / (n * sYYr - sYr * sYr);
-const d = (sYY - c * sYr) / n;
-
-let err = 0;
-for (const p of ms) {
-  const lon = a * p.m.x + b;
-  const lat = mercYToLat(c * p.m.y + d);
-  const e = Math.hypot(lon - p.lon, lat - p.lat);
-  err += e * e;
-  console.log(
-    p.name,
-    "->",
-    lon.toFixed(2),
-    lat.toFixed(2),
-    "want",
-    p.lon,
-    p.lat,
-    "err°",
-    e.toFixed(2),
-  );
-}
-console.log("rms°", Math.sqrt(err / n));
-
-// Empirical mercator-pixel nudge (positive Y moves chart content south).
-const nudgeX = 0;
-const nudgeY = -20;
+const tpsX = solveTPS(ctrls.map((c) => c.px));
+const tpsY = solveTPS(ctrls.map((c) => c.py));
 
 const params = {
-  mode: "polar_gcp",
-  poleX,
-  poleY,
-  inputEquator,
-  trueRatio,
-  a,
-  b,
-  c,
-  d,
-  nudgeX,
-  nudgeY,
+  mode: "tps",
   chartW: W,
   chartH: H,
-  gcps: GCPS,
+  outW,
+  outH,
+  ctrls: ctrls.map((c) => ({
+    mx: c.mx,
+    my: c.my,
+    px: c.px,
+    py: c.py,
+    lon: c.lon,
+    lat: c.lat,
+    name: c.name,
+  })),
+  tpsX,
+  tpsY,
   notes:
-    "OpenCPN MSLPC pole/equator; a,b,c,d from coast tips; nudgeY shifts overlay north to match GeoJSON.",
+    "Thin-plate spline mercator-px → chart-px from mainland coast tips on IDY00030.",
 };
 
 const outPath = path.join(__dirname, "../src/lib/weather/synoptic-fit.json");
 fs.writeFileSync(outPath, JSON.stringify(params, null, 2));
-console.log("wrote", outPath);
-
-// Optional diagnostic overlay against australia-outline.geojson
-try {
-  const geo = JSON.parse(
-    fs.readFileSync(
-      path.join(__dirname, "../public/geo/australia-outline.geojson"),
-      "utf8",
-    ),
-  );
-  function lonLatToWebMercator(lon, lat) {
-    const x = (lon * 20037508.34) / 180;
-    let y =
-      Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180);
-    y = (y * 20037508.34) / 180;
-    return [x, y];
-  }
-  const south = -48;
-  const west = 105;
-  const north = -5;
-  const east = 165;
-  const [minX, minY] = lonLatToWebMercator(west, south);
-  const [maxX, maxY] = lonLatToWebMercator(east, north);
-  const outW = 1024;
-  const outH = Math.round(outW / ((maxX - minX) / (maxY - minY)));
-  const inputheight = inputEquator - poleY;
-  function latLonToInput(lat, lon) {
-    const geoY = latToMercY(lat);
-    const mx = (lon - b) / a;
-    let my = (geoY - d) / c;
-    my /= H;
-    const pp = (4 / Math.PI) * Math.atan(Math.exp(my)) - 1;
-    const q = inputheight > 0 ? 1 + pp : 1 - pp;
-    const z = Math.tan((q * Math.PI) / 4);
-    const dist = z * inputheight;
-    const theta = mx / W;
-    let dx = Math.abs(dist) * Math.sin(theta);
-    const dy = dist * Math.cos(theta);
-    dx /= trueRatio;
-    return { px: dx + poleX, py: dy + poleY };
-  }
-  const myN = latToMercY(north);
-  const myS = latToMercY(south);
-  const out = new PNG({ width: outW, height: outH });
-  for (let j = 0; j < outH; j++) {
-    for (let i = 0; i < outW; i++) {
-      const lon = west + ((i + 0.5 - nudgeX) / outW) * (east - west);
-      const my = myN + ((j + 0.5 - nudgeY) / outH) * (myS - myN);
-      const lat = mercYToLat(my);
-      const { px, py } = latLonToInput(lat, lon);
-      const o = (j * outW + i) * 4;
-      if (px < 0 || py < 0 || px >= W - 1 || py >= H - 1 || py >= H - 70) {
-        out.data[o + 3] = 0;
-        continue;
-      }
-      const x0 = Math.floor(px);
-      const y0 = Math.floor(py);
-      const dx = px - x0;
-      const dy = py - y0;
-      const idx = (ix, iy) => (iy * W + ix) * 4;
-      const c00 = idx(x0, y0);
-      const c10 = idx(x0 + 1, y0);
-      const c01 = idx(x0, y0 + 1);
-      const c11 = idx(x0 + 1, y0 + 1);
-      for (let k = 0; k < 3; k++) {
-        out.data[o + k] = Math.round(
-          src.data[c00 + k] * (1 - dx) * (1 - dy) +
-            src.data[c10 + k] * dx * (1 - dy) +
-            src.data[c01 + k] * (1 - dx) * dy +
-            src.data[c11 + k] * dx * dy,
-        );
-      }
-      out.data[o + 3] = 255;
-    }
-  }
-  function strokePoly(pts) {
-    for (let i = 0; i < pts.length; i++) {
-      const [x1, y1] = pts[i];
-      const [x2, y2] = pts[(i + 1) % pts.length];
-      const steps = Math.max(2, Math.hypot(x2 - x1, y2 - y1) | 0);
-      for (let t = 0; t <= steps; t++) {
-        const x = Math.round(x1 + ((x2 - x1) * t) / steps);
-        const y = Math.round(y1 + ((y2 - y1) * t) / steps);
-        if (x < 0 || y < 0 || x >= outW || y >= outH) continue;
-        const o = (y * outW + x) * 4;
-        out.data[o] = 255;
-        out.data[o + 1] = 0;
-        out.data[o + 2] = 0;
-        out.data[o + 3] = 255;
-      }
-    }
-  }
-  function toPix(lon, lat) {
-    const [x, y] = lonLatToWebMercator(lon, lat);
-    return [
-      ((x - minX) / (maxX - minX)) * outW,
-      ((maxY - y) / (maxY - minY)) * outH,
-    ];
-  }
-  for (const f of geo.features || [geo]) {
-    const g = f.geometry;
-    const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
-    for (const poly of polys) {
-      strokePoly(poly[0].map(([lon, lat]) => toPix(lon, lat)));
-    }
-  }
-  const art = "/opt/cursor/artifacts/synoptic-polar-gcp-overlay.png";
-  fs.mkdirSync("/opt/cursor/artifacts", { recursive: true });
-  fs.writeFileSync(art, PNG.sync.write(out));
-  console.log("wrote", art);
-} catch (err) {
-  console.warn("overlay skipped", err.message);
-}
+console.log("wrote", outPath, "ctrls", ctrls.length);
