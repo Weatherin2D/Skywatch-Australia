@@ -38,7 +38,16 @@ async function probeGibsWms(isoTime: string): Promise<boolean> {
     });
     if (!res.ok) return false;
     const type = res.headers.get("content-type") ?? "";
-    return type.includes("image");
+    if (!type.includes("image")) return false;
+    const buf = Buffer.from(await res.arrayBuffer());
+    // Empty / not-yet-available Himawari frames often come back as tiny near-black PNGs
+    if (buf.length < 40_000) return false;
+    // Sample a few bytes past the PNG header — reject near-solid black payloads
+    let nonBlack = 0;
+    for (let i = 100; i < Math.min(buf.length, 4000); i += 17) {
+      if (buf[i]! > 16) nonBlack += 1;
+    }
+    return nonBlack >= 8;
   } catch {
     return false;
   }
