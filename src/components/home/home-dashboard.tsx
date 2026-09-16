@@ -292,7 +292,7 @@ export function HomeDashboard() {
                   ? `${activeFrame.time}-${satelliteSource ?? "wx"}`
                   : undefined
               }
-              frameOpacity={0.92}
+              frameOpacity={1}
               legend={
                 showSatelliteLoop && activeFrame
                   ? "satellite"
