@@ -78,9 +78,9 @@ export function bomSynopticUpstreamUrl(stamp: string): string {
   return `https://www.bom.gov.au/fwo/${SYNOPTIC_PRODUCT}.${stamp}.png`;
 }
 
-/** Same-origin proxy URL for the chart image. */
+/** Same-origin proxy URL for the chart image (warped to national frame). */
 export function synopticProxyUrl(stamp: string): string {
-  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}`;
+  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&warp=mercator`;
 }
 
 /**

@@ -138,6 +138,23 @@ export function lonLatToWebMercator(lon: number, lat: number): [number, number] 
   return [x, y];
 }
 
+/**
+ * Project lon/lat into the national Himawari frame as CSS percentages.
+ * Uses Web Mercator so SVG outlines / lightning align with GIBS WMS frames
+ * (and the warped synoptic overlay).
+ */
+export function lonLatToGibsPct(lon: number, lat: number): { x: number; y: number } {
+  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+  const [minx, miny] = lonLatToWebMercator(west, south);
+  const [maxx, maxy] = lonLatToWebMercator(east, north);
+  const [x, y] = lonLatToWebMercator(lon, lat);
+  return {
+    x: ((x - minx) / (maxx - minx)) * 100,
+    // maxy is north (larger mercator y); screen y grows downward
+    y: ((maxy - y) / (maxy - miny)) * 100,
+  };
+}
+
 /** Mercator width/height ratio of GIBS_AU_BOUNDS — keep WMS + map CSS in sync. */
 export const GIBS_AU_ASPECT =
   (() => {

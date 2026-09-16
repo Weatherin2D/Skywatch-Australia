@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { MapSettingsState } from "@/components/home/mock-data";
-import { GIBS_AU_BOUNDS } from "@/lib/weather/maps";
+import { lonLatToGibsPct } from "@/lib/weather/maps";
 
 type Ring = [number, number][];
 type GeoJson = {
@@ -20,14 +20,6 @@ type GeoJson = {
     coordinates: unknown;
   };
 };
-
-function lonLatToPct(lon: number, lat: number) {
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
-  return {
-    x: ((lon - west) / (east - west)) * 100,
-    y: ((north - lat) / (north - south)) * 100,
-  };
-}
 
 function ringsFromGeometry(geometry: {
   type: string;
@@ -48,7 +40,7 @@ function ringToPath(ring: Ring): string {
   return (
     ring
       .map(([lon, lat], i) => {
-        const { x, y } = lonLatToPct(lon, lat);
+        const { x, y } = lonLatToGibsPct(lon, lat);
         // Keep sub-pixel precision so high-res coast rings stay sharp when projected
         return `${i === 0 ? "M" : "L"}${x.toFixed(4)} ${y.toFixed(4)}`;
       })
@@ -169,7 +161,7 @@ export function SatelliteMapAnnotations({
               | [number, number]
               | undefined;
             if (!coords) return null;
-            const { x, y } = lonLatToPct(coords[0], coords[1]);
+            const { x, y } = lonLatToGibsPct(coords[0], coords[1]);
             return (
               <span
                 key={feat.properties?.code ?? feat.properties?.name}
@@ -188,7 +180,7 @@ export function SatelliteMapAnnotations({
               | [number, number]
               | undefined;
             if (!coords) return null;
-            const { x, y } = lonLatToPct(coords[0], coords[1]);
+            const { x, y } = lonLatToGibsPct(coords[0], coords[1]);
             return (
               <span
                 key={feat.properties?.name}
@@ -202,7 +194,7 @@ export function SatelliteMapAnnotations({
         : null}
 
       {cities.map((city) => {
-        const { x, y } = lonLatToPct(city.lon, city.lat);
+        const { x, y } = lonLatToGibsPct(city.lon, city.lat);
         return (
           <span
             key={city.name}

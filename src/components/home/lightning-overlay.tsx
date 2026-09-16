@@ -12,15 +12,7 @@ import {
   strikeAgeSize,
   strikeIsFresh,
 } from "@/lib/weather/lightning";
-import { GIBS_AU_BOUNDS } from "@/lib/weather/maps";
-
-function lonLatToPct(lon: number, lat: number) {
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
-  return {
-    x: ((lon - west) / (east - west)) * 100,
-    y: ((north - lat) / (north - south)) * 100,
-  };
-}
+import { lonLatToGibsPct } from "@/lib/weather/maps";
 
 function useNowTick(enabled: boolean) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -120,7 +112,7 @@ export function SatelliteLightningOverlay({
         const age = strikeAgeSeconds(strike, refTime);
         const color = strikeAgeColor(age);
         const size = strikeAgeSize(age);
-        const { x, y } = lonLatToPct(strike.lon, strike.lat);
+        const { x, y } = lonLatToGibsPct(strike.lon, strike.lat);
         return (
           <span
             key={strike.id}
