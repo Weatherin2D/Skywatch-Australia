@@ -49,7 +49,8 @@ function ringToPath(ring: Ring): string {
     ring
       .map(([lon, lat], i) => {
         const { x, y } = lonLatToPct(lon, lat);
-        return `${i === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
+        // Keep sub-pixel precision so high-res coast rings stay sharp when projected
+        return `${i === 0 ? "M" : "L"}${x.toFixed(4)} ${y.toFixed(4)}`;
       })
       .join(" ") + " Z"
   );
