@@ -359,9 +359,9 @@ export function HomeDashboard() {
                             <button
                               type="button"
                               className={cn(
-                                "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                                "flex w-full items-center px-3 py-2 text-left text-sm font-semibold text-[var(--brand)] transition",
                                 satProduct === p.id
-                                  ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                                  ? "bg-[var(--bom-yellow)]"
                                   : "hover:bg-[var(--navy-deep)]",
                               )}
                               onClick={() => {
