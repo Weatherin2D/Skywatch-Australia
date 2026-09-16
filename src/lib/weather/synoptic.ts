@@ -6,7 +6,11 @@ export const SYNOPTIC_PRODUCT = "IDY00030";
 /** Cycles issued by BoM (UTC hours). */
 export const SYNOPTIC_UTC_HOURS = [0, 6, 12, 18] as const;
 
-/** Georeference for the chart — aligned to the national satellite frame. */
+/**
+ * Geographic bounds for the *warped* overlay image (Web Mercator resample
+ * of the polar fax into the national frame). Raw BoM charts cover ~50S–10S,
+ * 90E–180E in polar stereographic — see synoptic-warp.ts.
+ */
 export const SYNOPTIC_BOUNDS = GIBS_AU_BOUNDS;
 
 export const SYNOPTIC_OPACITY = 0.7;

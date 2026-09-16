@@ -3,6 +3,7 @@ import {
   bomSynopticUpstreamUrl,
   isValidSynopticStamp,
 } from "@/lib/weather/synoptic";
+import { warpSynopticToGibsMercator } from "@/lib/weather/synoptic-warp";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,13 +17,13 @@ const BOM_FETCH_HEADERS: HeadersInit = {
   Referer: "https://www.bom.gov.au/australia/charts/synoptic_col.shtml",
 };
 
-/** In-memory PNG cache keyed by stamp (process-local). */
+/** In-memory warped PNG cache keyed by stamp (process-local). */
 const cache = new Map<
   string,
   { body: Buffer; contentType: string; cachedAt: number }
 >();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const CACHE_MAX = 24;
+const CACHE_MAX = 16;
 
 function pruneCache() {
   if (cache.size <= CACHE_MAX) return;
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": hit.contentType,
         "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         "X-Synoptic-Cache": "HIT",
+        "X-Synoptic-Warp": "mercator-gibs",
         "Content-Length": String(hit.body.length),
       },
     });
@@ -68,13 +70,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const contentType = upstream.headers.get("content-type") ?? "image/png";
     const ab = await upstream.arrayBuffer();
-    const body = Buffer.from(ab);
-    if (body.length < 500 || body[0] !== 0x89) {
+    const raw = Buffer.from(ab);
+    if (raw.length < 500 || raw[0] !== 0x89) {
       return NextResponse.json({ error: "Empty chart" }, { status: 502 });
     }
 
+    const body = warpSynopticToGibsMercator(raw);
+    const contentType = "image/png";
     cache.set(stamp, { body, contentType, cachedAt: Date.now() });
     pruneCache();
 
@@ -84,10 +87,12 @@ export async function GET(request: NextRequest) {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600",
         "X-Synoptic-Cache": "MISS",
+        "X-Synoptic-Warp": "mercator-gibs",
         "Content-Length": String(body.length),
       },
     });
-  } catch {
+  } catch (err) {
+    console.error("synoptic frame failed", err);
     return NextResponse.json({ error: "Synoptic fetch failed" }, { status: 502 });
   }
 }
