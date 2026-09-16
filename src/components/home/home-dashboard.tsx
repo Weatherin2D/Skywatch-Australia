@@ -277,14 +277,22 @@ export function HomeDashboard() {
               mode={mode}
               showRadarOverlay={showRadarUi || layers.rainfall}
               frameTileUrl={
-                showSatelliteLoop ? (activeFrame?.tileUrlTemplate ?? null) : null
+                showSatelliteLoop
+                  ? (activeFrame?.tileUrlTemplate ?? null)
+                  : null
+              }
+              frameImageUrl={
+                showSatelliteLoop ? (activeFrame?.imageUrl ?? null) : null
+              }
+              frameImageBounds={
+                showSatelliteLoop ? (activeFrame?.imageBounds ?? null) : null
               }
               frameKey={
                 showSatelliteLoop && activeFrame
                   ? `${activeFrame.time}-${satelliteSource ?? "wx"}`
                   : undefined
               }
-              frameOpacity={0.9}
+              frameOpacity={0.92}
               legend={
                 showSatelliteLoop && activeFrame
                   ? "satellite"

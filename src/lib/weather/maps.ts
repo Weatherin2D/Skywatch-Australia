@@ -3,8 +3,15 @@ export type WeatherFrame = {
   time: number;
   /** RainViewer path fragment when available */
   path?: string;
-  /** Leaflet-ready tile URL with {z}/{x}/{y} (or GIBS {z}/{y}/{x}) placeholders already ordered */
-  tileUrlTemplate: string;
+  /**
+   * Leaflet tile URL with {z}/{x}/{y} placeholders already ordered
+   * (RainViewer: z/x/y, GIBS tiles: z/y/x). Prefer imageUrl for GIBS IR.
+   */
+  tileUrlTemplate?: string;
+  /** Full-frame image overlay (GIBS WMS fallback) */
+  imageUrl?: string;
+  /** Leaflet LatLngBounds as [[south, west], [north, east]] */
+  imageBounds?: [[number, number], [number, number]];
 };
 
 export type WeatherMapsPayload = {
@@ -22,22 +29,51 @@ export type WeatherMapsPayload = {
 
 const AEST_TZ = "Australia/Sydney";
 
+/** Australia-Pacific bbox for GIBS WMS IR frames (lon/lat). */
+export const GIBS_AU_BOUNDS: [[number, number], [number, number]] = [
+  [-48, 105],
+  [-5, 165],
+];
+
+export function lonLatToWebMercator(lon: number, lat: number): [number, number] {
+  const x = (lon * 20037508.34) / 180;
+  let y =
+    Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180);
+  y = (y * 20037508.34) / 180;
+  return [x, y];
+}
+
+export function gibsHimawariWmsUrl(isoTime: string): string {
+  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+  const [minx, miny] = lonLatToWebMercator(west, south);
+  const [maxx, maxy] = lonLatToWebMercator(east, north);
+  const params = new URLSearchParams({
+    SERVICE: "WMS",
+    REQUEST: "GetMap",
+    VERSION: "1.1.1",
+    LAYERS: "Himawari_AHI_Band13_Clean_Infrared",
+    STYLES: "",
+    FORMAT: "image/png",
+    TRANSPARENT: "TRUE",
+    SRS: "EPSG:3857",
+    WIDTH: "1280",
+    HEIGHT: "720",
+    BBOX: `${minx},${miny},${maxx},${maxy}`,
+    TIME: isoTime,
+  });
+  return `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?${params.toString()}`;
+}
+
 export function rainviewerTileUrl(
   host: string,
   path: string,
   kind: "satellite" | "radar" = "satellite",
 ): string {
   const base = `${host.replace(/\/$/, "")}${path}`;
-  // color=0, options=0_0 — valid for both IR and radar per RainViewer docs
   if (kind === "radar") {
     return `${base}/256/{z}/{x}/{y}/2/1_1.png`;
   }
   return `${base}/256/{z}/{x}/{y}/0/0_0.png`;
-}
-
-export function gibsHimawariTileUrl(isoTime: string): string {
-  // GIBS WMTS uses TileMatrix / TileRow / TileCol → {z}/{y}/{x}
-  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/Himawari_AHI_Band13_Clean_Infrared/default/${isoTime}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
 }
 
 export function toIsoZ(ms: number): string {

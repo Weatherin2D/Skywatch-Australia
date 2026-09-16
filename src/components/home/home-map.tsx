@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
+  ImageOverlay,
   CircleMarker,
   Tooltip,
   useMap,
@@ -15,8 +16,11 @@ import "leaflet/dist/leaflet.css";
 type Props = {
   mode: MapMode;
   showRadarOverlay?: boolean;
-  /** Leaflet tile URL template for the active weather frame */
+  /** Leaflet tile URL template for RainViewer frames */
   frameTileUrl?: string | null;
+  /** Full-frame IR image (GIBS WMS) */
+  frameImageUrl?: string | null;
+  frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
   frameOpacity?: number;
   legend?: "radar" | "satellite" | null;
@@ -79,20 +83,18 @@ export function HomeMap({
   mode,
   showRadarOverlay = false,
   frameTileUrl = null,
+  frameImageUrl = null,
+  frameImageBounds = null,
   frameKey,
   frameOpacity = 0.85,
   legend = null,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
-  // Satellite IR loop: dark gray basemap + weather tiles (not static Esri imagery)
-  const basemapUrl = satelliteLoop
-    ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-    : mode === "Radar"
-      ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-      : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+  const hasWeatherFrame = Boolean(frameTileUrl || frameImageUrl);
+  const useEsriImagery = mode === "Satellite" && !hasWeatherFrame;
 
-  // Keep classic imagery only when Satellite is selected but no IR frame yet
-  const useEsriImagery = mode === "Satellite" && !frameTileUrl;
+  const basemapUrl =
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
 
   return (
     <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden">
@@ -123,17 +125,26 @@ export function HomeMap({
         />
         {frameTileUrl ? (
           <TileLayer
-            key={`wx-${frameKey ?? frameTileUrl}`}
+            key={`wx-tile-${frameKey ?? frameTileUrl}`}
             url={frameTileUrl}
             opacity={frameOpacity}
             maxZoom={12}
-            maxNativeZoom={satelliteLoop ? 6 : 10}
-            errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5mZ3oAAAAASUVORK5CYII="
+            maxNativeZoom={10}
+            errorTileUrl="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
             attribution={
               satelliteLoop
-                ? 'Infrared &copy; <a href="https://earthdata.nasa.gov/gibs">NASA GIBS / Himawari</a> · RainViewer'
+                ? 'Infrared &copy; <a href="https://www.rainviewer.com/">RainViewer</a>'
                 : "Radar &copy; RainViewer"
             }
+          />
+        ) : null}
+        {frameImageUrl && frameImageBounds ? (
+          <ImageOverlay
+            key={`wx-img-${frameKey ?? frameImageUrl}`}
+            url={frameImageUrl}
+            bounds={frameImageBounds}
+            opacity={frameOpacity}
+            zIndex={350}
           />
         ) : null}
         <MapModeEffect mode={mode} />
@@ -182,7 +193,7 @@ export function HomeMap({
         </div>
       ) : null}
 
-      {legend === "satellite" || (satelliteLoop && frameTileUrl) ? (
+      {legend === "satellite" || (satelliteLoop && hasWeatherFrame) ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
           <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
             Infrared · cloud tops

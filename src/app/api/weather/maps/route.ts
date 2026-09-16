@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
-  gibsHimawariTileUrl,
+  GIBS_AU_BOUNDS,
+  gibsHimawariWmsUrl,
   rainviewerTileUrl,
   toIsoZ,
   type WeatherFrame,
@@ -27,20 +28,17 @@ type RainViewerMaps = {
   };
 };
 
-async function probeGibsAvailable(isoTime: string): Promise<boolean> {
-  // Australia-ish tile at z4
-  const url = gibsHimawariTileUrl(isoTime)
-    .replace("{z}", "4")
-    .replace("{y}", "9")
-    .replace("{x}", "14");
+async function probeGibsWms(isoTime: string): Promise<boolean> {
   try {
-    const res = await fetch(url, {
+    const res = await fetch(gibsHimawariWmsUrl(isoTime), {
       method: "GET",
       headers: { "User-Agent": "SkyWatchAustralia/1.0" },
       cache: "no-store",
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(10000),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    const type = res.headers.get("content-type") ?? "";
+    return type.includes("image");
   } catch {
     return false;
   }
@@ -52,7 +50,7 @@ async function buildGibsInfraredFrames(): Promise<WeatherFrame[]> {
 
   for (let i = 0; i < GIBS_PROBE_MAX; i++) {
     const candidate = latestMs - i * GIBS_STEP_MS;
-    if (await probeGibsAvailable(toIsoZ(candidate))) {
+    if (await probeGibsWms(toIsoZ(candidate))) {
       latestMs = candidate;
       found = true;
       break;
@@ -67,7 +65,8 @@ async function buildGibsInfraredFrames(): Promise<WeatherFrame[]> {
     const iso = toIsoZ(ms);
     frames.push({
       time: Math.floor(ms / 1000),
-      tileUrlTemplate: gibsHimawariTileUrl(iso),
+      imageUrl: gibsHimawariWmsUrl(iso),
+      imageBounds: GIBS_AU_BOUNDS,
     });
   }
   return frames;
@@ -89,7 +88,10 @@ function normalizeRainviewerFrames(
 export async function GET() {
   try {
     const rvRes = await fetch(RAINVIEWER_URL, {
-      headers: { Accept: "application/json", "User-Agent": "SkyWatchAustralia/1.0" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "SkyWatchAustralia/1.0",
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(12000),
     });

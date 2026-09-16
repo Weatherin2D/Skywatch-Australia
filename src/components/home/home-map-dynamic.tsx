@@ -19,6 +19,8 @@ export function HomeMapDynamic({
   mode,
   showRadarOverlay,
   frameTileUrl,
+  frameImageUrl,
+  frameImageBounds,
   frameKey,
   frameOpacity,
   legend,
@@ -26,6 +28,8 @@ export function HomeMapDynamic({
   mode: MapMode;
   showRadarOverlay?: boolean;
   frameTileUrl?: string | null;
+  frameImageUrl?: string | null;
+  frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
   frameOpacity?: number;
   legend?: "radar" | "satellite" | null;
@@ -35,6 +39,8 @@ export function HomeMapDynamic({
       mode={mode}
       showRadarOverlay={showRadarOverlay}
       frameTileUrl={frameTileUrl}
+      frameImageUrl={frameImageUrl}
+      frameImageBounds={frameImageBounds}
       frameKey={frameKey}
       frameOpacity={frameOpacity}
       legend={legend}
