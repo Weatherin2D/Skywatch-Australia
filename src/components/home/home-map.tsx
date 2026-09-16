@@ -42,8 +42,10 @@ type Props = {
   lightningAttribution?: string | null;
   lightningStatus?: "connecting" | "live" | "reconnecting" | "error" | null;
   lightningLive?: boolean;
-  /** Active satellite frame unix time; null = wall clock (Map/Radar). */
+  /** Active satellite frame unix time; null = wall clock (Map/Radar or latest frame). */
   lightningReferenceTime?: number | null;
+  /** True while Satellite loop is active (legend: synced to frame). */
+  lightningFrameSynced?: boolean;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -183,6 +185,7 @@ export function HomeMap({
   lightningStatus = null,
   lightningLive = false,
   lightningReferenceTime = null,
+  lightningFrameSynced = false,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
 
@@ -218,6 +221,7 @@ export function HomeMap({
             status={lightningStatus}
             live={lightningLive}
             referenceTime={lightningReferenceTime}
+            frameSynced={lightningFrameSynced}
           />
         ) : null}
       </div>
@@ -258,6 +262,7 @@ export function HomeMap({
           status={lightningStatus}
           live={lightningLive}
           referenceTime={lightningReferenceTime}
+          frameSynced={lightningFrameSynced}
         />
       ) : null}
 

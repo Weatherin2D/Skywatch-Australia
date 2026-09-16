@@ -549,8 +549,13 @@ export function HomeDashboard() {
               lightningStatus={lightningStatus}
               lightningLive={lightningLive}
               lightningReferenceTime={
-                showSatelliteLoop ? (activeFrame?.time ?? null) : null
+                showSatelliteLoop
+                  ? frameIndex >= loopFrames.length - 1
+                    ? null // latest frame: wall clock so live strikes past satellite lag still show
+                    : (activeFrame?.time ?? null)
+                  : null
               }
+              lightningFrameSynced={showSatelliteLoop}
             />
           </div>
 

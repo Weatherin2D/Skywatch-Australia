@@ -36,6 +36,7 @@ export function HomeMapDynamic({
   lightningStatus,
   lightningLive,
   lightningReferenceTime,
+  lightningFrameSynced,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -53,6 +54,7 @@ export function HomeMapDynamic({
   lightningStatus?: "connecting" | "live" | "reconnecting" | "error" | null;
   lightningLive?: boolean;
   lightningReferenceTime?: number | null;
+  lightningFrameSynced?: boolean;
 }) {
   return (
     <HomeMap
@@ -72,6 +74,7 @@ export function HomeMapDynamic({
       lightningStatus={lightningStatus}
       lightningLive={lightningLive}
       lightningReferenceTime={lightningReferenceTime}
+      lightningFrameSynced={lightningFrameSynced}
     />
   );
 }

@@ -197,12 +197,14 @@ export function LightningLegend({
   status,
   live,
   referenceTime = null,
+  frameSynced = false,
 }: {
   strikes: LightningStrike[];
   attribution?: string | null;
   status?: "connecting" | "live" | "reconnecting" | "error" | null;
   live?: boolean;
   referenceTime?: number | null;
+  frameSynced?: boolean;
 }) {
   const refTime = referenceTime ?? Math.floor(Date.now() / 1000);
   const visible = filterStrikesAtTime(strikes, refTime, 30);
@@ -223,6 +225,8 @@ export function LightningLegend({
             : live
               ? "LIVE"
               : "…";
+
+  const syncedLabel = frameSynced ? "satellite frame" : "live clock";
 
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-[1000] border border-white/25 bg-black/70 px-2.5 py-2 text-white backdrop-blur-sm">
@@ -245,7 +249,7 @@ export function LightningLegend({
       {visible.length === 0 ? (
         <p className="max-w-[12rem] text-[10px] leading-snug text-white/75">
           {status === "live" || status === "reconnecting"
-            ? referenceTime != null
+            ? frameSynced && referenceTime != null
               ? "No strikes at this frame time — scrub forward as storms develop…"
               : "No strikes over Australia in the last 30 min — listening live…"
             : "Connecting to live lightning feed…"}
@@ -303,8 +307,7 @@ export function LightningLegend({
         </ul>
       )}
       <p className="mt-1.5 text-[9px] text-white/60">
-        {visible.length} strikes · synced to{" "}
-        {referenceTime != null ? "satellite frame" : "live clock"}
+        {visible.length} strikes · synced to {syncedLabel}
       </p>
       {attribution ? (
         <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">
