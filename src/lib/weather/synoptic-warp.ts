@@ -9,66 +9,42 @@ import fit from "@/lib/weather/synoptic-fit.json";
 /**
  * BoM colour MSLP (IDY00030) → national GIBS Mercator frame.
  *
- * Projection: south-polar stereographic (OpenCPN weatherfax MSLPC pole /
- * equator), with lon/mercY linear terms refit from coast tips on the current
- * 640×432 chart crop (see synoptic-fit.json). Affine land-mask fits lock the
- * Bight well but leave Cape York / Tasmania drifted; polar keeps extremes
- * closer to the GeoJSON outline.
+ * Thin-plate spline maps each mercator overlay pixel to a source chart pixel
+ * using coast-tip control points (see synoptic-fit.json). This locks Cape York,
+ * the Bight, WA, and Tasmania far better than a single polar/affine model.
  */
 
-function latToMercY(latDeg: number) {
-  const s = Math.sin((latDeg * Math.PI) / 180);
-  return 0.5 * Math.log((1 + s) / (1 - s));
-}
-
-function mercYToLat(y: number) {
-  return (180 / Math.PI) * (2 * Math.atan(Math.exp(y)) - Math.PI / 2);
-}
-
-type Calib = {
-  a: number;
-  b: number;
-  c: number;
-  d: number;
-  poleX: number;
-  poleY: number;
-  inputheight: number;
-  trueRatio: number;
-  imgW: number;
-  imgH: number;
+type Tps = {
+  w: number[];
+  a0: number;
+  a1: number;
+  a2: number;
 };
 
-function buildCalibration(imgW: number, imgH: number): Calib {
-  const sx = imgW / fit.chartW;
-  const sy = imgH / fit.chartH;
-  return {
-    a: fit.a,
-    b: fit.b,
-    c: fit.c,
-    d: fit.d,
-    poleX: fit.poleX * sx,
-    poleY: fit.poleY * sy,
-    inputheight: (fit.inputEquator - fit.poleY) * sy,
-    trueRatio: fit.trueRatio,
-    imgW,
-    imgH,
-  };
+type Ctrl = { mx: number; my: number; px: number; py: number };
+
+const CTRLS = fit.ctrls as Ctrl[];
+const TPS_X = fit.tpsX as Tps;
+const TPS_Y = fit.tpsY as Tps;
+const FIT_OUT_W = fit.outW;
+const FIT_OUT_H = fit.outH;
+const FIT_CHART_W = fit.chartW;
+const FIT_CHART_H = fit.chartH;
+
+function U(r2: number) {
+  if (r2 < 1e-12) return 0;
+  const r = Math.sqrt(r2);
+  return r2 * Math.log(r);
 }
 
-function latLonToInput(lat: number, lon: number, calib: Calib) {
-  const geoY = latToMercY(lat);
-  const mx = (lon - calib.b) / calib.a;
-  let my = (geoY - calib.d) / calib.c;
-  my /= calib.imgH;
-  const pp = (4 / Math.PI) * Math.atan(Math.exp(my)) - 1;
-  const q = calib.inputheight > 0 ? 1 + pp : 1 - pp;
-  const z = Math.tan((q * Math.PI) / 4);
-  const dist = z * calib.inputheight;
-  const theta = mx / calib.imgW;
-  let dx = Math.abs(dist) * Math.sin(theta);
-  const dy = dist * Math.cos(theta);
-  dx /= calib.trueRatio;
-  return { px: dx + calib.poleX, py: dy + calib.poleY };
+function mapTps(mx: number, my: number, tps: Tps) {
+  let v = tps.a0 + tps.a1 * mx + tps.a2 * my;
+  for (let i = 0; i < CTRLS.length; i++) {
+    const dx = mx - CTRLS[i]!.mx;
+    const dy = my - CTRLS[i]!.my;
+    v += tps.w[i]! * U(dx * dx + dy * dy);
+  }
+  return v;
 }
 
 function sampleBilinear(
@@ -114,29 +90,24 @@ function sampleBilinear(
  */
 export function warpSynopticToGibsMercator(sourcePng: Buffer): Buffer {
   const src = PNG.sync.read(sourcePng);
-  const calib = buildCalibration(src.width, src.height);
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const outW = GIBS_DISPLAY_WIDTH;
   const outH = Math.max(1, Math.round(outW / GIBS_AU_ASPECT));
   const out = new PNG({ width: outW, height: outH });
-  const myNorth = latToMercY(north);
-  const mySouth = latToMercY(south);
-  // Hide the chart legend strip along the bottom of the source PNG.
-  const legendTop = src.height * (1 - 70 / fit.chartH);
 
-  // Small mercator-pixel nudge after polar (tuned against GeoJSON coast).
-  const nudgeX = (fit as { nudgeX?: number }).nudgeX ?? 0;
-  const nudgeY = (fit as { nudgeY?: number }).nudgeY ?? 0;
+  const sxOut = outW / FIT_OUT_W;
+  const syOut = outH / FIT_OUT_H;
+  const sxChart = src.width / FIT_CHART_W;
+  const syChart = src.height / FIT_CHART_H;
+  const legendTop = src.height * (1 - 70 / FIT_CHART_H);
 
   for (let j = 0; j < outH; j++) {
-    const my =
-      myNorth + ((j + 0.5 - nudgeY) / outH) * (mySouth - myNorth);
-    const lat = mercYToLat(my);
+    const myFit = (j + 0.5) / syOut;
     for (let i = 0; i < outW; i++) {
-      const lon = west + ((i + 0.5 - nudgeX) / outW) * (east - west);
-      const { px, py } = latLonToInput(lat, lon, calib);
+      const mxFit = (i + 0.5) / sxOut;
+      const px = mapTps(mxFit, myFit, TPS_X) * sxChart;
+      const py = mapTps(mxFit, myFit, TPS_Y) * syChart;
       const o = (j * outW + i) * 4;
-      if (py >= legendTop) {
+      if (!Number.isFinite(px) || !Number.isFinite(py) || py >= legendTop) {
         out.data[o] = 0;
         out.data[o + 1] = 0;
         out.data[o + 2] = 0;
