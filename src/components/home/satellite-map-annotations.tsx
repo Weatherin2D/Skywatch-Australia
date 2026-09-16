@@ -130,6 +130,7 @@ export function SatelliteMapAnnotations({
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         className="absolute inset-0 h-full w-full"
+        shapeRendering="geometricPrecision"
         aria-hidden
       >
         {settings.stateOutlines
@@ -140,6 +141,7 @@ export function SatelliteMapAnnotations({
                 fill="none"
                 stroke="rgba(255,255,255,0.7)"
                 strokeWidth={1.25}
+                strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
               />
             ))
@@ -151,7 +153,7 @@ export function SatelliteMapAnnotations({
                 d={d}
                 fill="none"
                 stroke="#ffffff"
-                strokeWidth={2.25}
+                strokeWidth={2.1}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
