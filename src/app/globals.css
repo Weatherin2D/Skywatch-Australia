@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans), "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-sans), "Source Sans 3", Arial, Helvetica, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-display), "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-display), "Source Sans 3", Arial, Helvetica, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -43,6 +43,10 @@
   --color-navy: var(--navy);
   --color-navy-deep: var(--navy-deep);
   --color-panel: var(--panel);
+  --color-bom-yellow: var(--bom-yellow);
+  --color-bom-blue: var(--bom-blue);
+  --color-bom-blue-mid: var(--bom-blue-mid);
+  --color-page: var(--page);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -53,42 +57,47 @@
 }
 
 :root {
-  --navy-deep: #051020;
-  --navy: #0a1c36;
-  --panel: #0d2240;
-  --sky: #00aeef;
-  --background: #051020;
-  --foreground: #f4f8fc;
-  --card: #0d2240;
-  --card-foreground: #f4f8fc;
-  --popover: #0d2240;
-  --popover-foreground: #f4f8fc;
-  --primary: #00aeef;
-  --primary-foreground: #051020;
-  --secondary: #123054;
-  --secondary-foreground: #f4f8fc;
-  --muted: #123054;
-  --muted-foreground: #9bb0c7;
-  --accent: #00aeef;
-  --accent-foreground: #051020;
-  --destructive: #ef4444;
-  --border: #1a3a5c;
-  --input: #1a3a5c;
-  --ring: #00aeef;
-  --chart-1: #00aeef;
-  --chart-2: #38bdf8;
-  --chart-3: #fbbf24;
-  --chart-4: #f87171;
-  --chart-5: #a78bfa;
-  --radius: 0.5rem;
-  --sidebar: #0a1c36;
-  --sidebar-foreground: #f4f8fc;
-  --sidebar-primary: #00aeef;
-  --sidebar-primary-foreground: #051020;
-  --sidebar-accent: #123054;
-  --sidebar-accent-foreground: #f4f8fc;
-  --sidebar-border: #1a3a5c;
-  --sidebar-ring: #00aeef;
+  /* Classic BoM-inspired palette */
+  --navy-deep: #001a3a;
+  --navy: #003087;
+  --bom-blue: #003087;
+  --bom-blue-mid: #1a6bb5;
+  --panel: #1a6bb5;
+  --sky: #ffe000;
+  --bom-yellow: #ffe000;
+  --page: #eef2f6;
+  --background: #eef2f6;
+  --foreground: #0b1f3a;
+  --card: #1a6bb5;
+  --card-foreground: #ffffff;
+  --popover: #ffffff;
+  --popover-foreground: #0b1f3a;
+  --primary: #003087;
+  --primary-foreground: #ffffff;
+  --secondary: #0055a5;
+  --secondary-foreground: #ffffff;
+  --muted: #d7e2ee;
+  --muted-foreground: #3d5570;
+  --accent: #ffe000;
+  --accent-foreground: #003087;
+  --destructive: #c62828;
+  --border: #9bb4d0;
+  --input: #ffffff;
+  --ring: #003087;
+  --chart-1: #003087;
+  --chart-2: #1a6bb5;
+  --chart-3: #ffe000;
+  --chart-4: #c62828;
+  --chart-5: #2e7d32;
+  --radius: 0.125rem;
+  --sidebar: #003087;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffe000;
+  --sidebar-primary-foreground: #003087;
+  --sidebar-accent: #0055a5;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1a4a8c;
+  --sidebar-ring: #ffe000;
 }
 
 @layer base {
@@ -104,7 +113,7 @@
 }
 
 .leaflet-container {
-  background: #0a1c36;
+  background: #0a1628;
   font: inherit;
   width: 100%;
   height: 100%;
@@ -118,30 +127,31 @@
 }
 
 .skywatch-map .leaflet-control-zoom a {
-  background: rgba(5, 16, 32, 0.92) !important;
-  color: #f4f8fc !important;
-  border: 1px solid #1a3a5c !important;
+  background: #003087 !important;
+  color: #ffffff !important;
+  border: 1px solid #1a4a8c !important;
   width: 34px !important;
   height: 34px !important;
   line-height: 34px !important;
   font-size: 16px !important;
+  border-radius: 0 !important;
 }
 
 .skywatch-map .leaflet-control-zoom a:hover {
-  background: #123054 !important;
-  color: #00aeef !important;
+  background: #1a6bb5 !important;
+  color: #ffe000 !important;
 }
 
 .skywatch-map .leaflet-control-attribution {
-  background: rgba(5, 16, 32, 0.75) !important;
-  color: #9bb0c7 !important;
+  background: rgba(0, 48, 135, 0.85) !important;
+  color: #d7e2ee !important;
   font-size: 10px !important;
 }
 
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -150,9 +160,9 @@
 }
 
 .animate-fade-up {
-  animation: fade-up 0.5s ease-out both;
+  animation: fade-up 0.4s ease-out both;
 }
 
 .animate-fade-up-delay {
-  animation: fade-up 0.65s ease-out 0.06s both;
+  animation: fade-up 0.5s ease-out 0.05s both;
 }

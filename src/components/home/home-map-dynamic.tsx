@@ -8,7 +8,7 @@ const HomeMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full min-h-[360px] w-full items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--panel)] text-sm text-[var(--muted-foreground)]">
+      <div className="flex h-full min-h-[360px] w-full items-center justify-center border border-[var(--bom-blue)] bg-[var(--bom-blue)]/10 text-sm text-[var(--bom-blue)]">
         Loading map…
       </div>
     ),

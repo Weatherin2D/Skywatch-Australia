@@ -10,7 +10,6 @@ import {
 } from "react-leaflet";
 import { Layers, LocateFixed } from "lucide-react";
 import { CITY_MARKERS, type MapMode } from "@/components/home/mock-data";
-import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
@@ -32,7 +31,7 @@ function MapTools() {
     <div className="absolute left-3 top-14 z-[1000] flex flex-col gap-2">
       <button
         type="button"
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--navy-deep)]/95 text-white shadow-lg transition hover:border-[var(--sky)] hover:text-[var(--sky)]"
+        className="flex h-9 w-9 items-center justify-center border border-white/30 bg-[var(--bom-blue)] text-white shadow transition hover:bg-[var(--bom-blue-mid)] hover:text-[var(--bom-yellow)]"
         aria-label="Recentre on Australia"
         onClick={() => map.setView([-25.5, 134.5], 4, { animate: true })}
       >
@@ -40,7 +39,7 @@ function MapTools() {
       </button>
       <button
         type="button"
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--navy-deep)]/95 text-white shadow-lg transition hover:border-[var(--sky)] hover:text-[var(--sky)]"
+        className="flex h-9 w-9 items-center justify-center border border-white/30 bg-[var(--bom-blue)] text-white shadow transition hover:bg-[var(--bom-blue-mid)] hover:text-[var(--bom-yellow)]"
         aria-label="Layer stack"
         onClick={() => undefined}
       >
@@ -83,7 +82,7 @@ export function HomeMap({ mode }: Props) {
   const satellite = mode === "Satellite";
 
   return (
-    <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden rounded-lg border border-[var(--border)]">
+    <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden">
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}
@@ -131,29 +130,25 @@ export function HomeMap({ mode }: Props) {
         ))}
       </MapContainer>
 
-      <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] rounded-md border border-[var(--border)] bg-[var(--navy-deep)]/90 px-3 py-2">
-        <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">
+      <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-3 py-2">
+        <p className="mb-1 text-[10px] uppercase tracking-wider text-white/80">
           Intensity
         </p>
-        <div className="flex h-2 w-36 overflow-hidden rounded-full">
+        <div className="flex h-2 w-36 overflow-hidden">
           <span className="flex-1 bg-emerald-400" />
           <span className="flex-1 bg-lime-400" />
           <span className="flex-1 bg-yellow-400" />
           <span className="flex-1 bg-orange-400" />
           <span className="flex-1 bg-red-500" />
         </div>
-        <div className="mt-1 flex justify-between text-[10px] text-[var(--muted-foreground)]">
+        <div className="mt-1 flex justify-between text-[10px] text-white/75">
           <span>Light</span>
           <span>Heavy</span>
         </div>
       </div>
 
-      <div
-        className={cn(
-          "pointer-events-none absolute left-3 top-3 z-[1000] rounded-md border border-[var(--border)] bg-[var(--navy-deep)]/90 px-2.5 py-1 text-xs text-[var(--muted-foreground)]",
-        )}
-      >
-        Mode: <span className="text-white">{mode}</span>
+      <div className="pointer-events-none absolute left-3 top-3 z-[1000] border border-white/30 bg-[var(--bom-blue)]/90 px-2.5 py-1 text-xs text-white/80">
+        Mode: <span className="font-semibold text-white">{mode}</span>
       </div>
     </div>
   );
