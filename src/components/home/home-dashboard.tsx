@@ -37,6 +37,7 @@ import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import { useLightning } from "@/hooks/use-lightning";
 import { useSynoptic } from "@/hooks/use-synoptic";
 import { pickSynopticFrame } from "@/lib/weather/synoptic";
+import { prefetchSynopticGeoJson } from "@/lib/weather/synoptic-geojson-cache";
 import {
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
@@ -195,8 +196,8 @@ export function HomeDashboard() {
   const readyGateRef = useRef({ isUrlReady });
   readyGateRef.current = { isUrlReady };
 
-  // Prefetch synoptic analyses that cover the satellite loop so scrubbing /
-  // playback can swap charts without waiting on the network mid-animation.
+  // Prefetch synoptic analyses that cover the satellite loop into the shared
+  // memory cache so play-from-start never waits on the network.
   useEffect(() => {
     if (!showSynoptic || !showSatelliteLoop) return;
     if (synopticFrames.length === 0 || loopFrames.length === 0) return;
@@ -205,11 +206,11 @@ export function HomeDashboard() {
       const syn = pickSynopticFrame(synopticFrames, sat.time);
       if (syn?.geojsonUrl) urls.add(syn.geojsonUrl);
     }
-    for (const url of urls) {
-      void fetch(url, { cache: "force-cache" }).catch(() => {
-        /* ignore prefetch errors */
-      });
+    // Also warm the newest catalog stamps (often includes the embedded field).
+    for (const syn of synopticFrames.slice(0, 4)) {
+      if (syn.geojsonUrl) urls.add(syn.geojsonUrl);
     }
+    void prefetchSynopticGeoJson(urls);
   }, [showSynoptic, showSatelliteLoop, loopFrames, synopticFrames]);
 
   // Jump to latest frame when the product/mode loop set changes
@@ -598,16 +599,26 @@ export function HomeDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  setPlaying((p) => {
-                    if (!p && loopFrames.length > 0) {
-                      // Start (or restart) from the first frame when at the end
-                      if (frameIndex >= loopFrames.length - 1) {
-                        setFrameIndex(0);
-                      }
-                      return true;
+                  if (playing) {
+                    setPlaying(false);
+                    return;
+                  }
+                  if (loopFrames.length === 0) return;
+                  const restart = frameIndex >= loopFrames.length - 1;
+                  const startPlay = () => {
+                    if (restart) setFrameIndex(0);
+                    setPlaying(true);
+                  };
+                  if (restart && showSynoptic && synopticFrames.length > 0) {
+                    const urls = new Set<string>();
+                    for (const sat of loopFrames) {
+                      const syn = pickSynopticFrame(synopticFrames, sat.time);
+                      if (syn?.geojsonUrl) urls.add(syn.geojsonUrl);
                     }
-                    return !p;
-                  });
+                    void prefetchSynopticGeoJson(urls).finally(startPlay);
+                    return;
+                  }
+                  startPlay();
                 }}
                 disabled={loopFrames.length === 0 || readyCount === 0}
                 className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"

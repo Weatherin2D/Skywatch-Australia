@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GeoJSON } from "react-leaflet";
 import type { PathOptions } from "leaflet";
 import L from "leaflet";
@@ -19,6 +19,11 @@ import {
   GIBS_AU_ASPECT,
   lonLatToGibsPct,
 } from "@/lib/weather/maps";
+import {
+  getCachedSynopticGeoJson,
+  loadSynopticGeoJson,
+  seedSynopticGeoJson,
+} from "@/lib/weather/synoptic-geojson-cache";
 
 function useNowTick(enabled: boolean) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -45,59 +50,74 @@ function useActiveSynopticFrame(
   );
 }
 
+/**
+ * Resolve the GeoJSON for the active synoptic analysis hour.
+ * Uses an in-memory cache so satellite scrub/play never blanks the overlay
+ * while a (usually already-prefetched) field loads.
+ */
 function useSynopticGeoJson(
   enabled: boolean,
   frame: SynopticFrame | null,
   embedded: SynopticGeoJson | null | undefined,
   embeddedTime: number | null | undefined,
 ) {
-  const [geojson, setGeojson] = useState<SynopticGeoJson | null>(null);
+  const url = frame?.geojsonUrl ?? null;
+  const holdRef = useRef<SynopticGeoJson | null>(null);
+  const [version, setVersion] = useState(0);
+
+  // Seed catalog embedded latest into the shared cache once.
+  useEffect(() => {
+    if (!embedded || embeddedTime == null || !frame) return;
+    if (Math.abs(embeddedTime - frame.time) > 900) return;
+    if (!frame.geojsonUrl) return;
+    seedSynopticGeoJson(frame.geojsonUrl, embedded);
+    holdRef.current = embedded;
+    setVersion((v) => v + 1);
+  }, [embedded, embeddedTime, frame?.geojsonUrl, frame?.time]);
 
   useEffect(() => {
-    if (!enabled) {
-      setGeojson(null);
+    if (!enabled || !url) return;
+    if (getCachedSynopticGeoJson(url)) {
+      holdRef.current = getCachedSynopticGeoJson(url);
+      setVersion((v) => v + 1);
       return;
     }
-    // Reuse the catalog's embedded latest field only when it matches the
-    // analysis hour selected for the current satellite/reference time.
+    let cancelled = false;
+    void loadSynopticGeoJson(url).then((geojson) => {
+      if (cancelled || !geojson) return;
+      holdRef.current = geojson;
+      setVersion((v) => v + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, url]);
+
+  return useMemo(() => {
+    if (!enabled) return null;
+    // Prefer the field for the active analysis hour when cached.
+    if (url) {
+      const hit = getCachedSynopticGeoJson(url);
+      if (hit) {
+        holdRef.current = hit;
+        return hit;
+      }
+    }
     if (
       embedded &&
       frame &&
       embeddedTime != null &&
       Math.abs(embeddedTime - frame.time) <= 900
     ) {
-      setGeojson(embedded);
-      return;
+      holdRef.current = embedded;
+      return embedded;
     }
-    if (!frame?.geojsonUrl) {
-      setGeojson(embedded ?? null);
-      return;
-    }
-    let cancelled = false;
-    const ac = new AbortController();
-    // Drop a mismatched chart immediately so scrubbing never leaves an
-    // out-of-time synoptic over the satellite frame.
-    setGeojson(null);
-    void (async () => {
-      try {
-        const res = await fetch(frame.geojsonUrl, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error("field fetch failed");
-        const data = (await res.json()) as { geojson?: SynopticGeoJson };
-        if (!cancelled) setGeojson(data.geojson ?? null);
-      } catch {
-        if (!cancelled) setGeojson(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, [enabled, frame?.geojsonUrl, frame?.time, embedded, embeddedTime]);
-
-  return geojson;
+    // Hold the last drawn chart across analysis swaps / in-flight fetches
+    // so the overlay never unmounts to null mid-animation.
+    return holdRef.current;
+    // version bumps when cache fills; url/frame drive selection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, url, frame, embedded, embeddedTime, version]);
 }
 
 function lineToPath(coords: [number, number][]): string {
@@ -469,7 +489,7 @@ export function LeafletSynopticOverlay({
 
   return (
     <GeoJSON
-      key={`${frame?.stamp ?? "latest"}-${geojson.features.length}`}
+      key={frame?.stamp ?? "latest"}
       data={geojson as GeoJSON.FeatureCollection}
       style={leafletStyle}
       pointToLayer={pointToLayer}

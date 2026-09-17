@@ -7,6 +7,7 @@ import type {
 } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import { pickSynopticFrame } from "@/lib/weather/synoptic";
+import { seedSynopticGeoJson } from "@/lib/weather/synoptic-geojson-cache";
 
 type State = {
   frames: SynopticFrame[];
@@ -45,6 +46,9 @@ export function useSynoptic(enabled: boolean) {
       if (!res.ok) throw new Error(`Synoptic unavailable (${res.status})`);
       const data = (await res.json()) as SynopticPayload;
       if (signal?.aborted) return;
+      if (data.geojson && data.latest?.geojsonUrl) {
+        seedSynopticGeoJson(data.latest.geojsonUrl, data.geojson);
+      }
       setState({
         frames: data.frames,
         latest: data.latest,
