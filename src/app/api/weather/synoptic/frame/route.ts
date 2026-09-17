@@ -25,7 +25,7 @@ const cache = new Map<
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_MAX = 16;
 /** Bump when synoptic-fit.json / warp math changes so stale frames are dropped. */
-const WARP_CACHE_EPOCH = "stretch-v10";
+const WARP_CACHE_EPOCH = "stretch-v11";
 
 function pruneCache() {
   if (cache.size <= CACHE_MAX) return;

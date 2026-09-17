@@ -1,9 +1,9 @@
 {
   "mode": "stretch",
-  "scX": 2.255,
-  "scY": 2.165,
-  "tx": 501.0,
-  "ty": 374.5,
+  "scX": 2.275,
+  "scY": 2.185,
+  "tx": 502.5,
+  "ty": 376.5,
   "chartCx": 326.9067343153766,
   "chartCy": 142.54008825598498,
   "chartW": 640,
@@ -11,5 +11,5 @@
   "legendH": 70,
   "outW": 1024,
   "outH": 851,
-  "notes": "mainland edge fit + close remaining west/east under-size vs mercator outline"
+  "notes": "stretch-v11: further uniform enlarge to fill remaining inset vs mercator mainland outline"
 }
