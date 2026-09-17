@@ -59,7 +59,7 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 25 * 60 * 1000;
 /** Bump when front geometry / barb-side logic changes so HMR cannot serve stale vectors. */
-const FRONT_CACHE_VER = "barb-orient-v3";
+const FRONT_CACHE_VER = "front-smooth-v4";
 
 export const BOM_FRONTS_ATTRIBUTION =
   "Fronts · BoM IDY00030 colour MSLP analysis";
@@ -139,6 +139,69 @@ function chaikin(pts: Pixel[], iters = 1): Pixel[] {
     cur = out;
   }
   return cur;
+}
+
+/** Perpendicular distance from point C to segment AB (pixel space). */
+function perpDist(a: Pixel, b: Pixel, c: Pixel): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-9) return Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const t = Math.max(
+    0,
+    Math.min(1, ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / len2),
+  );
+  return Math.hypot(c[0] - (a[0] + t * dx), c[1] - (a[1] + t * dy));
+}
+
+/** Ramer–Douglas–Peucker: strip high-frequency skeleton zigzags. */
+function rdp(pts: Pixel[], epsilon: number): Pixel[] {
+  if (pts.length < 3) return pts;
+  let maxD = 0;
+  let idx = 0;
+  const first = pts[0]!;
+  const last = pts[pts.length - 1]!;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = perpDist(first, last, pts[i]!);
+    if (d > maxD) {
+      maxD = d;
+      idx = i;
+    }
+  }
+  if (maxD <= epsilon) return [first, last];
+  const left = rdp(pts.slice(0, idx + 1), epsilon);
+  const right = rdp(pts.slice(idx), epsilon);
+  return [...left.slice(0, -1), ...right];
+}
+
+/** Evenly resample a polyline by arc length (pixel units). */
+function resamplePolyline(pts: Pixel[], spacing: number): Pixel[] {
+  if (pts.length < 2) return pts;
+  const out: Pixel[] = [pts[0]!];
+  let carry = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1]!;
+    const b = pts[i]!;
+    let seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (seg < 1e-6) continue;
+    let t0 = 0;
+    while (carry + (seg - t0) >= spacing) {
+      const need = spacing - carry;
+      const t = (t0 + need) / seg;
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      t0 += need;
+      carry = 0;
+    }
+    carry += seg - t0;
+  }
+  const last = pts[pts.length - 1]!;
+  const prev = out[out.length - 1]!;
+  if (Math.hypot(last[0] - prev[0], last[1] - prev[1]) > spacing * 0.25) {
+    out.push(last);
+  } else {
+    out[out.length - 1] = last;
+  }
+  return out;
 }
 
 type Component = {
@@ -477,17 +540,6 @@ function mergeStationaryChains(paths: PixelFront[]): {
   return { merged, consumed };
 }
 
-function downsample(pts: Pixel[], maxPts = 48): Pixel[] {
-  if (pts.length <= maxPts) return pts;
-  const step = Math.max(1, Math.floor(pts.length / maxPts));
-  const out: Pixel[] = [];
-  for (let i = 0; i < pts.length; i += step) out.push(pts[i]!);
-  const last = pts[pts.length - 1]!;
-  const prev = out[out.length - 1]!;
-  if (prev[0] !== last[0] || prev[1] !== last[1]) out.push(last);
-  return out;
-}
-
 function geoLengthDeg(coords: [number, number][]): number {
   let len = 0;
   for (let i = 1; i < coords.length; i++) {
@@ -505,7 +557,22 @@ function toFeature(
   points: Pixel[],
   warmSide?: [number, number],
 ): SynopticFeature | null {
-  const sampled = downsample(chaikin(smoothLine(points, 1), 1), 56);
+  // Strip skeleton zigzags, then smooth so fronts read as continuous curves.
+  // Keep RDP gentle on short paths so we do not erase warm/occluded stubs.
+  const pixelLen = pathPixelLength(points);
+  const rdpEps =
+    kind === "trough" ? 1.4 : pixelLen < 80 ? 1.5 : 2.0;
+  const cleaned = rdp(points, rdpEps);
+  const base = cleaned.length >= 3 ? cleaned : points;
+  const smoothed = chaikin(smoothLine(base, 3), 3);
+  const spacing = Math.max(
+    3.5,
+    Math.min(kind === "trough" ? 9 : 7, pathPixelLength(smoothed) / 28),
+  );
+  let sampled = resamplePolyline(smoothed, spacing);
+  if (sampled.length < 6 && smoothed.length >= 3) {
+    sampled = resamplePolyline(smoothed, Math.max(2.5, pathPixelLength(smoothed) / 20));
+  }
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   let coords: [number, number][] = [];
   for (const [x, y] of sampled) {
@@ -516,7 +583,7 @@ function toFeature(
     coords.push([lon, lat]);
   }
   if (coords.length < 3) return null;
-  if (geoLengthDeg(coords) < MIN_GEO_DEG) return null;
+  if (geoLengthDeg(coords) < MIN_GEO_DEG * 0.85) return null;
   // Direct the polyline so the advance / barb side lies to the geographic
   // LEFT of the travel direction. Barbs are always drawn to the left.
   if (warmSide) coords = orientCoordsAdvanceLeft(coords, warmSide);

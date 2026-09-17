@@ -129,6 +129,31 @@ function lineToPath(coords: [number, number][]): string {
     .join(" ");
 }
 
+/** Catmull–Rom → cubic Bezier path for smooth front curves in the viewBox. */
+function lineToSmoothPath(coords: [number, number][]): string {
+  if (coords.length < 2) return "";
+  const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
+  if (pts.length === 2) {
+    const a = pts[0]!;
+    const b = pts[1]!;
+    return `M${a.x.toFixed(3)} ${a.y.toFixed(3)} L${b.x.toFixed(3)} ${b.y.toFixed(3)}`;
+  }
+  let d = `M${pts[0]!.x.toFixed(3)} ${pts[0]!.y.toFixed(3)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? i : i - 1]!;
+    const p1 = pts[i]!;
+    const p2 = pts[i + 1]!;
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1]!;
+    // Centripetal-ish Catmull–Rom → cubic Bezier (tension 0.5)
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x.toFixed(3)} ${c1y.toFixed(3)} ${c2x.toFixed(3)} ${c2y.toFixed(3)} ${p2.x.toFixed(3)} ${p2.y.toFixed(3)}`;
+  }
+  return d;
+}
+
 function isFrontKind(kind: string): kind is FrontKind {
   return (
     kind === "cold_front" ||
@@ -350,7 +375,7 @@ export function SatelliteSynopticOverlay({
           return (
             <g key={`front-${f.properties.kind}-${i}`}>
               <path
-                d={lineToPath(f.geometry.coordinates)}
+                d={lineToSmoothPath(f.geometry.coordinates)}
                 fill="none"
                 stroke={stroke.color}
                 strokeWidth={stroke.width}
