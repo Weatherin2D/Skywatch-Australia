@@ -1,8 +1,6 @@
 /**
- * Fit BoM IDY00030 colour MSLP to the national GeoJSON outline.
- *
- * Builds a thin-plate spline (mercator overlay px → chart px) from coast-tip
- * control points and writes src/lib/weather/synoptic-fit.json for synoptic-warp.ts.
+ * Fit a uniform H/V stretch of BoM IDY00030 into the national GIBS frame.
+ * Writes src/lib/weather/synoptic-fit.json for synoptic-warp.ts.
  *
  * Usage: node scripts/fit-synoptic.cjs [/path/to/IDY00030.png]
  */
@@ -20,11 +18,7 @@ const geo = JSON.parse(
 );
 const W = src.width;
 const H = src.height;
-
-const south = -48;
-const west = 105;
-const north = -5;
-const east = 165;
+const legendH = 70;
 
 function lonLatToWebMercator(lon, lat) {
   const x = (lon * 20037508.34) / 180;
@@ -34,32 +28,28 @@ function lonLatToWebMercator(lon, lat) {
   return [x, y];
 }
 
+const south = -48;
+const west = 105;
+const north = -5;
+const east = 165;
 const [minX, minY] = lonLatToWebMercator(west, south);
 const [maxX, maxY] = lonLatToWebMercator(east, north);
 const outW = 1024;
 const outH = Math.round(outW / ((maxX - minX) / (maxY - minY)));
 
-function toPix(lon, lat) {
-  const [x, y] = lonLatToWebMercator(lon, lat);
-  return [
-    ((x - minX) / (maxX - minX)) * outW,
-    ((maxY - y) / (maxY - minY)) * outH,
-  ];
-}
-
-// Mainland beige + morph-close + edge for snapping guesses
-const land0 = new Uint8Array(W * H);
-for (let y = 0; y < H - 70; y++) {
+const land = new Uint8Array(W * H);
+for (let y = 0; y < H - legendH; y++) {
   for (let x = 0; x < W; x++) {
     const i = (y * W + x) * 4;
     const r = src.data[i];
     const g = src.data[i + 1];
     const b = src.data[i + 2];
     if (r >= 238 && g >= 235 && b >= 210 && b <= 230 && Math.abs(r - g) < 8) {
-      land0[y * W + x] = 1;
+      land[y * W + x] = 1;
     }
   }
 }
+
 function dilate(a, r) {
   const o = new Uint8Array(a.length);
   for (let y = 0; y < H; y++) {
@@ -96,7 +86,8 @@ function erode(a, r) {
   }
   return o;
 }
-const closed = erode(dilate(land0, 2), 2);
+
+const closed = erode(dilate(land, 2), 2);
 const seen = new Uint8Array(W * H);
 let largest = [];
 for (let y = 0; y < H; y++) {
@@ -125,131 +116,178 @@ for (let y = 0; y < H; y++) {
     if (cells.length > largest.length) largest = cells;
   }
 }
+
 const mainland = new Uint8Array(W * H);
-for (const [x, y] of largest) mainland[y * W + x] = 1;
-const edge = [];
-for (let y = 1; y < H - 1; y++) {
-  for (let x = 1; x < W - 1; x++) {
-    if (!mainland[y * W + x]) continue;
-    if (
-      !mainland[y * W + x - 1] ||
-      !mainland[y * W + x + 1] ||
-      !mainland[(y - 1) * W + x] ||
-      !mainland[(y + 1) * W + x]
-    ) {
-      edge.push([x, y]);
+let sxSum = 0;
+let sySum = 0;
+let minx = W;
+let miny = H;
+let maxx = 0;
+let maxy = 0;
+for (const [x, y] of largest) {
+  mainland[y * W + x] = 1;
+  sxSum += x;
+  sySum += y;
+  minx = Math.min(minx, x);
+  maxx = Math.max(maxx, x);
+  miny = Math.min(miny, y);
+  maxy = Math.max(maxy, y);
+}
+const cx = sxSum / largest.length;
+const cy = sySum / largest.length;
+
+const mask = new Uint8Array(outW * outH);
+function fillPoly(pts) {
+  let minYy = outH;
+  let maxYy = 0;
+  for (const p of pts) {
+    minYy = Math.min(minYy, p[1]);
+    maxYy = Math.max(maxYy, p[1]);
+  }
+  minYy = Math.max(0, Math.floor(minYy));
+  maxYy = Math.min(outH - 1, Math.ceil(maxYy));
+  for (let y = minYy; y <= maxYy; y++) {
+    const xs = [];
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[(i + 1) % pts.length];
+      if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) {
+        xs.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1));
+      }
+    }
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const a = Math.max(0, Math.floor(xs[i]));
+      const b = Math.min(outW - 1, Math.ceil(xs[i + 1]));
+      for (let x = a; x <= b; x++) mask[y * outW + x] = 1;
     }
   }
 }
-function snap(px, py, max = 40) {
-  let best = [px, py];
-  let bd = 1e9;
-  for (const [x, y] of edge) {
-    const d = (x - px) ** 2 + (y - py) ** 2;
-    if (d < bd) {
-      bd = d;
-      best = [x, y];
-    }
+function toPix(lon, lat) {
+  const [x, y] = lonLatToWebMercator(lon, lat);
+  return [
+    ((x - minX) / (maxX - minX)) * outW,
+    ((maxY - y) / (maxY - minY)) * outH,
+  ];
+}
+for (const f of geo.features || [geo]) {
+  const g = f.geometry;
+  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  for (const poly of polys) {
+    fillPoly(poly[0].map(([lon, lat]) => toPix(lon, lat)));
   }
-  return Math.sqrt(bd) <= max ? best : [px, py];
 }
 
-const RAW = [
-  [142.53, -10.69, 406, 17, "CapeYork"],
-  [113.16, -26.15, 162, 124, "Steep"],
-  [153.64, -28.64, 473, 159, "Byron"],
-  [146.83, -43.64, 404, 265, "SECape"],
-  [115.14, -34.37, 189, 209, "Leeuwin"],
-  [114.17, -21.79, 169, 118, "NWCape"],
-  [136.93, -11.74, 353, 27, "Arnhem"],
-  [146.39, -39.12, 398, 240, "Wilson"],
-  [150.0, -37.5, 450, 220, "Howe"],
-  [122.0, -17.5, 210, 70, "Kimberley"],
-  [130.0, -31.5, 300, 180, "BightW"],
-  [135.0, -33.0, 330, 195, "BightC"],
-  [138.0, -35.5, 360, 210, "SA"],
-  [145.0, -15.0, 390, 50, "CarpentariaE"],
-  [141.0, -17.0, 370, 55, "CarpentariaW"],
-  [153.0, -26.0, 470, 140, "Fraser"],
-  [121.0, -34.0, 210, 200, "Esperance"],
-];
-
-const ctrls = RAW.map(([lon, lat, px, py, name]) => {
-  const [mx, my] = toPix(lon, lat);
-  const [sx, sy] = snap(px, py);
-  return { mx, my, px: sx, py: sy, lon, lat, name };
-});
-
-function U(r2) {
-  if (r2 < 1e-12) return 0;
-  const r = Math.sqrt(r2);
-  return r2 * Math.log(r);
-}
-
-function solveTPS(targets) {
-  const n = ctrls.length;
-  const A = Array.from({ length: n + 3 }, () => Array(n + 3).fill(0));
-  const b = Array(n + 3).fill(0);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      const dx = ctrls[i].mx - ctrls[j].mx;
-      const dy = ctrls[i].my - ctrls[j].my;
-      A[i][j] = U(dx * dx + dy * dy);
-    }
-    A[i][n] = 1;
-    A[i][n + 1] = ctrls[i].mx;
-    A[i][n + 2] = ctrls[i].my;
-    A[n][i] = 1;
-    A[n + 1][i] = ctrls[i].mx;
-    A[n + 2][i] = ctrls[i].my;
-    b[i] = targets[i];
+let mmx = 0;
+let mmy = 0;
+let mn = 0;
+let mminx = outW;
+let mminy = outH;
+let mmaxx = 0;
+let mmaxy = 0;
+for (let y = 0; y < outH; y++) {
+  for (let x = 0; x < outW; x++) {
+    if (!mask[y * outW + x]) continue;
+    mmx += x;
+    mmy += y;
+    mn++;
+    mminx = Math.min(mminx, x);
+    mmaxx = Math.max(mmaxx, x);
+    mminy = Math.min(mminy, y);
+    mmaxy = Math.max(mmaxy, y);
   }
-  const M = n + 3;
-  for (let col = 0; col < M; col++) {
-    let piv = col;
-    for (let r = col + 1; r < M; r++) {
-      if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
-    }
-    [A[col], A[piv]] = [A[piv], A[col]];
-    [b[col], b[piv]] = [b[piv], b[col]];
-    const div = A[col][col];
-    if (Math.abs(div) < 1e-12) continue;
-    for (let c = col; c < M; c++) A[col][c] /= div;
-    b[col] /= div;
-    for (let r = 0; r < M; r++) {
-      if (r === col) continue;
-      const f = A[r][col];
-      for (let c = col; c < M; c++) A[r][c] -= f * A[col][c];
-      b[r] -= f * b[col];
+}
+const mtx = mmx / mn;
+const mty = mmy / mn;
+const sc0 = Math.sqrt(
+  ((mmaxx - mminx) * (mmaxy - mminy)) / ((maxx - minx) * (maxy - miny)),
+);
+
+function iou2(sx, sy, tx, ty, step = 2) {
+  let inter = 0;
+  let cOnly = 0;
+  let mOnly = 0;
+  for (let y = miny; y <= maxy; y += step) {
+    for (let x = minx; x <= maxx; x += step) {
+      if (!mainland[y * W + x]) continue;
+      const ox = Math.round(sx * (x - cx) + tx);
+      const oy = Math.round(sy * (y - cy) + ty);
+      if (ox >= 0 && oy >= 0 && ox < outW && oy < outH && mask[oy * outW + ox]) {
+        inter++;
+      } else {
+        cOnly++;
+      }
     }
   }
-  return { w: b.slice(0, n), a0: b[n], a1: b[n + 1], a2: b[n + 2] };
+  for (let y = mminy; y <= mmaxy; y += step + 1) {
+    for (let x = mminx; x <= mmaxx; x += step + 1) {
+      if (!mask[y * outW + x]) continue;
+      const ix = Math.round((x - tx) / sx + cx);
+      const iy = Math.round((y - ty) / sy + cy);
+      if (ix < 0 || iy < 0 || ix >= W || iy >= H || !mainland[iy * W + ix]) {
+        mOnly++;
+      }
+    }
+  }
+  return inter / (inter + cOnly + mOnly || 1);
 }
 
-const tpsX = solveTPS(ctrls.map((c) => c.px));
-const tpsY = solveTPS(ctrls.map((c) => c.py));
+let fit = { iou: 0, sc: sc0, tx: mtx, ty: mty };
+for (let sc = sc0 * 0.85; sc <= sc0 * 1.25; sc += 0.01) {
+  for (let dx = -80; dx <= 80; dx += 2) {
+    for (let dy = -80; dy <= 80; dy += 2) {
+      const v = iou2(sc, sc, mtx + dx, mty + dy, 3);
+      if (v > fit.iou) fit = { iou: v, sc, tx: mtx + dx, ty: mty + dy };
+    }
+  }
+}
+let best = {
+  iou: fit.iou,
+  sx: fit.sc,
+  sy: fit.sc,
+  tx: fit.tx,
+  ty: fit.ty,
+};
+for (let sx = fit.sc * 0.9; sx <= fit.sc * 1.1; sx += 0.01) {
+  for (let sy = fit.sc * 0.9; sy <= fit.sc * 1.1; sy += 0.01) {
+    for (let dx = -20; dx <= 20; dx += 2) {
+      for (let dy = -20; dy <= 20; dy += 2) {
+        const v = iou2(sx, sy, fit.tx + dx, fit.ty + dy, 3);
+        if (v > best.iou)
+          best = { iou: v, sx, sy, tx: fit.tx + dx, ty: fit.ty + dy };
+      }
+    }
+  }
+}
+for (let sx = best.sx - 0.03; sx <= best.sx + 0.03; sx += 0.005) {
+  for (let sy = best.sy - 0.03; sy <= best.sy + 0.03; sy += 0.005) {
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dy = -4; dy <= 4; dy++) {
+        const v = iou2(sx, sy, best.tx + dx, best.ty + dy, 2);
+        if (v > best.iou)
+          best = { iou: v, sx, sy, tx: best.tx + dx, ty: best.ty + dy };
+      }
+    }
+  }
+}
 
 const params = {
-  mode: "tps",
+  mode: "stretch",
+  scX: best.sx,
+  scY: best.sy,
+  tx: best.tx,
+  ty: best.ty,
+  chartCx: cx,
+  chartCy: cy,
   chartW: W,
   chartH: H,
+  legendH,
   outW,
   outH,
-  ctrls: ctrls.map((c) => ({
-    mx: c.mx,
-    my: c.my,
-    px: c.px,
-    py: c.py,
-    lon: c.lon,
-    lat: c.lat,
-    name: c.name,
-  })),
-  tpsX,
-  tpsY,
-  notes:
-    "Thin-plate spline mercator-px → chart-px from mainland coast tips on IDY00030.",
+  iou: best.iou,
 };
-
-const outPath = path.join(__dirname, "../src/lib/weather/synoptic-fit.json");
-fs.writeFileSync(outPath, JSON.stringify(params, null, 2));
-console.log("wrote", outPath, "ctrls", ctrls.length);
+fs.writeFileSync(
+  path.join(__dirname, "../src/lib/weather/synoptic-fit.json"),
+  JSON.stringify(params, null, 2),
+);
+console.log("wrote stretch fit", params);

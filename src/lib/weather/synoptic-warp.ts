@@ -7,45 +7,26 @@ import {
 import fit from "@/lib/weather/synoptic-fit.json";
 
 /**
- * BoM colour MSLP (IDY00030) → national GIBS Mercator frame.
+ * BoM colour MSLP (IDY00030) → national GIBS frame.
  *
- * Thin-plate spline maps each mercator overlay pixel to a source chart pixel
- * using coast-tip control points (see synoptic-fit.json). This locks Cape York,
- * the Bight, WA, and Tasmania far better than a single polar/affine model.
+ * Uniform horizontal/vertical stretch only — no polar remapping or TPS.
+ * Keeps isobars and labels sharp while sizing the whole chart to the
+ * national Australia outline (see synoptic-fit.json).
  */
 
-type Tps = {
-  w: number[];
-  a0: number;
-  a1: number;
-  a2: number;
-};
-
-type Ctrl = { mx: number; my: number; px: number; py: number };
-
-const CTRLS = fit.ctrls as Ctrl[];
-const TPS_X = fit.tpsX as Tps;
-const TPS_Y = fit.tpsY as Tps;
-const FIT_OUT_W = fit.outW;
-const FIT_OUT_H = fit.outH;
-const FIT_CHART_W = fit.chartW;
-const FIT_CHART_H = fit.chartH;
-
-function U(r2: number) {
-  if (r2 < 1e-12) return 0;
-  const r = Math.sqrt(r2);
-  return r2 * Math.log(r);
-}
-
-function mapTps(mx: number, my: number, tps: Tps) {
-  let v = tps.a0 + tps.a1 * mx + tps.a2 * my;
-  for (let i = 0; i < CTRLS.length; i++) {
-    const dx = mx - CTRLS[i]!.mx;
-    const dy = my - CTRLS[i]!.my;
-    v += tps.w[i]! * U(dx * dx + dy * dy);
-  }
-  return v;
-}
+const FIT = {
+  scX: fit.scX,
+  scY: fit.scY,
+  tx: fit.tx,
+  ty: fit.ty,
+  chartCx: fit.chartCx,
+  chartCy: fit.chartCy,
+  chartW: fit.chartW,
+  chartH: fit.chartH,
+  legendH: fit.legendH ?? 70,
+  outW: fit.outW,
+  outH: fit.outH,
+} as const;
 
 function sampleBilinear(
   data: Buffer,
@@ -85,8 +66,8 @@ function sampleBilinear(
 }
 
 /**
- * Warp BoM MSLP PNG into Web Mercator covering GIBS_AU_BOUNDS so ImageOverlay
- * / satellite object-fit align with the national coast outline.
+ * Stretch the BoM chart into the national overlay frame with independent
+ * X/Y scale (no sectional warp).
  */
 export function warpSynopticToGibsMercator(sourcePng: Buffer): Buffer {
   const src = PNG.sync.read(sourcePng);
@@ -94,20 +75,25 @@ export function warpSynopticToGibsMercator(sourcePng: Buffer): Buffer {
   const outH = Math.max(1, Math.round(outW / GIBS_AU_ASPECT));
   const out = new PNG({ width: outW, height: outH });
 
-  const sxOut = outW / FIT_OUT_W;
-  const syOut = outH / FIT_OUT_H;
-  const sxChart = src.width / FIT_CHART_W;
-  const syChart = src.height / FIT_CHART_H;
-  const legendTop = src.height * (1 - 70 / FIT_CHART_H);
+  const sxChart = src.width / FIT.chartW;
+  const syChart = src.height / FIT.chartH;
+  const sxOut = outW / FIT.outW;
+  const syOut = outH / FIT.outH;
+
+  const scX = FIT.scX * (sxOut / sxChart);
+  const scY = FIT.scY * (syOut / syChart);
+  const tx = FIT.tx * sxOut;
+  const ty = FIT.ty * syOut;
+  const cx = FIT.chartCx * sxChart;
+  const cy = FIT.chartCy * syChart;
+  const legendTop = src.height * (1 - FIT.legendH / FIT.chartH);
 
   for (let j = 0; j < outH; j++) {
-    const myFit = (j + 0.5) / syOut;
     for (let i = 0; i < outW; i++) {
-      const mxFit = (i + 0.5) / sxOut;
-      const px = mapTps(mxFit, myFit, TPS_X) * sxChart;
-      const py = mapTps(mxFit, myFit, TPS_Y) * syChart;
+      const x = (i + 0.5 - tx) / scX + cx;
+      const y = (j + 0.5 - ty) / scY + cy;
       const o = (j * outW + i) * 4;
-      if (!Number.isFinite(px) || !Number.isFinite(py) || py >= legendTop) {
+      if (y >= legendTop) {
         out.data[o] = 0;
         out.data[o + 1] = 0;
         out.data[o + 2] = 0;
@@ -118,8 +104,8 @@ export function warpSynopticToGibsMercator(sourcePng: Buffer): Buffer {
         src.data as Buffer,
         src.width,
         src.height,
-        px,
-        py,
+        x,
+        y,
       );
       if (!rgb) {
         out.data[o] = 0;
@@ -138,5 +124,5 @@ export function warpSynopticToGibsMercator(sourcePng: Buffer): Buffer {
   return PNG.sync.write(out);
 }
 
-/** Geographic bounds for the warped overlay (matches national satellite frame). */
+/** Geographic bounds for the overlay (matches national satellite frame). */
 export const SYNOPTIC_OVERLAY_BOUNDS = GIBS_AU_BOUNDS;

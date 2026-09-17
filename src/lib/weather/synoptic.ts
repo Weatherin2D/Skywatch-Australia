@@ -7,9 +7,8 @@ export const SYNOPTIC_PRODUCT = "IDY00030";
 export const SYNOPTIC_UTC_HOURS = [0, 6, 12, 18] as const;
 
 /**
- * Geographic bounds for the *warped* overlay image (Web Mercator resample
- * of the polar fax into the national frame). Raw BoM charts cover ~50S–10S,
- * 90E–180E in polar stereographic — see synoptic-warp.ts.
+ * Geographic bounds for the stretched overlay image in the national frame.
+ * Raw BoM charts are scaled uniformly (H/V) into this frame — see synoptic-warp.ts.
  */
 export const SYNOPTIC_BOUNDS = GIBS_AU_BOUNDS;
 
@@ -81,7 +80,7 @@ export function bomSynopticUpstreamUrl(stamp: string): string {
 /** Same-origin proxy URL for the chart image (warped to national frame). */
 export function synopticProxyUrl(stamp: string): string {
   // `w` busts browser caches when the warp/fit changes (must match frame route epoch).
-  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&w=tps-v5`;
+  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&w=stretch-v6`;
 }
 
 /**
