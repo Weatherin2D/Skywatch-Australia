@@ -82,7 +82,9 @@ export function isValidSynopticStamp(stamp: string): boolean {
 }
 
 export function synopticFieldUrl(stamp: string): string {
-  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&fmt=geojson`;
+  // Bump when front geometry / barb logic changes so clients do not keep a
+  // stale in-memory or HTTP-cached field from an older extractor.
+  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&fmt=geojson&v=front-smooth-v4`;
 }
 
 export function buildSynopticFrame(stamp: string): SynopticFrame | null {
