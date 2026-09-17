@@ -13,8 +13,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Live Blitzortung lightning strikes (AU bbox, ~3s poll, 30‑min window) |
-| `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L centres (GFS via Open-Meteo) |
-| `/api/weather/synoptic/frame` | GeoJSON MSLP field for a valid time (`?time=YYYYMMDDHHMM`) |
+| `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
+| `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time (`?time=YYYYMMDDHHMM`) |
 | `/weather-map`, `/forecast`, `/severe-weather`, … | Coming soon stubs |
 | `/risk` | Preserved convective outlook (former AusRisk public map) |
 | `/risk/admin` | Preserved outlook admin upload |

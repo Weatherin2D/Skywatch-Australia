@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  BOM_FRONTS_ATTRIBUTION,
+  getBomFrontFeatures,
+} from "@/lib/weather/bom-fronts";
 import { contourPressureGrid } from "@/lib/weather/synoptic-contour";
 import {
   getSynopticFieldAt,
@@ -17,7 +21,7 @@ export const runtime = "nodejs";
 
 /**
  * Vector MSLP field for a valid-time stamp.
- * Returns GeoJSON (isobars, H/L, fronts, troughs).
+ * Returns GeoJSON (isobars, H/L, BoM fronts).
  */
 export async function GET(request: NextRequest) {
   const stamp = request.nextUrl.searchParams.get("time") ?? "";
@@ -30,13 +34,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const field = await getSynopticFieldAt(unix);
+    const [field, fronts] = await Promise.all([
+      getSynopticFieldAt(unix),
+      getBomFrontFeatures(stamp),
+    ]);
     const geojson = contourPressureGrid(field);
+    geojson.features.push(...fronts);
+    const attribution = fronts.length
+      ? `${SYNOPTIC_ATTRIBUTION} · ${BOM_FRONTS_ATTRIBUTION}`
+      : SYNOPTIC_ATTRIBUTION;
     const payload: SynopticFieldPayload = {
       stamp,
       time: field.validUnix,
       model: SYNOPTIC_MODEL,
-      attribution: SYNOPTIC_ATTRIBUTION,
+      attribution,
       geojson,
     };
     return NextResponse.json(payload, {
@@ -45,6 +56,8 @@ export async function GET(request: NextRequest) {
         "Content-Type": "application/json",
         "X-Synoptic-Model": SYNOPTIC_MODEL,
         "X-Synoptic-Valid": field.validTimeIso,
+        "X-Fronts-Source": fronts.length ? "bom-idy00030" : "none",
+        "X-Fronts-Count": String(fronts.length),
       },
     });
   } catch (err) {

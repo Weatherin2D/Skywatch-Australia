@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  BOM_FRONTS_ATTRIBUTION,
+  getBomFrontFeatures,
+} from "@/lib/weather/bom-fronts";
 import { contourPressureGrid } from "@/lib/weather/synoptic-contour";
 import {
   getSynopticFieldAt,
@@ -29,8 +33,13 @@ export async function GET() {
       .slice(0, 12);
 
     const field = await getSynopticFieldAt(now);
-    const geojson = contourPressureGrid(field);
     const latestStamp = unixToSynopticStamp(field.validUnix);
+    const geojsonBase = contourPressureGrid(field);
+    const fronts = await getBomFrontFeatures(latestStamp);
+    const geojson = {
+      ...geojsonBase,
+      features: [...geojsonBase.features, ...fronts],
+    };
     const latest =
       buildSynopticFrame(latestStamp) ??
       frames.find((f) => Math.abs(f.time - field.validUnix) < 3600) ??
@@ -41,6 +50,10 @@ export async function GET() {
       frames.unshift(latest);
     }
 
+    const attribution = fronts.length
+      ? `${SYNOPTIC_ATTRIBUTION} · ${BOM_FRONTS_ATTRIBUTION}`
+      : SYNOPTIC_ATTRIBUTION;
+
     const payload: SynopticPayload = {
       generated: now,
       product: SYNOPTIC_PRODUCT,
@@ -49,13 +62,15 @@ export async function GET() {
       latest,
       geojson,
       validTime: field.validUnix,
-      attribution: SYNOPTIC_ATTRIBUTION,
+      attribution,
     };
 
     return NextResponse.json(payload, {
       headers: {
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         "X-Synoptic-Model": SYNOPTIC_MODEL,
+        "X-Fronts-Source": fronts.length ? "bom-idy00030" : "none",
+        "X-Fronts-Count": String(fronts.length),
       },
     });
   } catch (err) {

@@ -11,7 +11,7 @@ export const SYNOPTIC_BOUNDS = GIBS_AU_BOUNDS;
 export const SYNOPTIC_OPACITY = 0.92;
 
 export const SYNOPTIC_ATTRIBUTION =
-  `MSLP + fronts · ${SYNOPTIC_MODEL_LABEL} via Open-Meteo`;
+  `MSLP · ${SYNOPTIC_MODEL_LABEL} via Open-Meteo`;
 
 export const SYNOPTIC_PRODUCT = SYNOPTIC_MODEL;
 

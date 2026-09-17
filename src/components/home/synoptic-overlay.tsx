@@ -109,6 +109,7 @@ function isFrontKind(kind: string): kind is FrontKind {
     kind === "cold_front" ||
     kind === "warm_front" ||
     kind === "stationary_front" ||
+    kind === "occluded_front" ||
     kind === "trough"
   );
 }
@@ -125,6 +126,8 @@ function frontStroke(kind: FrontKind): {
       return { color: "#dc2626", width: 2.4 };
     case "stationary_front":
       return { color: "#7c3aed", width: 2.2 };
+    case "occluded_front":
+      return { color: "#a020f0", width: 2.4 };
     case "trough":
       return { color: "#44403c", width: 1.8, dash: "5 3.5" };
   }
@@ -173,13 +176,18 @@ function frontBarbPaths(
           py = -py;
         }
       }
-      // Alternate for stationary
-      const flip = kind === "stationary_front" && paths.length % 2 === 1;
+      // Alternate for stationary / occluded
+      const flip =
+        (kind === "stationary_front" || kind === "occluded_front") &&
+        paths.length % 2 === 1;
       const side = flip ? -1 : 1;
       const bx = x + px * barbSize * side;
       const by = y + py * barbSize * aspect * side;
 
-      if (kind === "cold_front" || (kind === "stationary_front" && !flip)) {
+      if (
+        kind === "cold_front" ||
+        ((kind === "stationary_front" || kind === "occluded_front") && !flip)
+      ) {
         // Triangle
         const base = barbSize * 0.85;
         const x1 = x - tx * base * 0.5;
@@ -190,7 +198,7 @@ function frontBarbPaths(
           `M${x1.toFixed(2)} ${y1.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} Z`,
         );
       } else {
-        // Semicircle (warm / alt stationary)
+        // Semicircle (warm / alt stationary / occluded)
         const r = barbSize * 0.7;
         paths.push(
           `M${x.toFixed(2)} ${y.toFixed(2)} A${r.toFixed(2)} ${(r * aspect).toFixed(2)} 0 0 ${side > 0 ? 1 : 0} ${bx.toFixed(2)} ${by.toFixed(2)}`,
@@ -335,7 +343,9 @@ export function SatelliteSynopticOverlay({
                   d={d}
                   fill={
                     f.properties.kind === "warm_front" ||
-                    (f.properties.kind === "stationary_front" && bi % 2 === 1)
+                    ((f.properties.kind === "stationary_front" ||
+                      f.properties.kind === "occluded_front") &&
+                      bi % 2 === 1)
                       ? "none"
                       : stroke.color
                   }

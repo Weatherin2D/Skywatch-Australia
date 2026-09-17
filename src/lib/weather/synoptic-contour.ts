@@ -1,9 +1,9 @@
 /**
- * Marching-squares isobars + H/L centres + fronts from a synoptic field.
+ * Marching-squares isobars + H/L centres from a synoptic pressure field.
+ * Fronts come from BoM IDY00030 (see bom-fronts.ts) and are merged by the API.
  */
 
 import type { PressureGrid, SynopticField } from "@/lib/weather/synoptic-grid";
-import { detectFronts } from "@/lib/weather/synoptic-fronts";
 
 export type SynopticGeoJson = {
   type: "FeatureCollection";
@@ -14,6 +14,7 @@ export type FrontKind =
   | "cold_front"
   | "warm_front"
   | "stationary_front"
+  | "occluded_front"
   | "trough";
 
 export type SynopticFeature =
@@ -284,7 +285,7 @@ function findCentres(grid: PressureGrid): SynopticFeature[] {
   return out;
 }
 
-/** Classic 4 hPa isobar spacing + derived fronts when a full field is provided. */
+/** Classic 4 hPa isobar spacing + H/L centres (fronts added by the API). */
 export function contourPressureGrid(
   grid: PressureGrid | SynopticField,
   interval = 4,
@@ -317,10 +318,6 @@ export function contourPressureGrid(
   }
 
   features.push(...findCentres(grid));
-
-  if ("temperatureC" in grid && grid.temperatureC) {
-    features.push(...detectFronts(grid));
-  }
 
   return { type: "FeatureCollection", features };
 }
