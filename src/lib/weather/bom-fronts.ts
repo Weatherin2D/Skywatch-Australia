@@ -58,6 +58,8 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 25 * 60 * 1000;
+/** Bump when front geometry / barb-side logic changes so HMR cannot serve stale vectors. */
+const FRONT_CACHE_VER = "barb-side-v2";
 
 export const BOM_FRONTS_ATTRIBUTION =
   "Fronts · BoM IDY00030 colour MSLP analysis";
@@ -525,7 +527,7 @@ function toFeature(
 /**
  * Which side of the skeleton has protruding barb pixels on the BoM chart.
  * Returns a unit vector (east, north) toward that side — the direction the
- * front symbols should point (advance / warm-air side for cold fronts).
+ * front symbols should point (advance side).
  */
 function estimateBarbSide(
   points: Pixel[],
@@ -546,28 +548,43 @@ function estimateBarbSide(
     if (len < 1e-3) continue;
     const tx = dx / len;
     const ty = dy / len;
-    // Image-space left normal (y increases downward)
-    const nx = -ty;
-    const ny = tx;
+    // Geographic-left normal in image space (y increases downward):
+    // rotate tangent 90° CW so eastbound → north (up on the chart).
+    const lx = ty;
+    const ly = -tx;
     const mx = (a[0] + b[0]) / 2;
     const my = (a[1] + b[1]) / 2;
     let left = 0;
     let right = 0;
     for (let s = 3; s <= 12; s++) {
-      for (const sign of [-1, 1] as const) {
-        const px = Math.round(mx + nx * s * sign);
-        const py = Math.round(my + ny * s * sign);
-        if (px < 0 || py < 0 || px >= w || py >= usableH) continue;
-        if (!mask[py * w + px]) continue;
-        if (sign < 0) left += 1;
-        else right += 1;
+      const lpx = Math.round(mx + lx * s);
+      const lpy = Math.round(my + ly * s);
+      const rpx = Math.round(mx - lx * s);
+      const rpy = Math.round(my - ly * s);
+      if (
+        lpx >= 0 &&
+        lpy >= 0 &&
+        lpx < w &&
+        lpy < usableH &&
+        mask[lpy * w + lpx]
+      ) {
+        left += 1;
+      }
+      if (
+        rpx >= 0 &&
+        rpy >= 0 &&
+        rpx < w &&
+        rpy < usableH &&
+        mask[rpy * w + rpx]
+      ) {
+        right += 1;
       }
     }
     if (left === right) continue;
-    const side = right > left ? 1 : -1;
-    // Image +x → east, +y → south ⇒ north = −y
-    biasE += nx * side;
-    biasN += -ny * side;
+    // +1 = toward geographic left (lx, ly)
+    const side = left > right ? 1 : -1;
+    biasE += lx * side;
+    biasN += -ly * side; // image +y is south → north = -y
     samples += 1;
   }
   if (samples < 2) return undefined;
@@ -744,27 +761,28 @@ async function fetchChartPng(stamp: string): Promise<{ stamp: string; buf: Buffe
 export async function getBomFrontFeatures(
   stamp: string,
 ): Promise<SynopticFeature[]> {
-  const cached = cache.get(stamp);
+  const cacheKey = `${FRONT_CACHE_VER}:${stamp}`;
+  const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return cached.features;
   }
 
   const fetched = await fetchChartPng(stamp);
   if (!fetched) {
-    cache.set(stamp, { fetchedAt: Date.now(), features: [], stamp });
+    cache.set(cacheKey, { fetchedAt: Date.now(), features: [], stamp });
     return [];
   }
 
   try {
     const features = extractFromPng(fetched.buf);
-    cache.set(stamp, {
+    cache.set(cacheKey, {
       fetchedAt: Date.now(),
       features,
       stamp: fetched.stamp,
     });
     // Also cache under the chart's actual stamp
     if (fetched.stamp !== stamp) {
-      cache.set(fetched.stamp, {
+      cache.set(`${FRONT_CACHE_VER}:${fetched.stamp}`, {
         fetchedAt: Date.now(),
         features,
         stamp: fetched.stamp,

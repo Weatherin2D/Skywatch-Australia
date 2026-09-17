@@ -164,12 +164,11 @@ function frontBarbPaths(
       const y = a.y + (b.y - a.y) * t;
       const tx = dx / seg;
       const ty = dy / seg;
-      // Perpendicular in screen space. Default: rotate tangent 90° CW so symbols
-      // sit on the advance side of typically west→east BoM traces (toward motion).
+      // Perpendicular in viewBox space. warmSide (east, north) selects which
+      // side; without it, default to geographic-left of the tangent so a
+      // consistent polyline direction keeps barbs on one side.
       let px = ty;
       let py = -tx;
-      // warmSide here is the unit vector (east, north) the symbols should point —
-      // the side the front is advancing into (BoM chart barb side).
       if (warmSide) {
         const wx = warmSide[0];
         const wy = -warmSide[1] / aspect;
@@ -178,17 +177,18 @@ function frontBarbPaths(
           py = -py;
         }
       }
-      // Alternate for stationary / occluded
-      const flip =
+      // Stationary / occluded: alternate symbol kind, still same advance side
+      // for cold triangles; warm semicircles flip to the opposite air mass.
+      const alt =
         (kind === "stationary_front" || kind === "occluded_front") &&
         paths.length % 2 === 1;
-      const side = flip ? -1 : 1;
+      const side = alt && kind === "stationary_front" ? -1 : 1;
       const bx = x + px * barbSize * side;
       const by = y + py * barbSize * aspect * side;
 
       if (
         kind === "cold_front" ||
-        ((kind === "stationary_front" || kind === "occluded_front") && !flip)
+        ((kind === "stationary_front" || kind === "occluded_front") && !alt)
       ) {
         // Triangle
         const base = barbSize * 0.85;
