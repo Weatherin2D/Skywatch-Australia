@@ -58,11 +58,13 @@ function useSynopticGeoJson(
       setGeojson(null);
       return;
     }
+    // Reuse the catalog's embedded latest field only when it matches the
+    // analysis hour selected for the current satellite/reference time.
     if (
       embedded &&
       frame &&
       embeddedTime != null &&
-      Math.abs(embeddedTime - frame.time) <= 3600
+      Math.abs(embeddedTime - frame.time) <= 900
     ) {
       setGeojson(embedded);
       return;
@@ -73,6 +75,9 @@ function useSynopticGeoJson(
     }
     let cancelled = false;
     const ac = new AbortController();
+    // Drop a mismatched chart immediately so scrubbing never leaves an
+    // out-of-time synoptic over the satellite frame.
+    setGeojson(null);
     void (async () => {
       try {
         const res = await fetch(frame.geojsonUrl, {
@@ -83,7 +88,7 @@ function useSynopticGeoJson(
         const data = (await res.json()) as { geojson?: SynopticGeoJson };
         if (!cancelled) setGeojson(data.geojson ?? null);
       } catch {
-        if (!cancelled) setGeojson(embedded ?? null);
+        if (!cancelled) setGeojson(null);
       }
     })();
     return () => {
@@ -480,6 +485,7 @@ export function SynopticLegend({
   loading,
   error,
   validTime = null,
+  frameSynced = false,
 }: {
   frames: SynopticFrame[];
   attribution?: string | null;
@@ -487,6 +493,7 @@ export function SynopticLegend({
   loading?: boolean;
   error?: string | null;
   validTime?: number | null;
+  frameSynced?: boolean;
 }) {
   const now = Math.floor(Date.now() / 1000);
   const ref = referenceTime ?? validTime ?? now;
@@ -510,6 +517,11 @@ export function SynopticLegend({
           <p className="mt-0.5 text-[9px] text-white/55">
             Isobars 4 hPa · cold / warm / trough
           </p>
+          {frameSynced && referenceTime != null ? (
+            <p className="mt-0.5 text-[9px] text-emerald-300/90">
+              Synced to satellite frame
+            </p>
+          ) : null}
         </>
       ) : (
         <p className="text-[10px] text-white/75">No field available</p>

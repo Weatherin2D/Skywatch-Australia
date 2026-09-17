@@ -36,6 +36,7 @@ import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import { useLightning } from "@/hooks/use-lightning";
 import { useSynoptic } from "@/hooks/use-synoptic";
+import { pickSynopticFrame } from "@/lib/weather/synoptic";
 import {
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
@@ -193,6 +194,23 @@ export function HomeDashboard() {
   } = useFramePreloader(loopFrames, showSatelliteLoop);
   const readyGateRef = useRef({ isUrlReady });
   readyGateRef.current = { isUrlReady };
+
+  // Prefetch synoptic analyses that cover the satellite loop so scrubbing /
+  // playback can swap charts without waiting on the network mid-animation.
+  useEffect(() => {
+    if (!showSynoptic || !showSatelliteLoop) return;
+    if (synopticFrames.length === 0 || loopFrames.length === 0) return;
+    const urls = new Set<string>();
+    for (const sat of loopFrames) {
+      const syn = pickSynopticFrame(synopticFrames, sat.time);
+      if (syn?.geojsonUrl) urls.add(syn.geojsonUrl);
+    }
+    for (const url of urls) {
+      void fetch(url, { cache: "force-cache" }).catch(() => {
+        /* ignore prefetch errors */
+      });
+    }
+  }, [showSynoptic, showSatelliteLoop, loopFrames, synopticFrames]);
 
   // Jump to latest frame when the product/mode loop set changes
   useEffect(() => {
@@ -569,12 +587,9 @@ export function HomeDashboard() {
               synopticLoading={synopticLoading}
               synopticError={synopticError}
               synopticReferenceTime={
-                showSatelliteLoop
-                  ? frameIndex >= loopFrames.length - 1
-                    ? null
-                    : (activeFrame?.time ?? null)
-                  : null
+                showSatelliteLoop ? (activeFrame?.time ?? null) : null
               }
+              synopticFrameSynced={showSatelliteLoop}
             />
           </div>
 

@@ -62,6 +62,8 @@ type Props = {
   synopticError?: string | null;
   /** Frame time for chart pick; null = wall clock. */
   synopticReferenceTime?: number | null;
+  /** True while Satellite loop drives the synoptic valid time. */
+  synopticFrameSynced?: boolean;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -210,6 +212,7 @@ export function HomeMap({
   synopticLoading = false,
   synopticError = null,
   synopticReferenceTime = null,
+  synopticFrameSynced = false,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
 
@@ -253,6 +256,7 @@ export function HomeMap({
             loading={synopticLoading}
             error={synopticError}
             validTime={synopticValidTime}
+            frameSynced={synopticFrameSynced}
           />
         ) : null}
         {showLightning ? (
@@ -311,6 +315,7 @@ export function HomeMap({
           loading={synopticLoading}
           error={synopticError}
           validTime={synopticValidTime}
+          frameSynced={synopticFrameSynced}
         />
       ) : null}
 

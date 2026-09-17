@@ -47,6 +47,7 @@ export function HomeMapDynamic({
   synopticLoading,
   synopticError,
   synopticReferenceTime,
+  synopticFrameSynced,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -73,6 +74,7 @@ export function HomeMapDynamic({
   synopticLoading?: boolean;
   synopticError?: string | null;
   synopticReferenceTime?: number | null;
+  synopticFrameSynced?: boolean;
 }) {
   return (
     <HomeMap
@@ -101,6 +103,7 @@ export function HomeMapDynamic({
       synopticLoading={synopticLoading}
       synopticError={synopticError}
       synopticReferenceTime={synopticReferenceTime}
+      synopticFrameSynced={synopticFrameSynced}
     />
   );
 }
