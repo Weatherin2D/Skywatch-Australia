@@ -30,7 +30,7 @@ export const LIGHTNING_AU_BOUNDS = {
 } as const;
 
 /** Default lookback window for age colouring (seconds). */
-export const LIGHTNING_AGE_WINDOW_SEC = 30 * 60;
+export const LIGHTNING_AGE_WINDOW_SEC = 60 * 60;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest
@@ -87,7 +87,7 @@ export function strikeAgeSize(
   windowSec = LIGHTNING_AGE_WINDOW_SEC,
 ) {
   const t = strikeAgeNorm(ageSec, windowSec);
-  return Math.round(lerp(14, 10, t));
+  return Math.round(lerp(18, 12, t));
 }
 
 export function strikeIsFresh(ageSec: number) {
@@ -103,7 +103,7 @@ export function lightningAgeGradientCss() {
 export function filterStrikesAtTime(
   strikes: LightningStrike[],
   refTime: number,
-  windowMinutes = 30,
+  windowMinutes = 60,
 ): LightningStrike[] {
   const cutoff = refTime - windowMinutes * 60;
   return strikes

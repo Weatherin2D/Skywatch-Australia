@@ -43,9 +43,9 @@ function CrosshairIcon({
   size: number;
   pulse?: boolean;
 }) {
-  const arm = Math.max(3, Math.round(size * 0.38));
-  const gap = Math.max(2, Math.round(size * 0.14));
-  const thick = Math.max(1.5, size * 0.12);
+  const arm = Math.max(4, Math.round(size * 0.4));
+  const gap = Math.max(2, Math.round(size * 0.12));
+  const thick = Math.max(2, size * 0.14);
   return (
     <span
       className={
@@ -61,22 +61,24 @@ function CrosshairIcon({
           ["--lg-arm" as string]: `${arm}px`,
           ["--lg-gap" as string]: `${gap}px`,
           ["--lg-thick" as string]: `${thick}px`,
-          filter: `drop-shadow(0 0 3px ${color})`,
         } as CSSProperties
       }
       aria-hidden
-    />
+    >
+      <i />
+      <b />
+    </span>
   );
 }
 
 function crosshairHtml(color: string, size: number, pulse: boolean) {
-  const arm = Math.max(3, Math.round(size * 0.38));
-  const gap = Math.max(2, Math.round(size * 0.14));
-  const thick = Math.max(1.5, size * 0.12);
+  const arm = Math.max(4, Math.round(size * 0.4));
+  const gap = Math.max(2, Math.round(size * 0.12));
+  const thick = Math.max(2, size * 0.14);
   const cls = pulse
     ? "skywatch-lightning-crosshair skywatch-lightning-crosshair--new"
     : "skywatch-lightning-crosshair";
-  return `<span class="${cls}" style="width:${size}px;height:${size}px;color:${color};--lg-arm:${arm}px;--lg-gap:${gap}px;--lg-thick:${thick}px;filter:drop-shadow(0 0 3px ${color})"></span>`;
+  return `<span class="${cls}" style="width:${size}px;height:${size}px;color:${color};--lg-arm:${arm}px;--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
 }
 
 function makeCrosshairIcon(color: string, size: number, pulse: boolean) {
@@ -101,13 +103,14 @@ export function SatelliteLightningOverlay({
   const refTime = useReferenceTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
-    return filterStrikesAtTime(strikes, refTime, 30);
+    // Always age against wall clock — satellite scrub must not hide live strikes.
+    return filterStrikesAtTime(strikes, refTime, 60);
   }, [enabled, strikes, refTime]);
 
   if (!enabled || visible.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 z-[40] overflow-hidden">
       {visible.map((strike) => {
         const age = strikeAgeSeconds(strike, refTime);
         const color = strikeAgeColor(age);
@@ -144,7 +147,7 @@ export function LeafletLightningOverlay({
   const refTime = useReferenceTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
-    return filterStrikesAtTime(strikes, refTime, 30).slice(0, 120);
+    return filterStrikesAtTime(strikes, refTime, 60).slice(0, 400);
   }, [enabled, strikes, refTime]);
 
   if (!enabled) return null;
@@ -189,7 +192,7 @@ export function LightningLegend({
   frameSynced?: boolean;
 }) {
   const refTime = referenceTime ?? Math.floor(Date.now() / 1000);
-  const visible = filterStrikesAtTime(strikes, refTime, 30);
+  const visible = filterStrikesAtTime(strikes, refTime, 60);
 
   const statusLabel =
     status === "live"
@@ -203,8 +206,6 @@ export function LightningLegend({
             : live
               ? "LIVE"
               : "…";
-
-  const syncedLabel = frameSynced ? "satellite frame" : "live clock";
 
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-[1000] border border-white/25 bg-black/70 px-2.5 py-2 text-white backdrop-blur-sm">
@@ -227,9 +228,7 @@ export function LightningLegend({
       {visible.length === 0 ? (
         <p className="mb-2 max-w-[12rem] text-[10px] leading-snug text-white/75">
           {status === "live" || status === "reconnecting"
-            ? frameSynced && referenceTime != null
-              ? "No strikes at this frame time — scrub forward as storms develop…"
-              : "No strikes over Australia in the last 30 min — listening live…"
+            ? "No strikes over Australia in the last 60 min — listening live…"
             : "Connecting to live lightning feed…"}
         </p>
       ) : null}
@@ -237,15 +236,15 @@ export function LightningLegend({
         <div
           className="h-2 w-full border border-white/20"
           style={{ background: lightningAgeGradientCss() }}
-          aria-label="Lightning age colour scale from new to 30 minutes"
+          aria-label="Lightning age colour scale from new to 60 minutes"
         />
         <div className="mt-1 flex justify-between text-[9px] text-white/75">
           <span>New</span>
-          <span>30 min</span>
+          <span>60 min</span>
         </div>
       </div>
       <p className="mt-1.5 text-[9px] text-white/60">
-        {visible.length} strikes · synced to {syncedLabel}
+        {visible.length} strikes · last 60 min
       </p>
       {attribution ? (
         <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">

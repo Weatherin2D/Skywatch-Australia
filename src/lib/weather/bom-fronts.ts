@@ -46,6 +46,8 @@ type PixelFront = {
   kind: FrontKind;
   points: Pixel[];
   pixelLength: number;
+  /** Unit vector (east, north) toward chart barb / advance side. */
+  warmSide?: [number, number];
 };
 
 type CacheEntry = {
@@ -391,11 +393,13 @@ function mergeFragments(paths: PixelFront[]): PixelFront[] {
     }
     if (best) {
       const a = list[best.i]!;
+      const b = list[best.j]!;
       const points = best.join.merge();
       list[best.i] = {
         kind: a.kind,
         points,
         pixelLength: pathPixelLength(points),
+        warmSide: a.warmSide ?? b.warmSide,
       };
       list.splice(best.j, 1);
       mergedSomething = true;
@@ -494,7 +498,11 @@ function geoLengthDeg(coords: [number, number][]): number {
   return len;
 }
 
-function toFeature(kind: FrontKind, points: Pixel[]): SynopticFeature | null {
+function toFeature(
+  kind: FrontKind,
+  points: Pixel[],
+  warmSide?: [number, number],
+): SynopticFeature | null {
   const sampled = downsample(chaikin(smoothLine(points, 1), 1), 56);
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
   const coords: [number, number][] = [];
@@ -509,9 +517,63 @@ function toFeature(kind: FrontKind, points: Pixel[]): SynopticFeature | null {
   if (geoLengthDeg(coords) < MIN_GEO_DEG) return null;
   return {
     type: "Feature",
-    properties: { kind },
+    properties: warmSide ? { kind, warmSide } : { kind },
     geometry: { type: "LineString", coordinates: coords },
   };
+}
+
+/**
+ * Which side of the skeleton has protruding barb pixels on the BoM chart.
+ * Returns a unit vector (east, north) toward that side — the direction the
+ * front symbols should point (advance / warm-air side for cold fronts).
+ */
+function estimateBarbSide(
+  points: Pixel[],
+  mask: Uint8Array,
+  w: number,
+  usableH: number,
+): [number, number] | undefined {
+  let biasE = 0;
+  let biasN = 0;
+  let samples = 0;
+  const step = Math.max(1, Math.floor(points.length / 24));
+  for (let i = step; i < points.length; i += step) {
+    const a = points[i - step]!;
+    const b = points[i]!;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-3) continue;
+    const tx = dx / len;
+    const ty = dy / len;
+    // Image-space left normal (y increases downward)
+    const nx = -ty;
+    const ny = tx;
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    let left = 0;
+    let right = 0;
+    for (let s = 3; s <= 12; s++) {
+      for (const sign of [-1, 1] as const) {
+        const px = Math.round(mx + nx * s * sign);
+        const py = Math.round(my + ny * s * sign);
+        if (px < 0 || py < 0 || px >= w || py >= usableH) continue;
+        if (!mask[py * w + px]) continue;
+        if (sign < 0) left += 1;
+        else right += 1;
+      }
+    }
+    if (left === right) continue;
+    const side = right > left ? 1 : -1;
+    // Image +x → east, +y → south ⇒ north = −y
+    biasE += nx * side;
+    biasN += -ny * side;
+    samples += 1;
+  }
+  if (samples < 2) return undefined;
+  const mag = Math.hypot(biasE, biasN);
+  if (mag < 1e-6) return undefined;
+  return [biasE / mag, biasN / mag];
 }
 
 function classifyBluePath(pixelLength: number): FrontKind {
@@ -564,7 +626,8 @@ function extractFromPng(buffer: Buffer): SynopticFeature[] {
         if (line.length < 3) continue;
         const len = pathPixelLength(line);
         if (len < MIN_PATH_PX) continue;
-        traced.push({ kind, points: line, pixelLength: len });
+        const warmSide = estimateBarbSide(line, mask, w, usableH);
+        traced.push({ kind, points: line, pixelLength: len, warmSide });
       }
     }
   };
@@ -601,7 +664,7 @@ function extractFromPng(buffer: Buffer): SynopticFeature[] {
     ) {
       continue;
     }
-    const f = toFeature(p.kind, p.points);
+    const f = toFeature(p.kind, p.points, p.warmSide);
     if (f) features.push(f);
   }
 

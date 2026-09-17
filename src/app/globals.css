@@ -204,11 +204,14 @@
   padding: 0;
 }
 
-/* Lightning crosshair: + with centre gap, coloured via `color` */
+/* Lightning crosshair: four solid arms (no currentColor gradients — those
+   silently fail in several engines and leave strikes invisible). */
 .skywatch-lightning-crosshair {
   position: relative;
   display: inline-block;
   flex-shrink: 0;
+  /* Dark halo so white/yellow arms read on bright IR satellite */
+  filter: drop-shadow(0 0 1.5px #000) drop-shadow(0 0 3px rgba(0, 0, 0, 0.85));
 }
 
 .skywatch-lightning-crosshair::before,
@@ -217,42 +220,54 @@
   position: absolute;
   background: currentColor;
   border-radius: 0.5px;
+  pointer-events: none;
 }
 
-/* Horizontal arms */
+.skywatch-lightning-crosshair > i,
+.skywatch-lightning-crosshair > b {
+  position: absolute;
+  display: block;
+  background: currentColor;
+  border-radius: 0.5px;
+  pointer-events: none;
+  font-style: normal;
+  font-weight: normal;
+}
+
+/* Top arm */
 .skywatch-lightning-crosshair::before {
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: var(--lg-thick, 1.5px);
-  transform: translateY(-50%);
-  background: linear-gradient(
-    to right,
-    currentColor 0,
-    currentColor calc(50% - var(--lg-gap, 2px)),
-    transparent calc(50% - var(--lg-gap, 2px)),
-    transparent calc(50% + var(--lg-gap, 2px)),
-    currentColor calc(50% + var(--lg-gap, 2px)),
-    currentColor 100%
-  );
-}
-
-/* Vertical arms */
-.skywatch-lightning-crosshair::after {
   left: 50%;
   top: 0;
-  bottom: 0;
-  width: var(--lg-thick, 1.5px);
+  width: var(--lg-thick, 2px);
+  height: calc(50% - var(--lg-gap, 2px));
   transform: translateX(-50%);
-  background: linear-gradient(
-    to bottom,
-    currentColor 0,
-    currentColor calc(50% - var(--lg-gap, 2px)),
-    transparent calc(50% - var(--lg-gap, 2px)),
-    transparent calc(50% + var(--lg-gap, 2px)),
-    currentColor calc(50% + var(--lg-gap, 2px)),
-    currentColor 100%
-  );
+}
+
+/* Bottom arm */
+.skywatch-lightning-crosshair::after {
+  left: 50%;
+  bottom: 0;
+  width: var(--lg-thick, 2px);
+  height: calc(50% - var(--lg-gap, 2px));
+  transform: translateX(-50%);
+}
+
+/* Left arm */
+.skywatch-lightning-crosshair > i {
+  top: 50%;
+  left: 0;
+  height: var(--lg-thick, 2px);
+  width: calc(50% - var(--lg-gap, 2px));
+  transform: translateY(-50%);
+}
+
+/* Right arm */
+.skywatch-lightning-crosshair > b {
+  top: 50%;
+  right: 0;
+  height: var(--lg-thick, 2px);
+  width: calc(50% - var(--lg-gap, 2px));
+  transform: translateY(-50%);
 }
 
 .skywatch-lightning-marker {

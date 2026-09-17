@@ -559,14 +559,8 @@ export function HomeDashboard() {
               lightningAttribution={lightningAttribution}
               lightningStatus={lightningStatus}
               lightningLive={lightningLive}
-              lightningReferenceTime={
-                showSatelliteLoop
-                  ? frameIndex >= loopFrames.length - 1
-                    ? null // latest frame: wall clock so live strikes past satellite lag still show
-                    : (activeFrame?.time ?? null)
-                  : null
-              }
-              lightningFrameSynced={showSatelliteLoop}
+              lightningReferenceTime={null}
+              lightningFrameSynced={false}
               showSynoptic={showSynoptic}
               synopticFrames={synopticFrames}
               synopticGeoJson={synopticGeoJson}

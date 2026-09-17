@@ -25,7 +25,7 @@ const EMPTY: State = {
 };
 
 const POLL_MS = 3000;
-const WINDOW_MIN = 30;
+const WINDOW_MIN = 60;
 
 function mergeStrike(
   map: Map<string, LightningStrike>,

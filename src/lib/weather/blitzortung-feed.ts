@@ -19,6 +19,9 @@ import { fetchLightningMapsBackfill } from "@/lib/weather/lightningmaps-backfill
 
 const WS_HOSTS = [
   "wss://ws1.blitzortung.org",
+  "wss://ws3.blitzortung.org",
+  "wss://ws5.blitzortung.org",
+  "wss://ws6.blitzortung.org",
   "wss://ws7.blitzortung.org",
   "wss://ws8.blitzortung.org",
 ] as const;
@@ -27,8 +30,8 @@ const MQTT_URL = "mqtt://blitzortung.ha.sed.pl:1883";
 /** Geohash prefixes covering Australia / nearby Indian & Pacific oceans. */
 const MQTT_GEOHASH_PREFIXES = ["q", "r"] as const;
 
-const WINDOW_SEC = 30 * 60;
-const MAX_BUFFER = 4000;
+const WINDOW_SEC = 60 * 60;
+const MAX_BUFFER = 6000;
 
 type FeedStatus = "connecting" | "live" | "reconnecting" | "error";
 
@@ -59,12 +62,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV4?: GlobalFeed;
+  __skywatchBlitzFeedV5?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV4) {
-    g.__skywatchBlitzFeedV4 = {
+  if (!g.__skywatchBlitzFeedV5) {
+    g.__skywatchBlitzFeedV5 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -78,7 +81,7 @@ function getState(): GlobalFeed {
       started: false,
     };
   }
-  return g.__skywatchBlitzFeedV4;
+  return g.__skywatchBlitzFeedV5;
 }
 
 function ingest(state: GlobalFeed, obj: Record<string, unknown>) {
@@ -277,7 +280,7 @@ export function getLiveLightningSnapshot(): LiveLightningSnapshot {
     generated: Math.floor(Date.now() / 1000),
     receivedTotal: state.receivedTotal,
     receivedInBounds: state.receivedInBounds,
-    windowMinutes: 30,
+    windowMinutes: 60,
     source: "blitzortung",
     attribution:
       "Live lightning © Blitzortung.org / LightningMaps.org (CC BY-SA)",

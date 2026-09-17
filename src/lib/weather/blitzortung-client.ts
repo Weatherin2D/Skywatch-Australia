@@ -16,6 +16,8 @@ import type { LightningStrike } from "@/lib/weather/lightning";
 
 const WS_HOSTS = [
   "wss://ws1.blitzortung.org",
+  "wss://ws3.blitzortung.org",
+  "wss://ws6.blitzortung.org",
   "wss://ws7.blitzortung.org",
   "wss://ws8.blitzortung.org",
 ] as const;
@@ -24,36 +26,33 @@ export type ClientLightningHandle = {
   stop: () => void;
 };
 
-function pickHost(index: number) {
-  return WS_HOSTS[index % WS_HOSTS.length]!;
-}
-
 /**
- * Start a live Blitzortung socket. Calls `onStrike` for each in-bounds strike.
- * Automatically reconnects with host rotation.
+ * Start live Blitzortung sockets on every host in parallel.
+ * Oceania delivery varies by server; multi-host listening fills gaps.
  */
 export function startClientLightningFeed(
   onStrike: (strike: LightningStrike) => void,
 ): ClientLightningHandle {
   let stopped = false;
-  let hostIndex = 0;
-  let ws: WebSocket | null = null;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  const sockets = new Map<string, WebSocket>();
+  const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  const clearReconnect = () => {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
+  const clearReconnect = (host: string) => {
+    const t = reconnectTimers.get(host);
+    if (t) clearTimeout(t);
+    reconnectTimers.delete(host);
   };
 
-  const scheduleReconnect = (delayMs: number) => {
-    clearReconnect();
+  const scheduleReconnect = (host: string, delayMs: number) => {
+    clearReconnect(host);
     if (stopped) return;
-    reconnectTimer = setTimeout(() => {
-      hostIndex += 1;
-      connect();
-    }, delayMs);
+    reconnectTimers.set(
+      host,
+      setTimeout(() => {
+        reconnectTimers.delete(host);
+        connect(host);
+      }, delayMs),
+    );
   };
 
   const handleRaw = (raw: string) => {
@@ -73,38 +72,39 @@ export function startClientLightningFeed(
     if (strike) onStrike(strike);
   };
 
-  const connect = () => {
+  const connect = (host: string) => {
     if (stopped) return;
-    clearReconnect();
-    if (ws) {
+    clearReconnect(host);
+    const prev = sockets.get(host);
+    if (prev) {
       try {
-        ws.close();
+        prev.close();
       } catch {
         /* ignore */
       }
-      ws = null;
+      sockets.delete(host);
     }
 
-    const host = pickHost(hostIndex);
+    let ws: WebSocket;
     try {
       ws = new WebSocket(host);
     } catch {
-      scheduleReconnect(4000);
+      scheduleReconnect(host, 4000);
       return;
     }
+    sockets.set(host, ws);
 
-    const socket = ws;
-    socket.addEventListener("open", () => {
-      if (stopped || ws !== socket) return;
+    ws.addEventListener("open", () => {
+      if (stopped || sockets.get(host) !== ws) return;
       try {
-        socket.send(JSON.stringify({ a: 111 }));
+        ws.send(JSON.stringify({ a: 111 }));
       } catch {
-        scheduleReconnect(3000);
+        scheduleReconnect(host, 3000);
       }
     });
 
-    socket.addEventListener("message", (ev) => {
-      if (stopped || ws !== socket) return;
+    ws.addEventListener("message", (ev) => {
+      if (stopped || sockets.get(host) !== ws) return;
       if (typeof ev.data === "string") {
         handleRaw(ev.data);
         return;
@@ -115,42 +115,42 @@ export function startClientLightningFeed(
       }
       if (typeof Blob !== "undefined" && ev.data instanceof Blob) {
         void ev.data.arrayBuffer().then((ab) => {
-          if (stopped || ws !== socket) return;
+          if (stopped || sockets.get(host) !== ws) return;
           handleRaw(new TextDecoder("latin1").decode(ab));
         });
       }
     });
 
-    socket.addEventListener("close", () => {
-      if (stopped || ws !== socket) return;
-      ws = null;
-      scheduleReconnect(2500);
+    ws.addEventListener("close", () => {
+      if (stopped || sockets.get(host) !== ws) return;
+      sockets.delete(host);
+      scheduleReconnect(host, 2500);
     });
 
-    socket.addEventListener("error", () => {
-      if (stopped || ws !== socket) return;
+    ws.addEventListener("error", () => {
+      if (stopped || sockets.get(host) !== ws) return;
       try {
-        socket.close();
+        ws.close();
       } catch {
         /* ignore */
       }
     });
   };
 
-  connect();
+  for (const host of WS_HOSTS) connect(host);
 
   return {
     stop: () => {
       stopped = true;
-      clearReconnect();
-      if (ws) {
+      for (const host of WS_HOSTS) clearReconnect(host);
+      for (const ws of sockets.values()) {
         try {
           ws.close();
         } catch {
           /* ignore */
         }
-        ws = null;
       }
+      sockets.clear();
     },
   };
 }

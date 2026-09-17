@@ -164,10 +164,12 @@ function frontBarbPaths(
       const y = a.y + (b.y - a.y) * t;
       const tx = dx / seg;
       const ty = dy / seg;
-      // Perpendicular in screen space (rotate tangent)
-      let px = -ty;
-      let py = tx;
-      // Orient toward warm side when known (warmSide is E,N → viewBox x increases E, y increases S so N is -y)
+      // Perpendicular in screen space. Default: rotate tangent 90° CW so symbols
+      // sit on the advance side of typically west→east BoM traces (toward motion).
+      let px = ty;
+      let py = -tx;
+      // warmSide here is the unit vector (east, north) the symbols should point —
+      // the side the front is advancing into (BoM chart barb side).
       if (warmSide) {
         const wx = warmSide[0];
         const wy = -warmSide[1] / aspect;
