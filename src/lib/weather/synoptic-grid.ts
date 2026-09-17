@@ -138,7 +138,7 @@ type RawCache = {
 
 let rawCache: RawCache | null = null;
 /** Bump when variable set / grid changes so stale in-memory cache is dropped. */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const RAW_TTL_MS = 45 * 60 * 1000;
 const BATCH = 70;
 

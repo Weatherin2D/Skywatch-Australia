@@ -140,7 +140,7 @@ function frontBarbPaths(
   const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
   const aspect = GIBS_AU_ASPECT; // width/height of frame
   const barbSize = 1.35;
-  const spacing = 4.2;
+  const spacing = 5.5;
   const paths: string[] = [];
 
   // Accumulate distance in viewBox units (y scaled by aspect so spacing looks even)
