@@ -18,14 +18,15 @@ export type LightningPayload = {
   strikes: LightningStrike[];
   attribution: string;
   receivedTotal?: number;
+  receivedInBounds?: number;
 };
 
-/** Match the national satellite frame. */
+/** Match the national satellite frame, plus Indian Ocean west of WA. */
 export const LIGHTNING_AU_BOUNDS = {
-  west: 105,
-  east: 165,
-  south: -48,
-  north: -5,
+  west: 95,
+  east: 170,
+  south: -50,
+  north: -1,
 } as const;
 
 /** Default lookback window for age colouring (seconds). */

@@ -16,11 +16,14 @@ export async function GET() {
     strikes: snap.strikes,
     attribution: snap.attribution,
     receivedTotal: snap.receivedTotal,
+    receivedInBounds: snap.receivedInBounds,
   };
 
   return NextResponse.json(payload, {
     headers: {
       "Cache-Control": "no-store, max-age=0",
+      "X-Lightning-In-Bounds": String(snap.receivedInBounds),
+      "X-Lightning-Buffered": String(snap.strikes.length),
     },
   });
 }
