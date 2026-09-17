@@ -211,10 +211,10 @@ function frontBarbPaths(
   const isWarm = kind === "warm_front";
   // Semicircle radius in aspect-corrected units. Keep diameter small enough
   // that neighbouring symbols do not merge into a thick red sausage.
-  const semiR = isWarm ? 1.35 : 1.25;
-  const barbSize = isWarm ? semiR / 0.92 : 1.45;
+  const semiR = isWarm ? 1.25 : 1.2;
+  const barbSize = isWarm ? 1.55 : 1.45;
   const spacing = isWarm
-    ? Math.max(semiR * 2.55, Math.min(4.2, totalLen / 3.5))
+    ? Math.max(semiR * 2.5, Math.min(4.2, totalLen / 3.5))
     : 5.2;
   const paths: string[] = [];
 
@@ -281,11 +281,13 @@ function frontBarbPaths(
 
   // Warm / alternating semicircle fronts: place by count so disks never overlap.
   if (isWarm || kind === "stationary_front" || kind === "occluded_front") {
-    const minGap = semiR * 2.6;
+    const minGap = semiR * 2.5;
     let count = Math.round(totalLen / minGap);
-    if (isWarm) count = Math.max(2, Math.min(count, 8));
+    if (isWarm) count = Math.max(3, Math.min(count, 8));
     else count = Math.max(2, Math.min(count, 12));
     if (count < 2) count = 2;
+    // If 3 disks would overlap on a very short stub, fall back to 2.
+    if (isWarm && totalLen < semiR * 2.5 * 2.2) count = 2;
     // Inset from ends so the first/last disk sits fully on the segment.
     const inset = Math.min(0.22, (semiR * 0.7) / totalLen);
     for (let i = 0; i < count; i++) {
@@ -446,12 +448,14 @@ export function SatelliteSynopticOverlay({
                 <path
                   key={bi}
                   d={d}
-                  fill={stroke.color}
+                  fill={
+                    f.properties.kind === "warm_front" ? "#ef4444" : stroke.color
+                  }
                   stroke={
-                    f.properties.kind === "warm_front" ? "#7f1d1d" : stroke.color
+                    f.properties.kind === "warm_front" ? "#ffffff" : stroke.color
                   }
                   strokeWidth={
-                    f.properties.kind === "warm_front" ? 0.35 : 0.55
+                    f.properties.kind === "warm_front" ? 0.4 : 0.55
                   }
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
