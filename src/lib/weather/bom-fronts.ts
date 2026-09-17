@@ -890,12 +890,17 @@ function stampCandidates(stamp: string): string[] {
 }
 
 async function fetchChartPng(stamp: string): Promise<{ stamp: string; buf: Buffer } | null> {
-  for (const s of stampCandidates(stamp)) {
+  // Bound total BoM wait so a slow/WAF-blocked chart cannot 502 the synoptic API.
+  const deadline = Date.now() + 6_000;
+  const candidates = stampCandidates(stamp).slice(0, 4);
+  for (const s of candidates) {
+    const remaining = deadline - Date.now();
+    if (remaining < 400) break;
     const url = `${BOM_CHART_BASE}/${BOM_PRODUCT}.${s}.png`;
     try {
       const res = await fetch(url, {
         headers: { "User-Agent": USER_AGENT, Accept: "image/png,*/*" },
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(Math.min(3_500, remaining)),
         cache: "no-store",
       });
       if (!res.ok) continue;

@@ -39,11 +39,23 @@ export function useSynoptic(enabled: boolean) {
       error: null,
     }));
     try {
-      const res = await fetch("/api/weather/synoptic", {
-        signal,
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`Synoptic unavailable (${res.status})`);
+      let res: Response | null = null;
+      let lastStatus = 0;
+      // One retry covers Vercel cold-start races without blocking the UI long.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (signal?.aborted) return;
+        res = await fetch("/api/weather/synoptic", {
+          signal,
+          cache: "no-store",
+        });
+        lastStatus = res.status;
+        if (res.ok) break;
+        if (res.status !== 502 && res.status !== 503 && res.status !== 504) break;
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
+      if (!res || !res.ok) {
+        throw new Error(`Synoptic unavailable (${lastStatus || "network"})`);
+      }
       const data = (await res.json()) as SynopticPayload;
       if (signal?.aborted) return;
       if (data.geojson && data.latest?.geojsonUrl) {

@@ -104,22 +104,28 @@ async function fetchBatch(
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
 
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (attempt > 0) await sleep(900 * attempt);
-    const res = await fetch(url, {
-      signal: signal ?? AbortSignal.timeout(45_000),
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (res.status === 429) {
-      lastErr = new Error("Open-Meteo 429");
-      continue;
+  // Keep retries short — Vercel serverless budgets are tight on cold start.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(400 * attempt);
+    try {
+      const res = await fetch(url, {
+        signal: signal ?? AbortSignal.timeout(18_000),
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (res.status === 429) {
+        lastErr = new Error("Open-Meteo 429");
+        continue;
+      }
+      if (!res.ok) {
+        throw new Error(`Open-Meteo ${res.status}`);
+      }
+      const json = (await res.json()) as HourlyLoc | HourlyLoc[];
+      return Array.isArray(json) ? json : [json];
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (signal?.aborted) throw lastErr;
     }
-    if (!res.ok) {
-      throw new Error(`Open-Meteo ${res.status}`);
-    }
-    const json = (await res.json()) as HourlyLoc | HourlyLoc[];
-    return Array.isArray(json) ? json : [json];
   }
   throw lastErr ?? new Error("Open-Meteo failed");
 }
@@ -138,9 +144,11 @@ type RawCache = {
 
 let rawCache: RawCache | null = null;
 /** Bump when variable set / grid changes so stale in-memory cache is dropped. */
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const RAW_TTL_MS = 45 * 60 * 1000;
 const BATCH = 70;
+/** Parallel Open-Meteo batches — serial + sleeps blew past Vercel timeouts. */
+const BATCH_CONCURRENCY = 4;
 
 export async function loadRawPressureField(
   signal?: AbortSignal,
@@ -169,21 +177,36 @@ export async function loadRawPressureField(
   const windFrom: (number | null)[][] = new Array(n);
   let times: string[] = [];
 
-  for (let i = 0; i < n; i += BATCH) {
-    if (i > 0) await sleep(350);
-    const batchLats = flatLats.slice(i, i + BATCH);
-    const batchLons = flatLons.slice(i, i + BATCH);
-    const locs = await fetchBatch(batchLats, batchLons, signal);
-    if (times.length === 0 && locs[0]?.hourly?.time) {
-      times = locs[0].hourly.time;
+  const starts: number[] = [];
+  for (let i = 0; i < n; i += BATCH) starts.push(i);
+
+  for (let w = 0; w < starts.length; w += BATCH_CONCURRENCY) {
+    if (signal?.aborted) throw new Error("Aborted");
+    const slice = starts.slice(w, w + BATCH_CONCURRENCY);
+    const results = await Promise.all(
+      slice.map(async (i) => {
+        const batchLats = flatLats.slice(i, i + BATCH);
+        const batchLons = flatLons.slice(i, i + BATCH);
+        const locs = await fetchBatch(batchLats, batchLons, signal);
+        return { i, locs };
+      }),
+    );
+    for (const { i, locs } of results) {
+      if (times.length === 0 && locs[0]?.hourly?.time) {
+        times = locs[0].hourly.time;
+      }
+      for (let j = 0; j < locs.length; j++) {
+        const h = locs[j]?.hourly;
+        pressure[i + j] = h?.pressure_msl ?? [];
+        temperature[i + j] = h?.temperature_2m ?? [];
+        windSpeed[i + j] = h?.wind_speed_10m ?? [];
+        windFrom[i + j] = h?.wind_direction_10m ?? [];
+      }
     }
-    for (let j = 0; j < locs.length; j++) {
-      const h = locs[j]?.hourly;
-      pressure[i + j] = h?.pressure_msl ?? [];
-      temperature[i + j] = h?.temperature_2m ?? [];
-      windSpeed[i + j] = h?.wind_speed_10m ?? [];
-      windFrom[i + j] = h?.wind_direction_10m ?? [];
-    }
+  }
+
+  if (!times.length) {
+    throw new Error("Open-Meteo returned no hourly times");
   }
 
   rawCache = {

@@ -18,6 +18,21 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+async function frontsOrEmpty(stamp: string) {
+  try {
+    return await Promise.race([
+      getBomFrontFeatures(stamp),
+      new Promise<[]>(
+        (resolve) => setTimeout(() => resolve([]), 7_000),
+      ),
+    ]);
+  } catch (err) {
+    console.error("synoptic frame fronts skipped", err);
+    return [];
+  }
+}
 
 /**
  * Vector MSLP field for a valid-time stamp.
@@ -35,8 +50,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const [field, fronts] = await Promise.all([
-      getSynopticFieldAt(unix),
-      getBomFrontFeatures(stamp),
+      getSynopticFieldAt(unix, AbortSignal.timeout(45_000)),
+      frontsOrEmpty(stamp),
     ]);
     const geojson = contourPressureGrid(field);
     geojson.features.push(...fronts);
