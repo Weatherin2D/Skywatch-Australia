@@ -209,10 +209,6 @@ function frontBarbPaths(
   }
   if (totalLen < 1.5) return [];
 
-  const wantsSemicircle =
-    kind === "warm_front" ||
-    kind === "stationary_front" ||
-    kind === "occluded_front";
   // Warm semicircles need denser spacing than cold triangles so short
   // BoM warm stubs still read as classic chart symbols.
   const spacing =
@@ -278,9 +274,8 @@ function frontBarbPaths(
     let t0 = 0;
     // For very short warm fronts, place evenly instead of by fixed spacing.
     const useEven =
-      wantsSemicircle &&
       kind === "warm_front" &&
-      totalLen < spacing * 3.2 &&
+      totalLen < 12 &&
       paths.length === 0 &&
       dist === 0;
 
