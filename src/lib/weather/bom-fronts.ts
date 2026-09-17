@@ -20,8 +20,7 @@ import fit from "@/lib/weather/synoptic-fit.json";
 
 const BOM_CHART_BASE = "https://www.bom.gov.au/fwo";
 const BOM_PRODUCT = "IDY00030";
-const USER_AGENT =
-  "SkyWatchAustralia/1.0 (+https://github.com; BoM public chart reuse)";
+const USER_AGENT = "SkyWatchAustralia/1.0";
 
 /** Palette targets (exact BoM legend colours). */
 const COLD_RGB: [number, number, number] = [0, 0, 255];
@@ -631,21 +630,20 @@ function extractFromPng(buffer: Buffer): SynopticFeature[] {
 function stampCandidates(stamp: string): string[] {
   const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(stamp);
   if (!m) return [stamp];
-  const base = Date.UTC(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    Number(m[4]),
-    Number(m[5]),
-  );
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  // BoM IDY00030 is issued at 00/06/12/18 UTC only — snap down to that cadence.
+  const synHour = Math.floor(hour / 6) * 6;
+  const base = Date.UTC(y, mo, day, synHour, 0);
   const out: string[] = [];
-  for (const hours of [0, -6, 6, -12, 12, -18, 18]) {
+  for (const hours of [0, -6, 6, -12, 12, -18, 18, -24]) {
     const d = new Date(base + hours * 3600 * 1000);
     const s =
       `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}` +
       `${String(d.getUTCDate()).padStart(2, "0")}` +
-      `${String(d.getUTCHours()).padStart(2, "0")}` +
-      `${String(d.getUTCMinutes()).padStart(2, "0")}`;
+      `${String(d.getUTCHours()).padStart(2, "0")}00`;
     if (!out.includes(s)) out.push(s);
   }
   return out;
