@@ -578,8 +578,10 @@ export function HomeDashboard() {
               lightningAttribution={lightningAttribution}
               lightningStatus={lightningStatus}
               lightningLive={lightningLive}
-              lightningReferenceTime={null}
-              lightningFrameSynced={false}
+              lightningReferenceTime={
+                showSatelliteLoop ? (activeFrame?.time ?? null) : null
+              }
+              lightningFrameSynced={showSatelliteLoop}
               showSynoptic={showSynoptic}
               synopticFrames={synopticFrames}
               synopticGeoJson={synopticGeoJson}

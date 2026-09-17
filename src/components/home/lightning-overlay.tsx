@@ -103,7 +103,8 @@ export function SatelliteLightningOverlay({
   const refTime = useReferenceTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
-    // Always age against wall clock — satellite scrub must not hide live strikes.
+    // Visible only if the strike has already occurred at the reference
+    // time (satellite frame or wall clock) and is still within the window.
     return filterStrikesAtTime(strikes, refTime, 60);
   }, [enabled, strikes, refTime]);
 
@@ -228,7 +229,9 @@ export function LightningLegend({
       {visible.length === 0 ? (
         <p className="mb-2 max-w-[12rem] text-[10px] leading-snug text-white/75">
           {status === "live" || status === "reconnecting"
-            ? "No strikes over Australia in the last 60 min — listening live…"
+            ? frameSynced && referenceTime != null
+              ? "No strikes at this frame time — scrub forward as storms develop…"
+              : "No strikes over Australia in the last 60 min — listening live…"
             : "Connecting to live lightning feed…"}
         </p>
       ) : null}
@@ -244,7 +247,10 @@ export function LightningLegend({
         </div>
       </div>
       <p className="mt-1.5 text-[9px] text-white/60">
-        {visible.length} strikes · last 60 min
+        {visible.length} strikes ·{" "}
+        {frameSynced && referenceTime != null
+          ? "synced to satellite frame"
+          : "last 60 min"}
       </p>
       {attribution ? (
         <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">

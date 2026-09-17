@@ -9,7 +9,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — Himawari satellite loops (Visible, Infrared, Air Mass, Water Vapor, Shortwave IR, Dust, Volcanic Ash), Map overlays (Lightning tracker, vector Synoptic MSLP), map shell, mock panels |
+| `/` | SkyWatch homepage — Himawari satellite loops (Visible, Infrared, Air Mass, Water Vapor, Shortwave IR, Dust, Volcanic Ash), Map overlays (Lightning tracker timed to the satellite frame, vector Synoptic MSLP synced to the loop), map shell, mock panels |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Live Blitzortung strikes (WS + MQTT) with LightningMaps Australia backfill |
