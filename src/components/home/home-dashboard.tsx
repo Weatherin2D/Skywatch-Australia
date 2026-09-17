@@ -166,6 +166,8 @@ export function HomeDashboard() {
   const showSynoptic = layers.synoptic;
   const {
     frames: synopticFrames,
+    geojson: synopticGeoJson,
+    validTime: synopticValidTime,
     attribution: synopticAttribution,
     loading: synopticLoading,
     error: synopticError,
@@ -567,6 +569,8 @@ export function HomeDashboard() {
               lightningFrameSynced={showSatelliteLoop}
               showSynoptic={showSynoptic}
               synopticFrames={synopticFrames}
+              synopticGeoJson={synopticGeoJson}
+              synopticValidTime={synopticValidTime}
               synopticAttribution={synopticAttribution}
               synopticLoading={synopticLoading}
               synopticError={synopticError}

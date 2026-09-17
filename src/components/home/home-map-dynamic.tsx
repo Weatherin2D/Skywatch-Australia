@@ -7,6 +7,7 @@ import type {
 } from "@/components/home/mock-data";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
+import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 
 const HomeMap = dynamic(
   () => import("@/components/home/home-map").then((m) => m.HomeMap),
@@ -40,6 +41,8 @@ export function HomeMapDynamic({
   lightningFrameSynced,
   showSynoptic,
   synopticFrames,
+  synopticGeoJson,
+  synopticValidTime,
   synopticAttribution,
   synopticLoading,
   synopticError,
@@ -64,6 +67,8 @@ export function HomeMapDynamic({
   lightningFrameSynced?: boolean;
   showSynoptic?: boolean;
   synopticFrames?: SynopticFrame[];
+  synopticGeoJson?: SynopticGeoJson | null;
+  synopticValidTime?: number | null;
   synopticAttribution?: string | null;
   synopticLoading?: boolean;
   synopticError?: string | null;
@@ -90,6 +95,8 @@ export function HomeMapDynamic({
       lightningFrameSynced={lightningFrameSynced}
       showSynoptic={showSynoptic}
       synopticFrames={synopticFrames}
+      synopticGeoJson={synopticGeoJson}
+      synopticValidTime={synopticValidTime}
       synopticAttribution={synopticAttribution}
       synopticLoading={synopticLoading}
       synopticError={synopticError}

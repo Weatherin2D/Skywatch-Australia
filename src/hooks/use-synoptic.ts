@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { SynopticFrame, SynopticPayload } from "@/lib/weather/synoptic";
+import type {
+  SynopticFrame,
+  SynopticPayload,
+} from "@/lib/weather/synoptic";
+import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import { pickSynopticFrame } from "@/lib/weather/synoptic";
 
 type State = {
   frames: SynopticFrame[];
   latest: SynopticFrame | null;
+  geojson: SynopticGeoJson | null;
+  validTime: number | null;
   loading: boolean;
   error: string | null;
   attribution: string | null;
@@ -15,6 +21,8 @@ type State = {
 const EMPTY: State = {
   frames: [],
   latest: null,
+  geojson: null,
+  validTime: null,
   loading: false,
   error: null,
   attribution: null,
@@ -26,7 +34,7 @@ export function useSynoptic(enabled: boolean) {
   const load = useCallback(async (signal?: AbortSignal) => {
     setState((s) => ({
       ...s,
-      loading: s.frames.length === 0,
+      loading: s.geojson == null && s.frames.length === 0,
       error: null,
     }));
     try {
@@ -40,6 +48,8 @@ export function useSynoptic(enabled: boolean) {
       setState({
         frames: data.frames,
         latest: data.latest,
+        geojson: data.geojson,
+        validTime: data.validTime,
         loading: false,
         error: null,
         attribution: data.attribution,
@@ -61,7 +71,6 @@ export function useSynoptic(enabled: boolean) {
     }
     const ac = new AbortController();
     void load(ac.signal);
-    // Refresh catalog every 10 minutes (charts update ~6-hourly)
     const id = window.setInterval(() => {
       void load();
     }, 10 * 60_000);

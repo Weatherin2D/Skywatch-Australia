@@ -27,6 +27,7 @@ import {
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
+import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import { GIBS_AU_ASPECT } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
@@ -54,6 +55,8 @@ type Props = {
   lightningFrameSynced?: boolean;
   showSynoptic?: boolean;
   synopticFrames?: SynopticFrame[];
+  synopticGeoJson?: SynopticGeoJson | null;
+  synopticValidTime?: number | null;
   synopticAttribution?: string | null;
   synopticLoading?: boolean;
   synopticError?: string | null;
@@ -201,6 +204,8 @@ export function HomeMap({
   lightningFrameSynced = false,
   showSynoptic = false,
   synopticFrames = [],
+  synopticGeoJson = null,
+  synopticValidTime = null,
   synopticAttribution = null,
   synopticLoading = false,
   synopticError = null,
@@ -228,6 +233,8 @@ export function HomeMap({
           frames={synopticFrames}
           enabled={showSynoptic}
           referenceTime={synopticReferenceTime}
+          geojson={synopticGeoJson}
+          validTime={synopticValidTime}
         />
         <SatelliteMapAnnotations
           settings={mapSettings}
@@ -245,6 +252,7 @@ export function HomeMap({
             referenceTime={synopticReferenceTime}
             loading={synopticLoading}
             error={synopticError}
+            validTime={synopticValidTime}
           />
         ) : null}
         {showLightning ? (
@@ -283,6 +291,8 @@ export function HomeMap({
           frames={synopticFrames}
           enabled={showSynoptic}
           referenceTime={synopticReferenceTime}
+          geojson={synopticGeoJson}
+          validTime={synopticValidTime}
         />
         <LeafletMapAnnotations settings={mapSettings} />
         <LeafletLightningOverlay
@@ -300,6 +310,7 @@ export function HomeMap({
           referenceTime={synopticReferenceTime}
           loading={synopticLoading}
           error={synopticError}
+          validTime={synopticValidTime}
         />
       ) : null}
 
