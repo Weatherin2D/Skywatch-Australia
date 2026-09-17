@@ -158,11 +158,13 @@ function frontStroke(kind: FrontKind): {
   }
 }
 
-/** Place classic front barbs along a polyline in the 0–100 viewBox. */
+/** Place classic front barbs along a polyline in the 0–100 viewBox.
+ * Polylines are pre-oriented so the advance side is geographic-left; barbs
+ * are always drawn to that left. */
 function frontBarbPaths(
   coords: [number, number][],
   kind: FrontKind,
-  warmSide?: [number, number],
+  _warmSide?: [number, number],
 ): string[] {
   if (kind === "trough" || coords.length < 2) return [];
   const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
@@ -189,46 +191,39 @@ function frontBarbPaths(
       const y = a.y + (b.y - a.y) * t;
       const tx = dx / seg;
       const ty = dy / seg;
-      // Perpendicular in viewBox space. warmSide (east, north) selects which
-      // side; without it, default to geographic-left of the tangent so a
-      // consistent polyline direction keeps barbs on one side.
-      let px = ty;
-      let py = -tx;
-      if (warmSide) {
-        const wx = warmSide[0];
-        const wy = -warmSide[1] / aspect;
-        if (px * wx + py * wy < 0) {
-          px = -px;
-          py = -py;
-        }
-      }
-      // Stationary / occluded: alternate symbol kind, still same advance side
-      // for cold triangles; warm semicircles flip to the opposite air mass.
+      // Geographic left in viewBox (y increases south): rotate tangent 90° CW.
+      const px = ty;
+      const py = -tx;
+      // Stationary: alternate symbol kind on the same (left) side.
+      // Occluded: triangles + semicircles alternate, same side.
       const alt =
         (kind === "stationary_front" || kind === "occluded_front") &&
         paths.length % 2 === 1;
-      const side = alt && kind === "stationary_front" ? -1 : 1;
-      const bx = x + px * barbSize * side;
-      const by = y + py * barbSize * aspect * side;
+      const bx = x + px * barbSize;
+      const by = y + py * barbSize * aspect;
+
+      const base = barbSize * 0.85;
+      const x1 = x - tx * base * 0.5;
+      const y1 = y - ty * base * 0.5 * aspect;
+      const x2 = x + tx * base * 0.5;
+      const y2 = y + ty * base * 0.5 * aspect;
 
       if (
         kind === "cold_front" ||
         ((kind === "stationary_front" || kind === "occluded_front") && !alt)
       ) {
-        // Triangle
-        const base = barbSize * 0.85;
-        const x1 = x - tx * base * 0.5;
-        const y1 = y - ty * base * 0.5 * aspect;
-        const x2 = x + tx * base * 0.5;
-        const y2 = y + ty * base * 0.5 * aspect;
+        // Triangle pointing to the advance side
         paths.push(
           `M${x1.toFixed(2)} ${y1.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} Z`,
         );
       } else {
-        // Semicircle (warm / alt stationary / occluded)
+        // Semicircle with diameter on the front, bulging toward advance side.
+        // In y-down viewBox, CCW (sweep 0) covers the geographic-left side.
+        const cross = (x2 - x1) * (by - y1) - (y2 - y1) * (bx - x1);
+        const sweep = cross < 0 ? 0 : 1;
         const r = barbSize * 0.7;
         paths.push(
-          `M${x.toFixed(2)} ${y.toFixed(2)} A${r.toFixed(2)} ${(r * aspect).toFixed(2)} 0 0 ${side > 0 ? 1 : 0} ${bx.toFixed(2)} ${by.toFixed(2)}`,
+          `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r.toFixed(2)} ${(r * aspect).toFixed(2)} 0 0 ${sweep} ${x2.toFixed(2)} ${y2.toFixed(2)}`,
         );
       }
 

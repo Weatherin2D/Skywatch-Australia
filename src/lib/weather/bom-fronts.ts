@@ -59,7 +59,7 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 25 * 60 * 1000;
 /** Bump when front geometry / barb-side logic changes so HMR cannot serve stale vectors. */
-const FRONT_CACHE_VER = "barb-side-v2";
+const FRONT_CACHE_VER = "barb-orient-v3";
 
 export const BOM_FRONTS_ATTRIBUTION =
   "Fronts · BoM IDY00030 colour MSLP analysis";
@@ -507,7 +507,7 @@ function toFeature(
 ): SynopticFeature | null {
   const sampled = downsample(chaikin(smoothLine(points, 1), 1), 56);
   const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
-  const coords: [number, number][] = [];
+  let coords: [number, number][] = [];
   for (const [x, y] of sampled) {
     const [lon, lat] = chartPxToLonLat(x, y);
     if (lon < west - 3 || lon > east + 3 || lat < south - 3 || lat > north + 3) {
@@ -517,6 +517,9 @@ function toFeature(
   }
   if (coords.length < 3) return null;
   if (geoLengthDeg(coords) < MIN_GEO_DEG) return null;
+  // Direct the polyline so the advance / barb side lies to the geographic
+  // LEFT of the travel direction. Barbs are always drawn to the left.
+  if (warmSide) coords = orientCoordsAdvanceLeft(coords, warmSide);
   return {
     type: "Feature",
     properties: warmSide ? { kind, warmSide } : { kind },
@@ -525,9 +528,41 @@ function toFeature(
 }
 
 /**
+ * Reverse a lon/lat LineString if needed so `advance` lies to the geographic
+ * left of the directed path (majority vote along the line).
+ */
+function orientCoordsAdvanceLeft(
+  coords: [number, number][],
+  advance: [number, number],
+): [number, number][] {
+  let score = 0;
+  const step = Math.max(1, Math.floor(coords.length / 16));
+  for (let i = step; i < coords.length; i += step) {
+    const a = coords[i - step]!;
+    const b = coords[i]!;
+    const midLat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+    const tE = (b[0] - a[0]) * Math.cos(midLat);
+    const tN = b[1] - a[1];
+    const len = Math.hypot(tE, tN);
+    if (len < 1e-9) continue;
+    // Geographic left of tangent (east, north): rotate CCW → (-N, E)
+    const lE = -tN / len;
+    const lN = tE / len;
+    score += lE * advance[0] + lN * advance[1];
+  }
+  if (score < 0) return [...coords].reverse();
+  return coords;
+}
+
+/**
  * Which side of the skeleton has protruding barb pixels on the BoM chart.
  * Returns a unit vector (east, north) toward that side — the direction the
  * front symbols should point (advance side).
+ *
+ * Uses two votes:
+ *  1. Lateral rays past the stroke core (barb reach)
+ *  2. Local mask-centroid offset from the skeleton (fallback when barbs are
+ *     sparse, e.g. warm-front semicircles)
  */
 function estimateBarbSide(
   points: Pixel[],
@@ -538,7 +573,7 @@ function estimateBarbSide(
   let biasE = 0;
   let biasN = 0;
   let samples = 0;
-  const step = Math.max(1, Math.floor(points.length / 24));
+  const step = Math.max(1, Math.floor(points.length / 32));
   for (let i = step; i < points.length; i += step) {
     const a = points[i - step]!;
     const b = points[i]!;
@@ -556,7 +591,8 @@ function estimateBarbSide(
     const my = (a[1] + b[1]) / 2;
     let left = 0;
     let right = 0;
-    for (let s = 3; s <= 12; s++) {
+    // Skip the stroke core (s=1..3); score only the barb reach.
+    for (let s = 4; s <= 16; s++) {
       const lpx = Math.round(mx + lx * s);
       const lpy = Math.round(my + ly * s);
       const rpx = Math.round(mx - lx * s);
@@ -580,14 +616,50 @@ function estimateBarbSide(
         right += 1;
       }
     }
-    if (left === right) continue;
-    // +1 = toward geographic left (lx, ly)
-    const side = left > right ? 1 : -1;
+    const diff = left - right;
+    if (diff !== 0) {
+      const side = diff > 0 ? 1 : -1;
+      const weight = Math.min(4, Math.abs(diff));
+      biasE += lx * side * weight;
+      biasN += -ly * side * weight;
+      samples += 1;
+      continue;
+    }
+
+    // Centroid fallback: average nearby mask pixels; offset from the
+    // skeleton points toward the barb mass.
+    let cx = 0;
+    let cy = 0;
+    let n = 0;
+    const R = 14;
+    const x0 = Math.round(mx);
+    const y0 = Math.round(my);
+    for (let yy = y0 - R; yy <= y0 + R; yy++) {
+      if (yy < 0 || yy >= usableH) continue;
+      for (let xx = x0 - R; xx <= x0 + R; xx++) {
+        if (xx < 0 || xx >= w) continue;
+        if (!mask[yy * w + xx]) continue;
+        cx += xx;
+        cy += yy;
+        n += 1;
+      }
+    }
+    if (n < 8) continue;
+    cx /= n;
+    cy /= n;
+    const ox = cx - mx;
+    const oy = cy - my;
+    // Project offset onto the left/right normal; ignore along-front drift.
+    const along = ox * tx + oy * ty;
+    const across = ox * lx + oy * ly; // >0 = geographic left
+    if (Math.abs(across) < 0.6) continue;
+    const side = across > 0 ? 1 : -1;
     biasE += lx * side;
-    biasN += -ly * side; // image +y is south → north = -y
+    biasN += -ly * side;
     samples += 1;
+    void along;
   }
-  if (samples < 2) return undefined;
+  if (samples < 1) return undefined;
   const mag = Math.hypot(biasE, biasN);
   if (mag < 1e-6) return undefined;
   return [biasE / mag, biasN / mag];
@@ -666,11 +738,32 @@ function extractFromPng(buffer: Buffer): SynopticFeature[] {
   // Second merge pass so trough dashes can join each other
   paths = mergeFragments(paths);
 
+  const maskFor = (kind: FrontKind): Uint8Array | null => {
+    if (kind === "cold_front" || kind === "trough") return coldMask;
+    if (kind === "warm_front") return warmMask;
+    if (kind === "occluded_front") return occMask;
+    return null;
+  };
+
+  // Recompute barb side on the final merged polylines (fragment joins can
+  // reverse direction and stale warmSide from a short stub is unreliable).
+  paths = paths.map((p) => {
+    if (p.kind === "trough") return { ...p, warmSide: undefined };
+    const mask = maskFor(p.kind);
+    if (!mask) return p;
+    return {
+      ...p,
+      warmSide: estimateBarbSide(p.points, mask, w, usableH),
+    };
+  });
+
   const { merged: stationary, consumed } = mergeStationaryChains(paths);
   const features: SynopticFeature[] = [];
 
   for (const pts of stationary) {
-    const f = toFeature("stationary_front", pts);
+    // Stationary: prefer cold-mask barb bias when available
+    const warmSide = estimateBarbSide(pts, coldMask, w, usableH);
+    const f = toFeature("stationary_front", pts, warmSide);
     if (f) features.push(f);
   }
   for (const p of paths) {
