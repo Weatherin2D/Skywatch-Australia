@@ -80,7 +80,7 @@ export function bomSynopticUpstreamUrl(stamp: string): string {
 /** Same-origin proxy URL for the chart image (warped to national frame). */
 export function synopticProxyUrl(stamp: string): string {
   // `w` busts browser caches when the warp/fit changes (must match frame route epoch).
-  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&w=stretch-v6`;
+  return `/api/weather/synoptic/frame?time=${encodeURIComponent(stamp)}&w=stretch-v7`;
 }
 
 /**

@@ -1,9 +1,9 @@
 {
   "mode": "stretch",
-  "scX": 2.238968462030656,
-  "scY": 2.1639684620306556,
-  "tx": 501.1588033075468,
-  "ty": 370.93093552205687,
+  "scX": 2.26,
+  "scY": 2.185,
+  "tx": 512,
+  "ty": 382,
   "chartCx": 326.9067343153766,
   "chartCy": 142.54008825598498,
   "chartW": 640,
@@ -11,5 +11,5 @@
   "legendH": 70,
   "outW": 1024,
   "outH": 851,
-  "iou": 0.8562351680318456
+  "notes": "Uniform H/V stretch; nudged SE from mainland IoU fit to match live outline overlay"
 }
