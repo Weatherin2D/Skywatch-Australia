@@ -2,7 +2,7 @@
   "mode": "stretch",
   "scX": 2.275,
   "scY": 2.185,
-  "tx": 502.5,
+  "tx": 510,
   "ty": 376.5,
   "chartCx": 326.9067343153766,
   "chartCy": 142.54008825598498,
@@ -11,5 +11,5 @@
   "legendH": 70,
   "outW": 1024,
   "outH": 851,
-  "notes": "stretch-v11: further uniform enlarge to fill remaining inset vs mercator mainland outline"
+  "notes": "stretch-v12: east nudge from mid-coast residuals (beige was west-biased under v11)"
 }
