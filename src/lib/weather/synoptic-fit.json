@@ -1,9 +1,9 @@
 {
   "mode": "stretch",
-  "scX": 2.235414019107788,
-  "scY": 2.1494140191077857,
-  "tx": 501.4465457796504,
-  "ty": 372.59008325182236,
+  "scX": 2.255,
+  "scY": 2.165,
+  "tx": 501.0,
+  "ty": 374.5,
   "chartCx": 326.9067343153766,
   "chartCy": 142.54008825598498,
   "chartW": 640,
@@ -11,7 +11,5 @@
   "legendH": 70,
   "outW": 1024,
   "outH": 851,
-  "meanEdge": 4.085789487016318,
-  "iou": 0.8771067415730337,
-  "cost": 4.823149037578116
+  "notes": "mainland edge fit + close remaining west/east under-size vs mercator outline"
 }
