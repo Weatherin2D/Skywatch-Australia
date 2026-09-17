@@ -194,7 +194,7 @@ function frontBarbPaths(
   if (kind === "trough" || coords.length < 2) return [];
   const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
   const aspect = GIBS_AU_ASPECT; // width/height of frame
-  const barbSize = 1.35;
+  const barbSize = 1.45;
   const spacing = 5.5;
   const paths: string[] = [];
 
@@ -224,32 +224,39 @@ function frontBarbPaths(
       const alt =
         (kind === "stationary_front" || kind === "occluded_front") &&
         paths.length % 2 === 1;
-      const bx = x + px * barbSize;
-      const by = y + py * barbSize * aspect;
 
-      const base = barbSize * 0.85;
-      const x1 = x - tx * base * 0.5;
-      const y1 = y - ty * base * 0.5 * aspect;
-      const x2 = x + tx * base * 0.5;
-      const y2 = y + ty * base * 0.5 * aspect;
-
-      if (
+      const useTriangle =
         kind === "cold_front" ||
-        ((kind === "stationary_front" || kind === "occluded_front") && !alt)
-      ) {
-        // Triangle pointing to the advance side
+        ((kind === "stationary_front" || kind === "occluded_front") && !alt);
+
+      if (useTriangle) {
+        const base = barbSize * 0.85;
+        const x1 = x - tx * base * 0.5;
+        const y1 = y - ty * base * 0.5 * aspect;
+        const x2 = x + tx * base * 0.5;
+        const y2 = y + ty * base * 0.5 * aspect;
+        const bx = x + px * barbSize;
+        const by = y + py * barbSize * aspect;
         paths.push(
           `M${x1.toFixed(2)} ${y1.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} Z`,
         );
       } else {
-        // Semicircle with diameter on the front, bulging toward advance side.
-        // In y-down viewBox, CCW (sweep 0) covers the geographic-left side.
-        const cross = (x2 - x1) * (by - y1) - (y2 - y1) * (bx - x1);
-        const sweep = cross < 0 ? 0 : 1;
-        const r = barbSize * 0.7;
-        paths.push(
-          `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r.toFixed(2)} ${(r * aspect).toFixed(2)} 0 0 ${sweep} ${x2.toFixed(2)} ${y2.toFixed(2)}`,
-        );
+        // Filled semicircle: diameter on the front, bulge toward advance side.
+        // Build as a polygon so fill is reliable under preserveAspectRatio=none
+        // (SVG elliptical arcs were flattening to near-invisible strokes).
+        const r = barbSize * 0.95;
+        const steps = 10;
+        let d = "";
+        for (let s = 0; s <= steps; s++) {
+          const ang = Math.PI * (s / steps); // 0 → π along the bulge
+          const along = -Math.cos(ang); // -1 at start diameter end, +1 at other
+          const out = Math.sin(ang); // 0 on the front, 1 at the tip
+          const sx = x + tx * r * along + px * r * out;
+          const sy = y + (ty * r * along + py * r * out) * aspect;
+          d += `${s === 0 ? "M" : "L"}${sx.toFixed(2)} ${sy.toFixed(2)} `;
+        }
+        d += "Z";
+        paths.push(d.trim());
       }
 
       nextAt += spacing;
@@ -388,16 +395,10 @@ export function SatelliteSynopticOverlay({
                 <path
                   key={bi}
                   d={d}
-                  fill={
-                    f.properties.kind === "warm_front" ||
-                    ((f.properties.kind === "stationary_front" ||
-                      f.properties.kind === "occluded_front") &&
-                      bi % 2 === 1)
-                      ? "none"
-                      : stroke.color
-                  }
+                  fill={stroke.color}
                   stroke={stroke.color}
-                  strokeWidth={1.1}
+                  strokeWidth={0.6}
+                  strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
               ))}
