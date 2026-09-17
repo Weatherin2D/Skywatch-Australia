@@ -194,76 +194,130 @@ function frontBarbPaths(
   if (kind === "trough" || coords.length < 2) return [];
   const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
   const aspect = GIBS_AU_ASPECT; // width/height of frame
-  const barbSize = 1.45;
-  const spacing = 5.5;
-  const paths: string[] = [];
 
-  // Accumulate distance in viewBox units (y scaled by aspect so spacing looks even)
-  let dist = 0;
-  let nextAt = spacing * 0.5;
+  // Precompute segment lengths in aspect-corrected viewBox units.
+  const segs: { a: { x: number; y: number }; b: { x: number; y: number }; len: number }[] =
+    [];
+  let totalLen = 0;
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1]!;
     const b = pts[i]!;
+    const len = Math.hypot(b.x - a.x, (b.y - a.y) / aspect);
+    if (len < 1e-6) continue;
+    segs.push({ a, b, len });
+    totalLen += len;
+  }
+  if (totalLen < 1.5) return [];
+
+  const wantsSemicircle =
+    kind === "warm_front" ||
+    kind === "stationary_front" ||
+    kind === "occluded_front";
+  // Warm semicircles need denser spacing than cold triangles so short
+  // BoM warm stubs still read as classic chart symbols.
+  const spacing =
+    kind === "warm_front"
+      ? Math.min(3.6, Math.max(2.4, totalLen / 4))
+      : 5.2;
+  const barbSize = kind === "warm_front" ? 1.75 : 1.45;
+  const paths: string[] = [];
+
+  let dist = 0;
+  let nextAt = Math.min(spacing * 0.45, totalLen * 0.15);
+  // Guarantee at least a few symbols on short warm fronts.
+  if (kind === "warm_front" && totalLen < spacing * 3) {
+    nextAt = totalLen * 0.2;
+  }
+
+  const emitAt = (x: number, y: number, tx: number, ty: number) => {
+    const px = ty;
+    const py = -tx;
+    const alt =
+      (kind === "stationary_front" || kind === "occluded_front") &&
+      paths.length % 2 === 1;
+    const useTriangle =
+      kind === "cold_front" ||
+      ((kind === "stationary_front" || kind === "occluded_front") && !alt);
+
+    if (useTriangle) {
+      const base = barbSize * 0.85;
+      const x1 = x - tx * base * 0.5;
+      const y1 = y - ty * base * 0.5 * aspect;
+      const x2 = x + tx * base * 0.5;
+      const y2 = y + ty * base * 0.5 * aspect;
+      const bx = x + px * barbSize;
+      const by = y + py * barbSize * aspect;
+      paths.push(
+        `M${x1.toFixed(2)} ${y1.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} Z`,
+      );
+      return;
+    }
+
+    // Filled semicircle — sample in aspect-corrected space so the bulge is
+    // circular on the stretched satellite plane.
+    const r = barbSize * 0.92;
+    const steps = 14;
+    let d = "";
+    for (let s = 0; s <= steps; s++) {
+      const ang = Math.PI * (s / steps);
+      const along = -Math.cos(ang);
+      const out = Math.sin(ang);
+      const sx = x + tx * r * along + px * r * out;
+      const sy = y + (ty * r * along + py * r * out) * aspect;
+      d += `${s === 0 ? "M" : "L"}${sx.toFixed(2)} ${sy.toFixed(2)} `;
+    }
+    d += "Z";
+    paths.push(d.trim());
+  };
+
+  for (const { a, b, len } of segs) {
     const dx = b.x - a.x;
     const dy = (b.y - a.y) / aspect;
-    const seg = Math.hypot(dx, dy);
-    if (seg < 1e-6) continue;
+    const tx = dx / len;
+    const ty = dy / len;
     let t0 = 0;
-    while (dist + (seg - t0) >= nextAt) {
+    // For very short warm fronts, place evenly instead of by fixed spacing.
+    const useEven =
+      wantsSemicircle &&
+      kind === "warm_front" &&
+      totalLen < spacing * 3.2 &&
+      paths.length === 0 &&
+      dist === 0;
+
+    if (useEven) {
+      const count = Math.max(3, Math.min(5, Math.round(totalLen / 2.2)));
+      for (let i = 0; i < count; i++) {
+        const u = (i + 1) / (count + 1);
+        // Walk full polyline to u * totalLen
+        let walk = 0;
+        for (const seg of segs) {
+          if (walk + seg.len >= u * totalLen) {
+            const tt = (u * totalLen - walk) / seg.len;
+            const sx = seg.a.x + (seg.b.x - seg.a.x) * tt;
+            const sy = seg.a.y + (seg.b.y - seg.a.y) * tt;
+            const sdx = seg.b.x - seg.a.x;
+            const sdy = (seg.b.y - seg.a.y) / aspect;
+            const sl = Math.hypot(sdx, sdy) || 1;
+            emitAt(sx, sy, sdx / sl, sdy / sl);
+            break;
+          }
+          walk += seg.len;
+        }
+      }
+      return paths;
+    }
+
+    while (dist + (len - t0) >= nextAt) {
       const need = nextAt - dist;
-      const t = (t0 + need) / seg;
+      const t = (t0 + need) / len;
       const x = a.x + dx * t;
       const y = a.y + (b.y - a.y) * t;
-      const tx = dx / seg;
-      const ty = dy / seg;
-      // Geographic left in viewBox (y increases south): rotate tangent 90° CW.
-      const px = ty;
-      const py = -tx;
-      // Stationary: alternate symbol kind on the same (left) side.
-      // Occluded: triangles + semicircles alternate, same side.
-      const alt =
-        (kind === "stationary_front" || kind === "occluded_front") &&
-        paths.length % 2 === 1;
-
-      const useTriangle =
-        kind === "cold_front" ||
-        ((kind === "stationary_front" || kind === "occluded_front") && !alt);
-
-      if (useTriangle) {
-        const base = barbSize * 0.85;
-        const x1 = x - tx * base * 0.5;
-        const y1 = y - ty * base * 0.5 * aspect;
-        const x2 = x + tx * base * 0.5;
-        const y2 = y + ty * base * 0.5 * aspect;
-        const bx = x + px * barbSize;
-        const by = y + py * barbSize * aspect;
-        paths.push(
-          `M${x1.toFixed(2)} ${y1.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} Z`,
-        );
-      } else {
-        // Filled semicircle: diameter on the front, bulge toward advance side.
-        // Build as a polygon so fill is reliable under preserveAspectRatio=none
-        // (SVG elliptical arcs were flattening to near-invisible strokes).
-        const r = barbSize * 0.95;
-        const steps = 10;
-        let d = "";
-        for (let s = 0; s <= steps; s++) {
-          const ang = Math.PI * (s / steps); // 0 → π along the bulge
-          const along = -Math.cos(ang); // -1 at start diameter end, +1 at other
-          const out = Math.sin(ang); // 0 on the front, 1 at the tip
-          const sx = x + tx * r * along + px * r * out;
-          const sy = y + (ty * r * along + py * r * out) * aspect;
-          d += `${s === 0 ? "M" : "L"}${sx.toFixed(2)} ${sy.toFixed(2)} `;
-        }
-        d += "Z";
-        paths.push(d.trim());
-      }
-
+      emitAt(x, y, tx, ty);
       nextAt += spacing;
       t0 += need;
       dist += need;
     }
-    dist += seg - t0;
+    dist += len - t0;
   }
   return paths;
 }
@@ -396,8 +450,12 @@ export function SatelliteSynopticOverlay({
                   key={bi}
                   d={d}
                   fill={stroke.color}
-                  stroke={stroke.color}
-                  strokeWidth={0.6}
+                  stroke={
+                    f.properties.kind === "warm_front" ? "#7f1d1d" : stroke.color
+                  }
+                  strokeWidth={
+                    f.properties.kind === "warm_front" ? 0.35 : 0.55
+                  }
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
