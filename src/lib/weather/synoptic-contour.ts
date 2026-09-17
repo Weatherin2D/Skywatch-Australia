@@ -1,13 +1,20 @@
 /**
- * Marching-squares isobars + H/L centres from a regular MSLP grid.
+ * Marching-squares isobars + H/L centres + fronts from a synoptic field.
  */
 
-import type { PressureGrid } from "@/lib/weather/synoptic-grid";
+import type { PressureGrid, SynopticField } from "@/lib/weather/synoptic-grid";
+import { detectFronts } from "@/lib/weather/synoptic-fronts";
 
 export type SynopticGeoJson = {
   type: "FeatureCollection";
   features: SynopticFeature[];
 };
+
+export type FrontKind =
+  | "cold_front"
+  | "warm_front"
+  | "stationary_front"
+  | "trough";
 
 export type SynopticFeature =
   | {
@@ -31,6 +38,18 @@ export type SynopticFeature =
       geometry: {
         type: "Point";
         coordinates: [number, number];
+      };
+    }
+  | {
+      type: "Feature";
+      properties: {
+        kind: FrontKind;
+        /** Unit vector toward warmer air (east, north) — for barb orientation. */
+        warmSide?: [number, number];
+      };
+      geometry: {
+        type: "LineString";
+        coordinates: [number, number][];
       };
     };
 
@@ -265,9 +284,9 @@ function findCentres(grid: PressureGrid): SynopticFeature[] {
   return out;
 }
 
-/** Classic 4 hPa isobar spacing. */
+/** Classic 4 hPa isobar spacing + derived fronts when a full field is provided. */
 export function contourPressureGrid(
-  grid: PressureGrid,
+  grid: PressureGrid | SynopticField,
   interval = 4,
 ): SynopticGeoJson {
   let min = Infinity;
@@ -298,5 +317,10 @@ export function contourPressureGrid(
   }
 
   features.push(...findCentres(grid));
+
+  if ("temperatureC" in grid && grid.temperatureC) {
+    features.push(...detectFronts(grid));
+  }
+
   return { type: "FeatureCollection", features };
 }

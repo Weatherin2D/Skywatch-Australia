@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { contourPressureGrid } from "@/lib/weather/synoptic-contour";
 import {
-  getPressureGridAt,
+  getSynopticFieldAt,
   loadRawPressureField,
   SYNOPTIC_MODEL,
 } from "@/lib/weather/synoptic-grid";
@@ -28,12 +28,12 @@ export async function GET() {
       .filter((f): f is NonNullable<typeof f> => Boolean(f))
       .slice(0, 12);
 
-    const grid = await getPressureGridAt(now);
-    const geojson = contourPressureGrid(grid);
-    const latestStamp = unixToSynopticStamp(grid.validUnix);
+    const field = await getSynopticFieldAt(now);
+    const geojson = contourPressureGrid(field);
+    const latestStamp = unixToSynopticStamp(field.validUnix);
     const latest =
       buildSynopticFrame(latestStamp) ??
-      frames.find((f) => Math.abs(f.time - grid.validUnix) < 3600) ??
+      frames.find((f) => Math.abs(f.time - field.validUnix) < 3600) ??
       frames[0] ??
       null;
 
@@ -48,7 +48,7 @@ export async function GET() {
       frames,
       latest,
       geojson,
-      validTime: grid.validUnix,
+      validTime: field.validUnix,
       attribution: SYNOPTIC_ATTRIBUTION,
     };
 

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { contourPressureGrid } from "@/lib/weather/synoptic-contour";
-import { getPressureGridAt, SYNOPTIC_MODEL } from "@/lib/weather/synoptic-grid";
+import {
+  getSynopticFieldAt,
+  SYNOPTIC_MODEL,
+} from "@/lib/weather/synoptic-grid";
 import {
   SYNOPTIC_ATTRIBUTION,
   isValidSynopticStamp,
@@ -13,8 +16,8 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 /**
- * Vector MSLP field for a 6-hourly stamp.
- * Returns GeoJSON FeatureCollection (isobars + H/L centres).
+ * Vector MSLP field for a valid-time stamp.
+ * Returns GeoJSON (isobars, H/L, fronts, troughs).
  */
 export async function GET(request: NextRequest) {
   const stamp = request.nextUrl.searchParams.get("time") ?? "";
@@ -27,11 +30,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const grid = await getPressureGridAt(unix);
-    const geojson = contourPressureGrid(grid);
+    const field = await getSynopticFieldAt(unix);
+    const geojson = contourPressureGrid(field);
     const payload: SynopticFieldPayload = {
       stamp,
-      time: grid.validUnix,
+      time: field.validUnix,
       model: SYNOPTIC_MODEL,
       attribution: SYNOPTIC_ATTRIBUTION,
       geojson,
@@ -41,7 +44,7 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         "Content-Type": "application/json",
         "X-Synoptic-Model": SYNOPTIC_MODEL,
-        "X-Synoptic-Valid": grid.validTimeIso,
+        "X-Synoptic-Valid": field.validTimeIso,
       },
     });
   } catch (err) {

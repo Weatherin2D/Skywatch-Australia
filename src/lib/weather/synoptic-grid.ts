@@ -1,5 +1,5 @@
 /**
- * Build and fetch a regular MSLP lat/lon grid from Open-Meteo (GFS).
+ * Build and fetch MSLP + temperature + wind grids from Open-Meteo (GFS).
  * Values are true WGS84 — no chart warping required.
  */
 
@@ -8,14 +8,14 @@ export const SYNOPTIC_GRID = {
   east: 165,
   south: -48,
   north: -5,
-  /** Degrees — national MSLP; keep request count under Open-Meteo limits. */
+  /** Degrees — national field; keep request count under Open-Meteo limits. */
   step: 2.5,
 };
 
 export const SYNOPTIC_MODEL = "gfs_seamless";
 export const SYNOPTIC_MODEL_LABEL = "GFS";
 
-export type PressureGrid = {
+export type ScalarGrid = {
   west: number;
   south: number;
   step: number;
@@ -23,16 +23,33 @@ export type PressureGrid = {
   rows: number;
   /** Row-major, north→south, west→east. NaN = missing. */
   values: Float64Array;
-  /** ISO hour used for this slice (UTC). */
+};
+
+export type PressureGrid = ScalarGrid & {
   validTimeIso: string;
   validUnix: number;
   fetchedAt: number;
 };
 
+/** Full analysis slice used for isobars + fronts. */
+export type SynopticField = PressureGrid & {
+  temperatureC: Float64Array;
+  /** Wind speed m/s */
+  windSpeed: Float64Array;
+  /** Meteorological wind direction degrees (from which the wind blows). */
+  windFromDeg: Float64Array;
+};
+
 type HourlyLoc = {
   latitude: number;
   longitude: number;
-  hourly: { time: string[]; pressure_msl: (number | null)[] };
+  hourly: {
+    time: string[];
+    pressure_msl: (number | null)[];
+    temperature_2m: (number | null)[];
+    wind_speed_10m: (number | null)[];
+    wind_direction_10m: (number | null)[];
+  };
 };
 
 function pad2(n: number) {
@@ -59,7 +76,6 @@ export function buildGridCoords() {
   for (let lon = west; lon <= east + 1e-9; lon = Number((lon + step).toFixed(4))) {
     lons.push(lon);
   }
-  // North → south so row 0 is top of map
   for (let lat = north; lat >= south - 1e-9; lat = Number((lat - step).toFixed(4))) {
     lats.push(lat);
   }
@@ -78,7 +94,8 @@ async function fetchBatch(
   const params = new URLSearchParams({
     latitude: lats.map((v) => v.toFixed(4)).join(","),
     longitude: lons.map((v) => v.toFixed(4)).join(","),
-    hourly: "pressure_msl",
+    hourly:
+      "pressure_msl,temperature_2m,wind_speed_10m,wind_direction_10m",
     models: SYNOPTIC_MODEL,
     forecast_days: "2",
     timezone: "UTC",
@@ -88,7 +105,7 @@ async function fetchBatch(
 
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt < 5; attempt++) {
-    if (attempt > 0) await sleep(800 * attempt);
+    if (attempt > 0) await sleep(900 * attempt);
     const res = await fetch(url, {
       signal: signal ?? AbortSignal.timeout(45_000),
       headers: { Accept: "application/json" },
@@ -107,24 +124,32 @@ async function fetchBatch(
   throw lastErr ?? new Error("Open-Meteo failed");
 }
 
-/** In-memory raw multi-hour grid (shared across requests). */
 type RawCache = {
   lons: number[];
   lats: number[];
-  /** location index → hourly pressures aligned to `times` */
-  series: (number | null)[][];
+  pressure: (number | null)[][];
+  temperature: (number | null)[][];
+  windSpeed: (number | null)[][];
+  windFrom: (number | null)[][];
   times: string[];
   fetchedAt: number;
+  version: number;
 };
 
 let rawCache: RawCache | null = null;
+/** Bump when variable set / grid changes so stale in-memory cache is dropped. */
+const CACHE_VERSION = 2;
 const RAW_TTL_MS = 45 * 60 * 1000;
 const BATCH = 70;
 
 export async function loadRawPressureField(
   signal?: AbortSignal,
 ): Promise<RawCache> {
-  if (rawCache && Date.now() - rawCache.fetchedAt < RAW_TTL_MS) {
+  if (
+    rawCache &&
+    rawCache.version === CACHE_VERSION &&
+    Date.now() - rawCache.fetchedAt < RAW_TTL_MS
+  ) {
     return rawCache;
   }
   const { lons, lats } = buildGridCoords();
@@ -137,10 +162,14 @@ export async function loadRawPressureField(
     }
   }
 
-  const series: (number | null)[][] = new Array(flatLats.length);
+  const n = flatLats.length;
+  const pressure: (number | null)[][] = new Array(n);
+  const temperature: (number | null)[][] = new Array(n);
+  const windSpeed: (number | null)[][] = new Array(n);
+  const windFrom: (number | null)[][] = new Array(n);
   let times: string[] = [];
 
-  for (let i = 0; i < flatLats.length; i += BATCH) {
+  for (let i = 0; i < n; i += BATCH) {
     if (i > 0) await sleep(350);
     const batchLats = flatLats.slice(i, i + BATCH);
     const batchLons = flatLons.slice(i, i + BATCH);
@@ -149,28 +178,34 @@ export async function loadRawPressureField(
       times = locs[0].hourly.time;
     }
     for (let j = 0; j < locs.length; j++) {
-      series[i + j] = locs[j]?.hourly?.pressure_msl ?? [];
+      const h = locs[j]?.hourly;
+      pressure[i + j] = h?.pressure_msl ?? [];
+      temperature[i + j] = h?.temperature_2m ?? [];
+      windSpeed[i + j] = h?.wind_speed_10m ?? [];
+      windFrom[i + j] = h?.wind_direction_10m ?? [];
     }
   }
 
   rawCache = {
     lons,
     lats,
-    series: series as (number | null)[][],
+    pressure,
+    temperature,
+    windSpeed,
+    windFrom,
     times,
     fetchedAt: Date.now(),
+    version: CACHE_VERSION,
   };
   return rawCache;
 }
 
-/** Pick the forecast hour closest to `refUnix` (prefer at-or-before). */
 export function pickHourIndex(times: string[], refUnix: number): number {
   let best = 0;
   let bestDelta = Infinity;
   for (let i = 0; i < times.length; i++) {
     const u = isoHourToUnix(times[i]!);
     const delta = refUnix - u;
-    // Prefer past/equal; small penalty for future
     const score = delta >= 0 ? delta : Math.abs(delta) + 3600;
     if (score < bestDelta) {
       bestDelta = score;
@@ -180,28 +215,59 @@ export function pickHourIndex(times: string[], refUnix: number): number {
   return best;
 }
 
-export async function getPressureGridAt(
+function sliceSeries(
+  series: (number | null)[][],
+  hourIdx: number,
+  len: number,
+): Float64Array {
+  const values = new Float64Array(len);
+  for (let i = 0; i < len; i++) {
+    const v = series[i]?.[hourIdx];
+    values[i] = v == null || !Number.isFinite(v) ? Number.NaN : v;
+  }
+  return values;
+}
+
+export async function getSynopticFieldAt(
   refUnix: number,
   signal?: AbortSignal,
-): Promise<PressureGrid> {
+): Promise<SynopticField> {
   const raw = await loadRawPressureField(signal);
   const hourIdx = pickHourIndex(raw.times, refUnix);
   const validTimeIso = raw.times[hourIdx]!;
-  const values = new Float64Array(raw.lats.length * raw.lons.length);
-  for (let i = 0; i < values.length; i++) {
-    const v = raw.series[i]?.[hourIdx];
-    values[i] = v == null || !Number.isFinite(v) ? Number.NaN : v;
-  }
+  const len = raw.lats.length * raw.lons.length;
   return {
     west: raw.lons[0]!,
     south: raw.lats[raw.lats.length - 1]!,
     step: SYNOPTIC_GRID.step,
     cols: raw.lons.length,
     rows: raw.lats.length,
-    values,
+    values: sliceSeries(raw.pressure, hourIdx, len),
+    temperatureC: sliceSeries(raw.temperature, hourIdx, len),
+    windSpeed: sliceSeries(raw.windSpeed, hourIdx, len),
+    windFromDeg: sliceSeries(raw.windFrom, hourIdx, len),
     validTimeIso,
     validUnix: isoHourToUnix(validTimeIso),
     fetchedAt: raw.fetchedAt,
+  };
+}
+
+/** @deprecated Use getSynopticFieldAt — kept for callers that only need MSLP. */
+export async function getPressureGridAt(
+  refUnix: number,
+  signal?: AbortSignal,
+): Promise<PressureGrid> {
+  const field = await getSynopticFieldAt(refUnix, signal);
+  return {
+    west: field.west,
+    south: field.south,
+    step: field.step,
+    cols: field.cols,
+    rows: field.rows,
+    values: field.values,
+    validTimeIso: field.validTimeIso,
+    validUnix: field.validUnix,
+    fetchedAt: field.fetchedAt,
   };
 }
 
