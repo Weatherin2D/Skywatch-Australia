@@ -34,3 +34,8 @@ Set `ADMIN_PASSWORD` and `ADMIN_SESSION_SECRET` if using `/risk/admin`. Producti
 ## Stack
 
 Next.js (App Router), TypeScript, Tailwind, shadcn/ui, Leaflet, Vercel Blob (for `/risk` uploads).
+
+## Synoptic data
+
+- **Isobars / H–L:** GFS mean sea-level pressure via Open-Meteo (true lon/lat).
+- **Fronts:** BoM colour MSLP analysis (`IDY00030`, 00/06/12/18 UTC). Front geometry is vectorised from the meteorologist-drawn chart palette (blue cold/trough, red warm, purple occluded) and georeferenced to the national map frame.
