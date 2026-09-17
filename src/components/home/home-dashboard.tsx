@@ -384,7 +384,7 @@ export function HomeDashboard() {
         </p>
       </div>
 
-      <div className="animate-fade-up-delay grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
+      <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_260px] xl:grid-cols-[240px_minmax(0,1fr)_280px]">
         <div className="space-y-3">
           <Panel title="Map overlays">
             <p className="mb-2 text-[11px] text-[var(--ink)]/70">
