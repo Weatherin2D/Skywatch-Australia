@@ -193,9 +193,8 @@ function frontBarbPaths(
 ): string[] {
   if (kind === "trough" || coords.length < 2) return [];
   const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
-  const aspect = GIBS_AU_ASPECT; // width/height of frame
+  const aspect = GIBS_AU_ASPECT;
 
-  // Precompute segment lengths in aspect-corrected viewBox units.
   const segs: { a: { x: number; y: number }; b: { x: number; y: number }; len: number }[] =
     [];
   let totalLen = 0;
@@ -209,21 +208,15 @@ function frontBarbPaths(
   }
   if (totalLen < 1.5) return [];
 
-  // Warm semicircles need denser spacing than cold triangles so short
-  // BoM warm stubs still read as classic chart symbols.
-  const spacing =
-    kind === "warm_front"
-      ? Math.min(3.6, Math.max(2.4, totalLen / 4))
-      : 5.2;
-  const barbSize = kind === "warm_front" ? 1.75 : 1.45;
+  const isWarm = kind === "warm_front";
+  // Semicircle radius in aspect-corrected units. Keep diameter small enough
+  // that neighbouring symbols do not merge into a thick red sausage.
+  const semiR = isWarm ? 1.35 : 1.25;
+  const barbSize = isWarm ? semiR / 0.92 : 1.45;
+  const spacing = isWarm
+    ? Math.max(semiR * 2.55, Math.min(4.2, totalLen / 3.5))
+    : 5.2;
   const paths: string[] = [];
-
-  let dist = 0;
-  let nextAt = Math.min(spacing * 0.45, totalLen * 0.15);
-  // Guarantee at least a few symbols on short warm fronts.
-  if (kind === "warm_front" && totalLen < spacing * 3) {
-    nextAt = totalLen * 0.2;
-  }
 
   const emitAt = (x: number, y: number, tx: number, ty: number) => {
     const px = ty;
@@ -249,10 +242,8 @@ function frontBarbPaths(
       return;
     }
 
-    // Filled semicircle — sample in aspect-corrected space so the bulge is
-    // circular on the stretched satellite plane.
-    const r = barbSize * 0.92;
-    const steps = 14;
+    const r = semiR;
+    const steps = 16;
     let d = "";
     for (let s = 0; s <= steps; s++) {
       const ang = Math.PI * (s / steps);
@@ -266,48 +257,59 @@ function frontBarbPaths(
     paths.push(d.trim());
   };
 
+  const pointAt = (u: number) => {
+    const target = u * totalLen;
+    let walk = 0;
+    for (const seg of segs) {
+      if (walk + seg.len >= target) {
+        const tt = (target - walk) / seg.len;
+        const x = seg.a.x + (seg.b.x - seg.a.x) * tt;
+        const y = seg.a.y + (seg.b.y - seg.a.y) * tt;
+        const sdx = seg.b.x - seg.a.x;
+        const sdy = (seg.b.y - seg.a.y) / aspect;
+        const sl = Math.hypot(sdx, sdy) || 1;
+        return { x, y, tx: sdx / sl, ty: sdy / sl };
+      }
+      walk += seg.len;
+    }
+    const last = segs[segs.length - 1]!;
+    const sdx = last.b.x - last.a.x;
+    const sdy = (last.b.y - last.a.y) / aspect;
+    const sl = Math.hypot(sdx, sdy) || 1;
+    return { x: last.b.x, y: last.b.y, tx: sdx / sl, ty: sdy / sl };
+  };
+
+  // Warm / alternating semicircle fronts: place by count so disks never overlap.
+  if (isWarm || kind === "stationary_front" || kind === "occluded_front") {
+    const minGap = semiR * 2.6;
+    let count = Math.round(totalLen / minGap);
+    if (isWarm) count = Math.max(2, Math.min(count, 8));
+    else count = Math.max(2, Math.min(count, 12));
+    if (count < 2) count = 2;
+    // Inset from ends so the first/last disk sits fully on the segment.
+    const inset = Math.min(0.22, (semiR * 0.7) / totalLen);
+    for (let i = 0; i < count; i++) {
+      const u =
+        count === 1 ? 0.5 : inset + (i / (count - 1)) * (1 - 2 * inset);
+      const p = pointAt(u);
+      emitAt(p.x, p.y, p.tx, p.ty);
+    }
+    return paths;
+  }
+
+  // Cold fronts: fixed spacing along the path.
+  let dist = 0;
+  let nextAt = spacing * 0.45;
   for (const { a, b, len } of segs) {
     const dx = b.x - a.x;
     const dy = (b.y - a.y) / aspect;
     const tx = dx / len;
     const ty = dy / len;
     let t0 = 0;
-    // For very short warm fronts, place evenly instead of by fixed spacing.
-    const useEven =
-      kind === "warm_front" &&
-      totalLen < 12 &&
-      paths.length === 0 &&
-      dist === 0;
-
-    if (useEven) {
-      const count = Math.max(3, Math.min(5, Math.round(totalLen / 2.2)));
-      for (let i = 0; i < count; i++) {
-        const u = (i + 1) / (count + 1);
-        // Walk full polyline to u * totalLen
-        let walk = 0;
-        for (const seg of segs) {
-          if (walk + seg.len >= u * totalLen) {
-            const tt = (u * totalLen - walk) / seg.len;
-            const sx = seg.a.x + (seg.b.x - seg.a.x) * tt;
-            const sy = seg.a.y + (seg.b.y - seg.a.y) * tt;
-            const sdx = seg.b.x - seg.a.x;
-            const sdy = (seg.b.y - seg.a.y) / aspect;
-            const sl = Math.hypot(sdx, sdy) || 1;
-            emitAt(sx, sy, sdx / sl, sdy / sl);
-            break;
-          }
-          walk += seg.len;
-        }
-      }
-      return paths;
-    }
-
     while (dist + (len - t0) >= nextAt) {
       const need = nextAt - dist;
       const t = (t0 + need) / len;
-      const x = a.x + dx * t;
-      const y = a.y + (b.y - a.y) * t;
-      emitAt(x, y, tx, ty);
+      emitAt(a.x + dx * t, a.y + (b.y - a.y) * t, tx, ty);
       nextAt += spacing;
       t0 += need;
       dist += need;
