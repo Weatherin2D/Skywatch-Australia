@@ -125,8 +125,8 @@ function extractStrikes(
 
     const hash = Math.abs(Math.sin(cx * 12.9898 + cy * 78.233) * 43758.5453);
     const jitter = Math.floor((hash % 1) * 300) - 150;
-    const time = nowSec - bin.age + jitter;
-    if (nowSec - time > KEEP_SEC || time > nowSec + 60) continue;
+    const time = Math.min(nowSec, nowSec - bin.age + jitter);
+    if (nowSec - time > KEEP_SEC || time > nowSec + 30) continue;
 
     const id = `lm-${lat.toFixed(3)}-${lon.toFixed(3)}-${Math.floor(time / 60)}`;
     strikes.push({
