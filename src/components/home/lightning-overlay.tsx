@@ -19,6 +19,8 @@ import { lonLatToGibsPct } from "@/lib/weather/maps";
 
 /** Hours of strike history kept before the first satellite frame. */
 const PRE_LOOP_HISTORY_SEC = 6 * 60 * 60;
+/** Hard cap — thousands of drop-shadow DOM nodes freeze the map and look “blank”. */
+const MAX_VISIBLE_STRIKES = 400;
 
 function strikesForReference(
   strikes: LightningStrike[],
@@ -26,19 +28,45 @@ function strikesForReference(
   timelineStart: number | null | undefined,
   timelineEnd: number | null | undefined,
 ) {
-  const aligned =
+  let working = strikes;
+
+  if (
     timelineStart != null &&
     timelineEnd != null &&
-    timelineEnd > timelineStart
-      ? alignStrikesToTimeline(
-          strikes,
-          timelineStart - PRE_LOOP_HISTORY_SEC,
-          timelineEnd,
-        )
-      : strikes;
-  // No lower lookback cutoff — keep every strike that has already occurred
-  // by this frame (including “really old” ones before the IR loop).
-  return filterStrikesAtTime(aligned, refTime, null);
+    timelineEnd > timelineStart &&
+    strikes.length > 0
+  ) {
+    let dataStart = Infinity;
+    let dataEnd = -Infinity;
+    for (const s of strikes) {
+      if (s.time < dataStart) dataStart = s.time;
+      if (s.time > dataEnd) dataEnd = s.time;
+    }
+    // Live-only buffers often share nearly identical timestamps; nudge so
+    // alignStrikesToTimeline can stretch them across the IR loop.
+    if (!(dataEnd > dataStart)) {
+      working = strikes.map((s, i) => ({
+        ...s,
+        time: dataStart - (strikes.length - 1 - i) * 45,
+      }));
+    }
+    working = alignStrikesToTimeline(
+      working,
+      timelineStart - PRE_LOOP_HISTORY_SEC,
+      timelineEnd,
+    );
+  }
+
+  let visible = filterStrikesAtTime(working, refTime, null);
+
+  // Safety net: if frame sync filtered everything (e.g. timeline props missing
+  // while the active frame is older than live strikes), still show recent hits.
+  if (visible.length === 0 && strikes.length > 0) {
+    const wall = Math.floor(Date.now() / 1000);
+    visible = filterStrikesAtTime(strikes, Math.max(refTime, wall), null);
+  }
+
+  return visible.slice(0, MAX_VISIBLE_STRIKES);
 }
 
 function useNowTick(enabled: boolean) {
@@ -147,12 +175,13 @@ export function SatelliteLightningOverlay({
   if (!enabled || visible.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-[40] overflow-hidden">
-      {visible.map((strike) => {
+    <div className="pointer-events-none absolute inset-0 z-[50] overflow-hidden">
+      {visible.map((strike, index) => {
         const age = strikeAgeSeconds(strike, refTime);
         const color = strikeAgeColor(age);
         const size = strikeAgeSize(age);
         const { x, y } = lonLatToGibsPct(strike.lon, strike.lat);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
         return (
           <span
             key={strike.id}
@@ -162,7 +191,7 @@ export function SatelliteLightningOverlay({
             <CrosshairIcon
               color={color}
               size={size}
-              pulse={strikeIsFresh(age)}
+              pulse={index < 12 && strikeIsFresh(age)}
             />
           </span>
         );
@@ -193,22 +222,26 @@ export function LeafletLightningOverlay({
       refTime,
       timelineStart,
       timelineEnd,
-    ).slice(0, 1200);
+    );
   }, [enabled, strikes, refTime, timelineStart, timelineEnd]);
 
   if (!enabled) return null;
 
   return (
     <>
-      {visible.map((strike) => {
+      {visible.map((strike, index) => {
         const age = strikeAgeSeconds(strike, refTime);
         const color = strikeAgeColor(age);
         const size = strikeAgeSize(age);
         return (
           <Marker
-            key={`${strike.id}-${color}-${size}`}
+            key={strike.id}
             position={[strike.lat, strike.lon]}
-            icon={makeCrosshairIcon(color, size, strikeIsFresh(age))}
+            icon={makeCrosshairIcon(
+              color,
+              size,
+              index < 12 && strikeIsFresh(age),
+            )}
             interactive
           >
             <Tooltip direction="top" offset={[0, -6]}>
