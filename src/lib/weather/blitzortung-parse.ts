@@ -5,7 +5,7 @@
 import type { LightningStrike } from "@/lib/weather/lightning";
 import { LIGHTNING_AU_BOUNDS } from "@/lib/weather/lightning";
 
-const WINDOW_SEC = 60 * 60;
+const WINDOW_SEC = 3 * 60 * 60;
 
 /** Blitzortung payloads are LZW-compressed binary strings that still start with `{`. */
 export function decodeBlitzLzw(binaryStr: string): string {

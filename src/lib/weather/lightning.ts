@@ -29,8 +29,12 @@ export const LIGHTNING_AU_BOUNDS = {
   north: -1,
 } as const;
 
-/** Default lookback window for age colouring (seconds). */
-export const LIGHTNING_AGE_WINDOW_SEC = 60 * 60;
+/** Default lookback window for age colouring + retention (seconds).
+ * Matches ~IR satellite loop length so frame sync has strikes to show. */
+export const LIGHTNING_AGE_WINDOW_SEC = 3 * 60 * 60;
+
+/** Shorter colour ramp so recent activity still reads white→yellow→red. */
+export const LIGHTNING_COLOR_WINDOW_SEC = 90 * 60;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest
@@ -64,7 +68,7 @@ export function strikeAgeNorm(
  */
 export function strikeAgeColor(
   ageSec: number,
-  windowSec = LIGHTNING_AGE_WINDOW_SEC,
+  windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ): string {
   const t = strikeAgeNorm(ageSec, windowSec);
   let i = 0;
@@ -84,7 +88,7 @@ export function strikeAgeColor(
 /** Crosshair size scales slightly as strikes age. */
 export function strikeAgeSize(
   ageSec: number,
-  windowSec = LIGHTNING_AGE_WINDOW_SEC,
+  windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ) {
   const t = strikeAgeNorm(ageSec, windowSec);
   return Math.round(lerp(18, 12, t));
@@ -99,11 +103,13 @@ export function lightningAgeGradientCss() {
   return "linear-gradient(to right, #ffffff 0%, #ffca28 45%, #ef5350 100%)";
 }
 
-/** Strikes that exist at `refTime` within the rolling lookback window. */
+/** Strikes that exist at `refTime` within the rolling lookback window.
+ * `windowMinutes` defaults to the full retention window so satellite frames
+ * across the IR loop each accumulate storm history. */
 export function filterStrikesAtTime(
   strikes: LightningStrike[],
   refTime: number,
-  windowMinutes = 60,
+  windowMinutes = LIGHTNING_AGE_WINDOW_SEC / 60,
 ): LightningStrike[] {
   const cutoff = refTime - windowMinutes * 60;
   return strikes

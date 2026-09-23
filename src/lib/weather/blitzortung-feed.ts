@@ -28,10 +28,10 @@ const WS_HOSTS = [
 
 const MQTT_URL = "mqtt://blitzortung.ha.sed.pl:1883";
 /** Geohash prefixes covering Australia / nearby Indian & Pacific oceans. */
-const MQTT_GEOHASH_PREFIXES = ["q", "r"] as const;
+const MQTT_GEOHASH_PREFIXES = ["p", "q", "r", "t"] as const;
 
-const WINDOW_SEC = 60 * 60;
-const MAX_BUFFER = 6000;
+const WINDOW_SEC = 3 * 60 * 60;
+const MAX_BUFFER = 12_000;
 
 type FeedStatus = "connecting" | "live" | "reconnecting" | "error";
 
@@ -62,12 +62,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV5?: GlobalFeed;
+  __skywatchBlitzFeedV6?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV5) {
-    g.__skywatchBlitzFeedV5 = {
+  if (!g.__skywatchBlitzFeedV6) {
+    g.__skywatchBlitzFeedV6 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -81,7 +81,7 @@ function getState(): GlobalFeed {
       started: false,
     };
   }
-  return g.__skywatchBlitzFeedV5;
+  return g.__skywatchBlitzFeedV6;
 }
 
 function ingest(state: GlobalFeed, obj: Record<string, unknown>) {
@@ -238,9 +238,10 @@ async function runBackfill(state: GlobalFeed) {
   try {
     const { strikes } = await fetchLightningMapsBackfill();
     for (const strike of strikes) {
-      if (!state.strikes.has(strike.id)) {
+      const prev = state.strikes.get(strike.id);
+      if (!prev || strike.time >= prev.time) {
         state.strikes.set(strike.id, strike);
-        state.receivedInBounds += 1;
+        if (!prev) state.receivedInBounds += 1;
       }
     }
   } catch (err) {
@@ -262,7 +263,7 @@ export function ensureLightningFeed() {
   void runBackfill(state);
   state.backfillTimer = setInterval(() => {
     void runBackfill(state);
-  }, 60_000);
+  }, 30_000);
 }
 
 export function getLiveLightningSnapshot(): LiveLightningSnapshot {
@@ -280,7 +281,7 @@ export function getLiveLightningSnapshot(): LiveLightningSnapshot {
     generated: Math.floor(Date.now() / 1000),
     receivedTotal: state.receivedTotal,
     receivedInBounds: state.receivedInBounds,
-    windowMinutes: 60,
+    windowMinutes: Math.round(WINDOW_SEC / 60),
     source: "blitzortung",
     attribution:
       "Live lightning © Blitzortung.org / LightningMaps.org (CC BY-SA)",

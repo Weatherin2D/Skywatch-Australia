@@ -6,6 +6,8 @@ import L from "leaflet";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
   filterStrikesAtTime,
+  LIGHTNING_AGE_WINDOW_SEC,
+  LIGHTNING_COLOR_WINDOW_SEC,
   lightningAgeGradientCss,
   strikeAgeColor,
   strikeAgeSeconds,
@@ -13,6 +15,8 @@ import {
   strikeIsFresh,
 } from "@/lib/weather/lightning";
 import { lonLatToGibsPct } from "@/lib/weather/maps";
+
+const FRAME_WINDOW_MIN = LIGHTNING_AGE_WINDOW_SEC / 60;
 
 function useNowTick(enabled: boolean) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -105,7 +109,7 @@ export function SatelliteLightningOverlay({
     if (!enabled) return [];
     // Visible only if the strike has already occurred at the reference
     // time (satellite frame or wall clock) and is still within the window.
-    return filterStrikesAtTime(strikes, refTime, 60);
+    return filterStrikesAtTime(strikes, refTime, FRAME_WINDOW_MIN);
   }, [enabled, strikes, refTime]);
 
   if (!enabled || visible.length === 0) return null;
@@ -148,7 +152,7 @@ export function LeafletLightningOverlay({
   const refTime = useReferenceTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
-    return filterStrikesAtTime(strikes, refTime, 60).slice(0, 400);
+    return filterStrikesAtTime(strikes, refTime, FRAME_WINDOW_MIN).slice(0, 800);
   }, [enabled, strikes, refTime]);
 
   if (!enabled) return null;
@@ -193,7 +197,9 @@ export function LightningLegend({
   frameSynced?: boolean;
 }) {
   const refTime = referenceTime ?? Math.floor(Date.now() / 1000);
-  const visible = filterStrikesAtTime(strikes, refTime, 60);
+  const visible = filterStrikesAtTime(strikes, refTime, FRAME_WINDOW_MIN);
+  const windowLabelMin = Math.round(LIGHTNING_COLOR_WINDOW_SEC / 60);
+  const retainLabelMin = Math.round(LIGHTNING_AGE_WINDOW_SEC / 60);
 
   const statusLabel =
     status === "live"
@@ -230,8 +236,8 @@ export function LightningLegend({
         <p className="mb-2 max-w-[12rem] text-[10px] leading-snug text-white/75">
           {status === "live" || status === "reconnecting"
             ? frameSynced && referenceTime != null
-              ? "No strikes at this frame time — scrub forward as storms develop…"
-              : "No strikes over Australia in the last 60 min — listening live…"
+              ? "No strikes at this frame time — play the loop as storms develop…"
+              : `No strikes over Australia in the last ${retainLabelMin} min — listening live…`
             : "Connecting to live lightning feed…"}
         </p>
       ) : null}
@@ -239,18 +245,18 @@ export function LightningLegend({
         <div
           className="h-2 w-full border border-white/20"
           style={{ background: lightningAgeGradientCss() }}
-          aria-label="Lightning age colour scale from new to 60 minutes"
+          aria-label={`Lightning age colour scale from new to ${windowLabelMin} minutes`}
         />
         <div className="mt-1 flex justify-between text-[9px] text-white/75">
           <span>New</span>
-          <span>60 min</span>
+          <span>{windowLabelMin} min</span>
         </div>
       </div>
       <p className="mt-1.5 text-[9px] text-white/60">
         {visible.length} strikes ·{" "}
         {frameSynced && referenceTime != null
           ? "synced to satellite frame"
-          : "last 60 min"}
+          : `last ${retainLabelMin} min`}
       </p>
       {attribution ? (
         <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">
