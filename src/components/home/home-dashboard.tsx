@@ -855,7 +855,7 @@ export function HomeDashboard() {
               ))}
             </ul>
             <Link
-              href="/severe-weather"
+              href="/risk"
               className="mt-2 inline-block text-xs font-semibold text-[var(--ink)] font-semibold hover:underline"
             >
               All warnings →

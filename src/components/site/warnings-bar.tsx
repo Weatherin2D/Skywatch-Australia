@@ -23,7 +23,7 @@ export function WarningsBar() {
               {states.map((state) => (
                 <Link
                   key={state}
-                  href={`/severe-weather?state=${state.toLowerCase()}`}
+                  href={`/risk?state=${state.toLowerCase()}`}
                   className="hover:underline"
                 >
                   {state}
@@ -35,7 +35,7 @@ export function WarningsBar() {
           )}
         </div>
         <Link
-          href="/severe-weather"
+          href="/risk"
           className="inline-flex items-center gap-1 border border-[var(--brand)]/30 bg-white/50 px-2.5 py-1 text-xs font-semibold sm:text-sm"
         >
           Warning services

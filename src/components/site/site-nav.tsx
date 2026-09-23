@@ -2,27 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  CloudLightning,
-  CloudSun,
-  Home,
-  LineChart,
-  Map,
-  RadioTower,
-  Thermometer,
-} from "lucide-react";
+import { AlertTriangle, CloudSun, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/weather-map", label: "Weather Map", icon: Map },
   { href: "/forecast", label: "Forecast", icon: CloudSun },
-  { href: "/severe-weather", label: "Severe Weather", icon: CloudLightning },
-  { href: "/observations", label: "Observations", icon: RadioTower },
-  { href: "/soundings", label: "Soundings", icon: LineChart },
-  { href: "/climate", label: "Climate", icon: Thermometer },
-  { href: "/learn", label: "Learn", icon: BookOpen },
+  { href: "/risk", label: "Risk", icon: AlertTriangle },
 ] as const;
 
 export function SiteNav() {
