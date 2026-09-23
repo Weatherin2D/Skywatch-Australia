@@ -39,6 +39,8 @@ export function HomeMapDynamic({
   lightningLive,
   lightningReferenceTime,
   lightningFrameSynced,
+  lightningTimelineStart,
+  lightningTimelineEnd,
   showSynoptic,
   synopticFrames,
   synopticGeoJson,
@@ -66,6 +68,8 @@ export function HomeMapDynamic({
   lightningLive?: boolean;
   lightningReferenceTime?: number | null;
   lightningFrameSynced?: boolean;
+  lightningTimelineStart?: number | null;
+  lightningTimelineEnd?: number | null;
   showSynoptic?: boolean;
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
@@ -95,6 +99,8 @@ export function HomeMapDynamic({
       lightningLive={lightningLive}
       lightningReferenceTime={lightningReferenceTime}
       lightningFrameSynced={lightningFrameSynced}
+      lightningTimelineStart={lightningTimelineStart}
+      lightningTimelineEnd={lightningTimelineEnd}
       showSynoptic={showSynoptic}
       synopticFrames={synopticFrames}
       synopticGeoJson={synopticGeoJson}

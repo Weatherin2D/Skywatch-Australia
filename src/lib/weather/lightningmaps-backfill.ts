@@ -36,8 +36,8 @@ const MAPS = [
 ] as const;
 
 const USER_AGENT = "SkyWatchAustralia/1.0";
-/** Keep ~3h so IR satellite loops can scrub through developing storms. */
-const KEEP_SEC = 3 * 60 * 60;
+/** Keep a full day so old strokes survive beyond the IR loop. */
+const KEEP_SEC = 24 * 60 * 60;
 /** Cache LM maps briefly; refresh often for live density. */
 const CACHE_TTL_SEC = 25;
 
@@ -61,19 +61,21 @@ function pxToLonLat(
 /**
  * Map LM stroke colours → approximate age.
  * Real maps use a continuous red→orange→yellow ramp; match by green channel.
+ * Ages are stretched well past the IR loop (~3h) so every satellite frame —
+ * and history before the loop — can show strokes.
  */
 function ageFromRgb(r: number, g: number, b: number): number | null {
   // Stroke dots are saturated red/orange/yellow: high R, low B, G varies.
   if (r < 230 || b > 70 || r < g - 5) return null;
-  if (g <= 15) return 2 * 60;
-  if (g <= 40) return 8 * 60;
-  if (g <= 70) return 15 * 60;
-  if (g <= 100) return 25 * 60;
-  if (g <= 130) return 35 * 60;
-  if (g <= 160) return 50 * 60;
-  if (g <= 190) return 70 * 60;
-  if (g <= 220) return 95 * 60;
-  return 120 * 60;
+  if (g <= 15) return 5 * 60;
+  if (g <= 40) return 20 * 60;
+  if (g <= 70) return 45 * 60;
+  if (g <= 100) return 90 * 60;
+  if (g <= 130) return 2.5 * 3600;
+  if (g <= 160) return 4 * 3600;
+  if (g <= 190) return 6 * 3600;
+  if (g <= 220) return 9 * 3600;
+  return 12 * 3600;
 }
 
 function extractStrikes(

@@ -582,6 +582,16 @@ export function HomeDashboard() {
                 showSatelliteLoop ? (activeFrame?.time ?? null) : null
               }
               lightningFrameSynced={showSatelliteLoop}
+              lightningTimelineStart={
+                showSatelliteLoop && loopFrames.length > 0
+                  ? (loopFrames[0]?.time ?? null)
+                  : null
+              }
+              lightningTimelineEnd={
+                showSatelliteLoop && loopFrames.length > 0
+                  ? (loopFrames[loopFrames.length - 1]?.time ?? null)
+                  : null
+              }
               showSynoptic={showSynoptic}
               synopticFrames={synopticFrames}
               synopticGeoJson={synopticGeoJson}

@@ -30,8 +30,8 @@ const MQTT_URL = "mqtt://blitzortung.ha.sed.pl:1883";
 /** Geohash prefixes covering Australia / nearby Indian & Pacific oceans. */
 const MQTT_GEOHASH_PREFIXES = ["p", "q", "r", "t"] as const;
 
-const WINDOW_SEC = 3 * 60 * 60;
-const MAX_BUFFER = 12_000;
+const WINDOW_SEC = 24 * 60 * 60;
+const MAX_BUFFER = 25_000;
 
 type FeedStatus = "connecting" | "live" | "reconnecting" | "error";
 
@@ -62,12 +62,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV6?: GlobalFeed;
+  __skywatchBlitzFeedV7?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV6) {
-    g.__skywatchBlitzFeedV6 = {
+  if (!g.__skywatchBlitzFeedV7) {
+    g.__skywatchBlitzFeedV7 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -81,7 +81,7 @@ function getState(): GlobalFeed {
       started: false,
     };
   }
-  return g.__skywatchBlitzFeedV6;
+  return g.__skywatchBlitzFeedV7;
 }
 
 function ingest(state: GlobalFeed, obj: Record<string, unknown>) {

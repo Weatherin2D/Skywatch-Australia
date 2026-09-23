@@ -53,6 +53,9 @@ type Props = {
   lightningReferenceTime?: number | null;
   /** True while Satellite loop is active (legend: synced to frame). */
   lightningFrameSynced?: boolean;
+  /** Oldest/newest satellite frame times for stretching strike history. */
+  lightningTimelineStart?: number | null;
+  lightningTimelineEnd?: number | null;
   showSynoptic?: boolean;
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
@@ -204,6 +207,8 @@ export function HomeMap({
   lightningLive = false,
   lightningReferenceTime = null,
   lightningFrameSynced = false,
+  lightningTimelineStart = null,
+  lightningTimelineEnd = null,
   showSynoptic = false,
   synopticFrames = [],
   synopticGeoJson = null,
@@ -247,6 +252,8 @@ export function HomeMap({
           strikes={lightningStrikes}
           enabled={showLightning}
           referenceTime={lightningReferenceTime}
+          timelineStart={lightningTimelineStart}
+          timelineEnd={lightningTimelineEnd}
         />
         {showSynoptic ? (
           <SynopticLegend
@@ -267,6 +274,8 @@ export function HomeMap({
             live={lightningLive}
             referenceTime={lightningReferenceTime}
             frameSynced={lightningFrameSynced}
+            timelineStart={lightningTimelineStart}
+            timelineEnd={lightningTimelineEnd}
           />
         ) : null}
       </div>
@@ -303,6 +312,8 @@ export function HomeMap({
           strikes={lightningStrikes}
           enabled={showLightning}
           referenceTime={lightningReferenceTime}
+          timelineStart={lightningTimelineStart}
+          timelineEnd={lightningTimelineEnd}
         />
         <MapTools />
       </MapContainer>
@@ -327,6 +338,8 @@ export function HomeMap({
           live={lightningLive}
           referenceTime={lightningReferenceTime}
           frameSynced={lightningFrameSynced}
+          timelineStart={lightningTimelineStart}
+          timelineEnd={lightningTimelineEnd}
         />
       ) : null}
 

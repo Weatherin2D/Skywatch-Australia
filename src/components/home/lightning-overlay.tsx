@@ -5,6 +5,7 @@ import { Marker, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
+  alignStrikesToTimeline,
   filterStrikesAtTime,
   LIGHTNING_AGE_WINDOW_SEC,
   LIGHTNING_COLOR_WINDOW_SEC,
@@ -16,7 +17,29 @@ import {
 } from "@/lib/weather/lightning";
 import { lonLatToGibsPct } from "@/lib/weather/maps";
 
-const FRAME_WINDOW_MIN = LIGHTNING_AGE_WINDOW_SEC / 60;
+/** Hours of strike history kept before the first satellite frame. */
+const PRE_LOOP_HISTORY_SEC = 6 * 60 * 60;
+
+function strikesForReference(
+  strikes: LightningStrike[],
+  refTime: number,
+  timelineStart: number | null | undefined,
+  timelineEnd: number | null | undefined,
+) {
+  const aligned =
+    timelineStart != null &&
+    timelineEnd != null &&
+    timelineEnd > timelineStart
+      ? alignStrikesToTimeline(
+          strikes,
+          timelineStart - PRE_LOOP_HISTORY_SEC,
+          timelineEnd,
+        )
+      : strikes;
+  // No lower lookback cutoff — keep every strike that has already occurred
+  // by this frame (including “really old” ones before the IR loop).
+  return filterStrikesAtTime(aligned, refTime, null);
+}
 
 function useNowTick(enabled: boolean) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -99,18 +122,27 @@ export function SatelliteLightningOverlay({
   strikes,
   enabled,
   referenceTime = null,
+  timelineStart = null,
+  timelineEnd = null,
 }: {
   strikes: LightningStrike[];
   enabled: boolean;
   referenceTime?: number | null;
+  /** Oldest satellite frame time — used to stretch history across the loop. */
+  timelineStart?: number | null;
+  /** Newest satellite frame time. */
+  timelineEnd?: number | null;
 }) {
   const refTime = useReferenceTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
-    // Visible only if the strike has already occurred at the reference
-    // time (satellite frame or wall clock) and is still within the window.
-    return filterStrikesAtTime(strikes, refTime, FRAME_WINDOW_MIN);
-  }, [enabled, strikes, refTime]);
+    return strikesForReference(
+      strikes,
+      refTime,
+      timelineStart,
+      timelineEnd,
+    );
+  }, [enabled, strikes, refTime, timelineStart, timelineEnd]);
 
   if (!enabled || visible.length === 0) return null;
 
@@ -144,16 +176,25 @@ export function LeafletLightningOverlay({
   strikes,
   enabled,
   referenceTime = null,
+  timelineStart = null,
+  timelineEnd = null,
 }: {
   strikes: LightningStrike[];
   enabled: boolean;
   referenceTime?: number | null;
+  timelineStart?: number | null;
+  timelineEnd?: number | null;
 }) {
   const refTime = useReferenceTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
-    return filterStrikesAtTime(strikes, refTime, FRAME_WINDOW_MIN).slice(0, 800);
-  }, [enabled, strikes, refTime]);
+    return strikesForReference(
+      strikes,
+      refTime,
+      timelineStart,
+      timelineEnd,
+    ).slice(0, 1200);
+  }, [enabled, strikes, refTime, timelineStart, timelineEnd]);
 
   if (!enabled) return null;
 
@@ -188,6 +229,8 @@ export function LightningLegend({
   live,
   referenceTime = null,
   frameSynced = false,
+  timelineStart = null,
+  timelineEnd = null,
 }: {
   strikes: LightningStrike[];
   attribution?: string | null;
@@ -195,11 +238,18 @@ export function LightningLegend({
   live?: boolean;
   referenceTime?: number | null;
   frameSynced?: boolean;
+  timelineStart?: number | null;
+  timelineEnd?: number | null;
 }) {
   const refTime = referenceTime ?? Math.floor(Date.now() / 1000);
-  const visible = filterStrikesAtTime(strikes, refTime, FRAME_WINDOW_MIN);
+  const visible = strikesForReference(
+    strikes,
+    refTime,
+    frameSynced ? timelineStart : null,
+    frameSynced ? timelineEnd : null,
+  );
   const windowLabelMin = Math.round(LIGHTNING_COLOR_WINDOW_SEC / 60);
-  const retainLabelMin = Math.round(LIGHTNING_AGE_WINDOW_SEC / 60);
+  const retainLabelHours = Math.round(LIGHTNING_AGE_WINDOW_SEC / 3600);
 
   const statusLabel =
     status === "live"
@@ -237,7 +287,7 @@ export function LightningLegend({
           {status === "live" || status === "reconnecting"
             ? frameSynced && referenceTime != null
               ? "No strikes at this frame time — play the loop as storms develop…"
-              : `No strikes over Australia in the last ${retainLabelMin} min — listening live…`
+              : `No strikes over Australia in the last ${retainLabelHours}h — listening live…`
             : "Connecting to live lightning feed…"}
         </p>
       ) : null}
@@ -249,14 +299,14 @@ export function LightningLegend({
         />
         <div className="mt-1 flex justify-between text-[9px] text-white/75">
           <span>New</span>
-          <span>{windowLabelMin} min</span>
+          <span>{windowLabelMin >= 120 ? `${Math.round(windowLabelMin / 60)}h` : `${windowLabelMin} min`}</span>
         </div>
       </div>
       <p className="mt-1.5 text-[9px] text-white/60">
         {visible.length} strikes ·{" "}
         {frameSynced && referenceTime != null
           ? "synced to satellite frame"
-          : `last ${retainLabelMin} min`}
+          : `last ${retainLabelHours}h`}
       </p>
       {attribution ? (
         <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">

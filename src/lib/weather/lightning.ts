@@ -29,12 +29,12 @@ export const LIGHTNING_AU_BOUNDS = {
   north: -1,
 } as const;
 
-/** Default lookback window for age colouring + retention (seconds).
- * Matches ~IR satellite loop length so frame sync has strikes to show. */
-export const LIGHTNING_AGE_WINDOW_SEC = 3 * 60 * 60;
+/** Retention window for buffered strikes (seconds).
+ * Long enough to cover the full IR loop and keep “really old” strokes. */
+export const LIGHTNING_AGE_WINDOW_SEC = 24 * 60 * 60;
 
-/** Shorter colour ramp so recent activity still reads white→yellow→red. */
-export const LIGHTNING_COLOR_WINDOW_SEC = 90 * 60;
+/** Colour ramp window — older than this still shows, just fully red. */
+export const LIGHTNING_COLOR_WINDOW_SEC = 6 * 60 * 60;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest
@@ -103,16 +103,49 @@ export function lightningAgeGradientCss() {
   return "linear-gradient(to right, #ffffff 0%, #ffca28 45%, #ef5350 100%)";
 }
 
-/** Strikes that exist at `refTime` within the rolling lookback window.
- * `windowMinutes` defaults to the full retention window so satellite frames
- * across the IR loop each accumulate storm history. */
+/**
+ * Strikes that have already occurred by `refTime`.
+ * Pass `windowMinutes` to limit lookback; omit / null / <=0 to keep every
+ * strike at or before the reference time (full history for satellite scrub).
+ */
 export function filterStrikesAtTime(
   strikes: LightningStrike[],
   refTime: number,
-  windowMinutes = LIGHTNING_AGE_WINDOW_SEC / 60,
+  windowMinutes?: number | null,
 ): LightningStrike[] {
-  const cutoff = refTime - windowMinutes * 60;
+  const cutoff =
+    windowMinutes == null || windowMinutes <= 0
+      ? Number.NEGATIVE_INFINITY
+      : refTime - windowMinutes * 60;
   return strikes
     .filter((s) => s.time <= refTime && s.time >= cutoff)
     .sort((a, b) => b.time - a.time);
+}
+
+/**
+ * Stretch strike timestamps so the oldest/newest span `[timelineStart, timelineEnd]`.
+ * Used when LightningMaps only carries ~2h of colour ages but the satellite
+ * loop (or longer history) needs strokes on every frame.
+ */
+export function alignStrikesToTimeline(
+  strikes: LightningStrike[],
+  timelineStart: number,
+  timelineEnd: number,
+): LightningStrike[] {
+  if (strikes.length === 0) return strikes;
+  if (!(timelineEnd > timelineStart)) return strikes;
+  let dataStart = Infinity;
+  let dataEnd = -Infinity;
+  for (const s of strikes) {
+    if (s.time < dataStart) dataStart = s.time;
+    if (s.time > dataEnd) dataEnd = s.time;
+  }
+  if (!(dataEnd > dataStart)) return strikes;
+  const dataSpan = dataEnd - dataStart;
+  const outSpan = timelineEnd - timelineStart;
+  return strikes.map((s) => {
+    const u = (s.time - dataStart) / dataSpan;
+    const time = Math.round(timelineStart + u * outSpan);
+    return time === s.time ? s : { ...s, time };
+  });
 }
