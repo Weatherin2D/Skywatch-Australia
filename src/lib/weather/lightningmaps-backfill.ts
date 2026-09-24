@@ -1,47 +1,62 @@
 /**
- * Backfill recent Australian strikes from LightningMaps.org static maps.
+ * Backfill Australian strikes from LightningMaps.org static maps.
  *
- * Blitzortung's live socket under-delivers Oceania; LightningMaps still renders
- * the last ~2h of strokes on regional PNGs. We sample strike-palette pixels,
- * georeference them, and merge into the live buffer so satellite-frame sync
- * has history across the loop — not only the latest frame.
+ * Blitzortung’s live socket under-delivers Oceania on serverless. LightningMaps
+ * encodes real stroke ages on regional Mercator PNGs (MyBlitzortung). We sample
+ * strike-palette pixels with the official map coords + Mercator inverse so
+ * placement matches the published maps, then merge into the live buffer.
+ *
+ * Fetch both a fine 2h map (recent timing) and a 12h map (covers the full
+ * Himawari IR loop, which lags wall clock by ~45–90 min and spans ~3h).
  */
 
 import { PNG } from "pngjs";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import { inLightningBounds } from "@/lib/weather/blitzortung-parse";
 
+/**
+ * Official MyBlitzortung templates (includes/templates.inc.php).
+ * Projection defaults to Mercator; coord = North, East, South, West.
+ */
 const MAPS = [
   {
-    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=australia",
-    west: 110,
-    east: 155,
-    north: -10,
-    south: -45,
-  },
-  {
+    id: "australia_big",
     url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=australia_big",
-    west: 105,
-    east: 160,
     north: -8,
-    south: -48,
+    east: 159,
+    south: -45,
+    west: 109,
+    /** Prefer this map when deduping overlapping strokes. */
+    priority: 3,
   },
   {
+    id: "australia",
+    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=australia",
+    north: -8,
+    east: 159,
+    south: -45,
+    west: 109,
+    priority: 2,
+  },
+  {
+    id: "oceania",
     url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=oceania",
-    west: 95,
+    north: 10,
     east: 180,
-    north: 0,
-    south: -50,
+    south: -51.6,
+    west: 110,
+    priority: 1,
   },
 ] as const;
 
+/** Fine recent ages + longer history to cover lagged IR frames. */
+const PERIODS_H = [2, 12] as const;
+
 const USER_AGENT = "SkyWatchAustralia/1.0";
-/**
- * LightningMaps regional PNGs only encode ~2 hours of stroke age.
- * Do NOT invent multi-hour ages — that made the tracker inaccurate vs Windy.
- */
-const KEEP_SEC = 2 * 60 * 60;
-/** Cache LM maps briefly; refresh often for live density. */
+/** Keep up to the longest fetched period. */
+const KEEP_SEC = Math.max(...PERIODS_H) * 60 * 60;
+/** MyBlitzortung col_smooth default — age steps across the colour ramp. */
+const COLOR_STEPS = 24;
 const CACHE_TTL_SEC = 25;
 
 export type MapBackfillResult = {
@@ -49,62 +64,99 @@ export type MapBackfillResult = {
   fetchedAt: number;
 };
 
+type MapCfg = (typeof MAPS)[number];
+
+/** MyBlitzortung mercator (lon/360, log-tan / π / 2). */
+function mercator(lat: number, lon: number): [number, number] {
+  const x = lon / 360;
+  const y =
+    Math.log(Math.tan(Math.PI / 4 + ((lat * Math.PI) / 180) / 2)) /
+    Math.PI /
+    2;
+  return [x, y];
+}
+
+function invMercY(m: number): number {
+  return (
+    ((2 * Math.atan(Math.exp(m * 2 * Math.PI)) - Math.PI / 2) * 180) / Math.PI
+  );
+}
+
+/**
+ * Inverse of BoMapProjection::LatLon2Image for default Mercator maps
+ * (full-image calibration, no pixel inset).
+ */
 function pxToLonLat(
-  x: number,
-  y: number,
+  ix: number,
+  iy: number,
   w: number,
   h: number,
-  bounds: (typeof MAPS)[number],
+  map: MapCfg,
 ): [number, number] {
-  const lon = bounds.west + ((bounds.east - bounds.west) * x) / w;
-  const lat = bounds.north + ((bounds.south - bounds.north) * y) / h;
+  const [xSW, ySW] = mercator(map.south, map.west);
+  const [xNE, yNE] = mercator(map.north, map.east);
+  const calX = w / (xNE - xSW);
+  const calY = h / (yNE - ySW);
+  const offX = xSW * calX;
+  const offY = ySW * calY + h;
+  const lon = (360 * (ix + offX)) / calX;
+  const mercY = (offY - iy) / calY;
+  const lat = invMercY(mercY);
   return [lon, lat];
 }
 
 /**
- * Map LM stroke colours → age (seconds).
- * LightningMaps’ published ramp is ~0–2h (white/yellow → orange → red).
- * Cap at 2h so we never invent older timestamps than the map encodes.
+ * Stroke colours → age within `periodSec`.
+ * Ramp is white/yellow (high G, newest) → red (low G, oldest at period end).
+ * Matches MyBlitzortung’s smoothed standard palette (~24 steps).
  */
-function ageFromRgb(r: number, g: number, b: number): number | null {
-  // Stroke dots are saturated red/orange/yellow: high R, low B, G varies.
-  if (r < 210 || b > 90 || r < g - 15) return null;
-  if (g <= 15) return 2 * 60; // newest
-  if (g <= 40) return 10 * 60;
-  if (g <= 70) return 25 * 60;
-  if (g <= 100) return 45 * 60;
-  if (g <= 140) return 70 * 60;
-  if (g <= 180) return 95 * 60;
-  if (g <= 220) return 110 * 60;
-  return 120 * 60; // oldest colour on the map ≈ 2h
+function ageFromRgb(
+  r: number,
+  g: number,
+  b: number,
+  periodSec: number,
+): number | null {
+  // Saturated strike dots: high R, low B, G encodes age along the ramp.
+  if (r < 200 || b > 100 || r < g - 20) return null;
+  // Ignore near-white land labels / chrome bleed.
+  if (g > 245 && b > 180) return null;
+  const t = 1 - Math.min(1, Math.max(0, g / 220));
+  return Math.round(t * periodSec);
+}
+
+function hash01(x: number, y: number, k: number): number {
+  return (
+    Math.abs(Math.sin((x + k * 17.13) * 12.9898 + (y + k * 9.71) * 78.233) *
+      43758.5453) % 1
+  );
 }
 
 function extractStrikes(
   png: PNG,
   nowSec: number,
-  bounds: (typeof MAPS)[number],
+  map: MapCfg,
+  periodSec: number,
 ): LightningStrike[] {
   const { width: W, height: H, data } = png;
 
-  // Skip title bar + legend / activity graph
-  const yMax = Math.floor(H * 0.91);
-  const xMax = Math.floor(W * 0.92);
+  // Legend sits bottom-right; activity graph is the bottom strip.
+  const yMax = Math.floor(H * 0.9);
+  const xLegend = Math.floor(W * 0.72);
 
-  // Finer grid → denser strikes (closer to LightningMaps.org visual density).
-  // 1px cells keep neighbouring stroke pixels as separate strikes.
   const CELL = 1;
   type Bin = { sx: number; sy: number; n: number; age: number; gSum: number };
   const bins = new Map<string, Bin>();
 
-  for (let y = 24; y < yMax; y++) {
-    for (let x = 0; x < xMax; x++) {
+  for (let y = 12; y < yMax; y++) {
+    for (let x = 0; x < W; x++) {
+      if (y > H * 0.86 && x > xLegend) continue;
       const i = (y * W + x) * 4;
       const r = data[i]!;
       const g = data[i + 1]!;
       const b = data[i + 2]!;
       const a = data[i + 3]!;
       if (a < 120) continue;
-      const age = ageFromRgb(r, g, b);
+      const age = ageFromRgb(r, g, b, periodSec);
       if (age == null) continue;
       const key = `${Math.floor(x / CELL)},${Math.floor(y / CELL)}`;
       const prev = bins.get(key);
@@ -114,40 +166,42 @@ function extractStrikes(
         prev.sx += x;
         prev.sy += y;
         prev.n += 1;
-        prev.age = Math.min(prev.age, age);
+        // Prefer the newest (smallest age) sample in the cell.
+        if (age < prev.age) prev.age = age;
         prev.gSum += g;
       }
     }
   }
 
+  const bandSec = periodSec / COLOR_STEPS;
   const strikes: LightningStrike[] = [];
+
   for (const bin of bins.values()) {
     const cx = bin.sx / bin.n;
     const cy = bin.sy / bin.n;
-    const [baseLon, baseLat] = pxToLonLat(cx, cy, W, H, bounds);
+    const [baseLon, baseLat] = pxToLonLat(cx, cy, W, H, map);
     if (!inLightningBounds(baseLat, baseLon)) continue;
 
-    // One strike per cell by default; dense blobs get a few nearby copies
-    // with tiny time jitter (not multi-hour age invention).
-    const copies = Math.min(4, Math.max(1, Math.ceil(bin.n / 3)));
+    // One strike per cell; dense blobs get a couple of nearby copies with
+    // sub-band time jitter so IR frames (~10 min) each pick up new flashes
+    // instead of only stepping on coarse colour boundaries.
+    const copies = Math.min(3, Math.max(1, Math.ceil(bin.n / 2)));
     for (let k = 0; k < copies; k++) {
-      const hash = Math.abs(
-        Math.sin((cx + k * 17.13) * 12.9898 + (cy + k * 9.71) * 78.233) *
-          43758.5453,
-      );
-      const frac = hash % 1;
-      const jitterSec = Math.floor(frac * 180) - 90;
-      const time = Math.min(nowSec, nowSec - bin.age + jitterSec);
+      const frac = hash01(cx, cy, k);
+      const jitterSec = Math.round((frac - 0.5) * bandSec);
+      const age = Math.max(0, Math.min(periodSec, bin.age + jitterSec));
+      const time = Math.min(nowSec, nowSec - age);
       if (nowSec - time > KEEP_SEC || time > nowSec + 30) continue;
 
-      const dLon = ((frac - 0.5) * 2.5 * (bounds.east - bounds.west)) / W;
+      // Sub-pixel scatter only — do not smear storms across degrees.
+      const dLon = ((frac - 0.5) * 1.2 * (map.east - map.west)) / W;
       const dLat =
-        (((hash * 7) % 1) - 0.5) * 2.5 * (bounds.south - bounds.north) / H;
+        (((hash01(cx, cy, k + 3) - 0.5) * 1.2 * (map.south - map.north)) / H);
       const lat = Math.round((baseLat + dLat) * 1e4) / 1e4;
       const lon = Math.round((baseLon + dLon) * 1e4) / 1e4;
       if (!inLightningBounds(lat, lon)) continue;
 
-      const id = `lm-${lat.toFixed(3)}-${lon.toFixed(3)}-${Math.floor(time / 60)}-${k}`;
+      const id = `lm-${map.id.slice(0, 2)}${periodSec / 3600}-${lat.toFixed(3)}-${lon.toFixed(3)}-${Math.floor(time / 60)}-${k}`;
       strikes.push({
         id,
         time,
@@ -166,21 +220,31 @@ let cache: MapBackfillResult | null = null;
 let inflight: Promise<MapBackfillResult> | null = null;
 
 async function fetchOneMap(
-  map: (typeof MAPS)[number],
+  map: MapCfg,
+  periodH: number,
   now: number,
 ): Promise<LightningStrike[]> {
-  const res = await fetch(`${map.url}&bo_t=${Math.floor(now / 30)}`, {
-    headers: { "User-Agent": USER_AGENT, Accept: "image/png,*/*" },
-    signal: AbortSignal.timeout(15_000),
-    cache: "no-store",
-  });
+  const periodSec = periodH * 60 * 60;
+  const res = await fetch(
+    `${map.url}&period=${periodH}&bo_t=${Math.floor(now / 20)}`,
+    {
+      headers: { "User-Agent": USER_AGENT, Accept: "image/png,*/*" },
+      signal: AbortSignal.timeout(18_000),
+      cache: "no-store",
+    },
+  );
   if (!res.ok) throw new Error(`LM map HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.byteLength < 800 || buf[0] !== 0x89 || buf[1] !== 0x50) {
     throw new Error("LM map was not a PNG");
   }
   const png = PNG.sync.read(buf);
-  return extractStrikes(png, now, map);
+  return extractStrikes(png, now, map, periodSec);
+}
+
+function dedupeKey(s: LightningStrike): string {
+  // ~0.05° / 1 min — collapse multi-map + multi-period twins.
+  return `${(s.lat * 20).toFixed(0)}:${(s.lon * 20).toFixed(0)}:${Math.floor(s.time / 60)}`;
 }
 
 export async function fetchLightningMapsBackfill(): Promise<MapBackfillResult> {
@@ -190,24 +254,61 @@ export async function fetchLightningMapsBackfill(): Promise<MapBackfillResult> {
 
   inflight = (async () => {
     try {
-      const batches = await Promise.all(
-        MAPS.map(async (map) => {
-          try {
-            return await fetchOneMap(map, now);
-          } catch (err) {
-            console.error("LightningMaps backfill map failed", map.url, err);
-            return [] as LightningStrike[];
-          }
-        }),
-      );
-      const byId = new Map<string, LightningStrike>();
-      for (const batch of batches) {
-        for (const s of batch) {
-          const prev = byId.get(s.id);
-          if (!prev || s.time > prev.time) byId.set(s.id, s);
+      const jobs: Promise<{
+        strikes: LightningStrike[];
+        priority: number;
+        periodH: number;
+      }>[] = [];
+      for (const map of MAPS) {
+        for (const periodH of PERIODS_H) {
+          jobs.push(
+            (async () => {
+              try {
+                const strikes = await fetchOneMap(map, periodH, now);
+                return { strikes, priority: map.priority, periodH };
+              } catch (err) {
+                console.error(
+                  "LightningMaps backfill map failed",
+                  map.id,
+                  periodH,
+                  err,
+                );
+                return {
+                  strikes: [] as LightningStrike[],
+                  priority: map.priority,
+                  periodH,
+                };
+              }
+            })(),
+          );
         }
       }
-      const strikes = [...byId.values()].filter(
+      const batches = await Promise.all(jobs);
+
+      // Prefer higher-priority maps and finer (shorter) periods on collision.
+      const ranked = batches
+        .flatMap((b) =>
+          b.strikes.map((s) => ({
+            s,
+            priority: b.priority,
+            // Lower periodH = finer age resolution for recent storms.
+            fine: 100 - b.periodH,
+          })),
+        )
+        .sort(
+          (a, b) =>
+            b.priority - a.priority ||
+            b.fine - a.fine ||
+            b.s.time - a.s.time,
+        );
+
+      const byCell = new Map<string, LightningStrike>();
+      for (const { s } of ranked) {
+        const key = dedupeKey(s);
+        if (!byCell.has(key)) byCell.set(key, s);
+      }
+
+      const strikes = [...byCell.values()].filter(
         (s) => now - s.time <= KEEP_SEC,
       );
       cache = { strikes, fetchedAt: now };

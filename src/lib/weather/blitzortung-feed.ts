@@ -77,12 +77,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV10?: GlobalFeed;
+  __skywatchBlitzFeedV11?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV10) {
-    g.__skywatchBlitzFeedV10 = {
+  if (!g.__skywatchBlitzFeedV11) {
+    g.__skywatchBlitzFeedV11 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -98,7 +98,7 @@ function getState(): GlobalFeed {
       persistDirty: false,
     };
   }
-  return g.__skywatchBlitzFeedV10;
+  return g.__skywatchBlitzFeedV11;
 }
 
 function isAcceptedStrikeId(id: string) {
@@ -325,7 +325,7 @@ export function ensureLightningFeed() {
 }
 
 /**
- * HTTP backfill from LightningMaps PNGs using the real ~2h colour-age scale.
+ * HTTP backfill from LightningMaps Mercator PNGs (2h + 12h periods).
  * Needed on serverless where long-lived Blitzortung sockets often cannot stay up.
  * Live bz- strikes always win over lm- estimates at the same cell.
  */
@@ -358,7 +358,7 @@ async function runMapsBackfill(state: GlobalFeed) {
 /**
  * Snapshot for API responses. Uses absolute strike times so each satellite
  * frame filters the true trail (Windy-style). Blitzortung live + LightningMaps
- * 2h backfill (same open network family Windy used before commercial LINET).
+ * 2h/12h Mercator backfill (same open network family Windy used before LINET).
  */
 export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();

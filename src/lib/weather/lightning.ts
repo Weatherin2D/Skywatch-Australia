@@ -168,8 +168,9 @@ export function filterStrikesAtTime(
 }
 
 /**
- * Only used when the live socket dumps identical timestamps (no real ages).
- * Spreads them evenly across the satellite loop so playback still animates.
+ * Stretch strike times across the satellite loop.
+ * Used when history is collapsed or shorter than the IR window so every
+ * frame still gets a progressive trail (Windy-style playback).
  */
 export function alignStrikesToTimeline(
   strikes: LightningStrike[],
@@ -194,7 +195,23 @@ export function alignStrikesToTimeline(
   });
 }
 
-/** True only when timestamps are collapsed (live flood with no history). */
+function strikeTimeSpan(strikes: LightningStrike[]): {
+  dataStart: number;
+  dataEnd: number;
+} {
+  let dataStart = Infinity;
+  let dataEnd = -Infinity;
+  for (const s of strikes) {
+    if (s.time < dataStart) dataStart = s.time;
+    if (s.time > dataEnd) dataEnd = s.time;
+  }
+  return { dataStart, dataEnd };
+}
+
+/**
+ * Align when timestamps are collapsed, or when strike history does not reach
+ * the start of the IR loop (would leave early frames empty).
+ */
 export function shouldAlignStrikesToTimeline(
   strikes: LightningStrike[],
   loopStart: number,
@@ -202,13 +219,15 @@ export function shouldAlignStrikesToTimeline(
 ): boolean {
   if (strikes.length < 2) return false;
   if (!(loopEnd > loopStart)) return false;
-  let dataStart = Infinity;
-  let dataEnd = -Infinity;
-  for (const s of strikes) {
-    if (s.time < dataStart) dataStart = s.time;
-    if (s.time > dataEnd) dataEnd = s.time;
-  }
-  return !(dataEnd > dataStart + 60);
+  const { dataStart, dataEnd } = strikeTimeSpan(strikes);
+  if (!(dataEnd > dataStart + 60)) return true;
+  const loopSpan = loopEnd - loopStart;
+  const dataSpan = dataEnd - dataStart;
+  // History starts after the first IR frame → early frames would be blank.
+  if (dataStart > loopStart + 5 * 60) return true;
+  // History much shorter than the loop → stretch so motion fills playback.
+  if (dataSpan < loopSpan * 0.55) return true;
+  return false;
 }
 
 /**
@@ -221,7 +240,7 @@ export function sampleStrikesForDisplay(
 ): LightningStrike[] {
   if (strikes.length <= maxVisible) return strikes;
 
-  const CELL = 0.12;
+  const CELL = 0.1;
   const byCell = new Map<string, LightningStrike>();
   for (const s of strikes) {
     const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
@@ -255,15 +274,16 @@ export function strikesForAnimation(
     strikes.length > 0 &&
     shouldAlignStrikesToTimeline(strikes, timelineStart, timelineEnd)
   ) {
-    let dataStart = Infinity;
-    for (const s of strikes) {
-      if (s.time < dataStart) dataStart = s.time;
+    const { dataStart, dataEnd } = strikeTimeSpan(strikes);
+    let toAlign = strikes;
+    if (!(dataEnd > dataStart + 60)) {
+      // Collapsed live flood — invent a short progression then stretch.
+      toAlign = strikes.map((s, i) => ({
+        ...s,
+        time: dataStart - (strikes.length - 1 - i) * 45,
+      }));
     }
-    const nudged = strikes.map((s, i) => ({
-      ...s,
-      time: dataStart - (strikes.length - 1 - i) * 45,
-    }));
-    working = alignStrikesToTimeline(nudged, timelineStart, timelineEnd);
+    working = alignStrikesToTimeline(toAlign, timelineStart, timelineEnd);
   }
 
   const visible = filterStrikesAtTime(

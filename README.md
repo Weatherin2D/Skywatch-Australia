@@ -12,7 +12,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/` | SkyWatch homepage — Himawari satellite loops (Visible, Infrared, Air Mass, Water Vapor, Shortwave IR, Dust, Volcanic Ash), Map overlays (Lightning tracker timed to the satellite frame, vector Synoptic MSLP synced to the loop), map shell, mock panels |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
-| `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps ~2h PNG backfill with real colour ages. Same open network family Windy used before commercial Nowcast LINET |
+| `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill (2h + 12h periods, official map coords). Same open network family Windy used before commercial Nowcast LINET |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time (`?time=YYYYMMDDHHMM`) |
 | `/weather-map`, `/forecast`, `/severe-weather`, … | Coming soon stubs |

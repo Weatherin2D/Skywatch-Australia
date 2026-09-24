@@ -189,27 +189,21 @@ export function SatelliteLightningOverlay({
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
-        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+        if (ctx) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
       }
       setCount(0);
       return;
     }
     if (playing) return;
-    const t =
-      referenceTime ?? Math.floor(Date.now() / 1000);
-    const n = paint(t);
-    setCount(n);
-  }, [
-    enabled,
-    playing,
-    referenceTime,
-    strikes,
-    timelineStart,
-    timelineEnd,
-    paint,
-  ]);
+    const t = referenceTime ?? Math.floor(Date.now() / 1000);
+    setCount(paint(t));
+  }, [enabled, playing, referenceTime, strikes, timelineStart, timelineEnd, paint]);
 
   // Play: interpolate clock in rAF and paint — zero React commits per tick.
+  // Strikes are read from refs so live buffer updates don't restart the clock.
   useEffect(() => {
     if (!enabled || !playing || referenceTime == null) return;
 
@@ -228,7 +222,6 @@ export function SatelliteLightningOverlay({
       const eased = u * u * (3 - 2 * u);
       const animTime = Math.round(from + (to - from) * eased);
       const n = paint(animTime);
-      // Update legend count ~4×/sec, not every frame.
       if (now - lastCountAt > 250) {
         lastCountAt = now;
         setCount(n);
@@ -239,17 +232,7 @@ export function SatelliteLightningOverlay({
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [
-    enabled,
-    playing,
-    referenceTime,
-    nextFrameTime,
-    msPerFrame,
-    strikes,
-    timelineStart,
-    timelineEnd,
-    paint,
-  ]);
+  }, [enabled, playing, referenceTime, nextFrameTime, msPerFrame, paint]);
 
   // Keep canvas sized with the map.
   useEffect(() => {
