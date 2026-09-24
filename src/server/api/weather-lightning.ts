@@ -7,7 +7,7 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function GET() {
-  const snap = getLiveLightningSnapshot();
+  const snap = await getLiveLightningSnapshot();
   const payload: LightningPayload = {
     generated: snap.generated,
     source: snap.source,

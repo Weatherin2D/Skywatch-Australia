@@ -10,6 +10,8 @@ import {
   LIGHTNING_AGE_WINDOW_SEC,
   LIGHTNING_COLOR_WINDOW_SEC,
   lightningAgeGradientCss,
+  sampleStrikesForDisplay,
+  shouldAlignStrikesToTimeline,
   strikeAgeColor,
   strikeAgeSeconds,
   strikeAgeSize,
@@ -17,10 +19,13 @@ import {
 } from "@/lib/weather/lightning";
 import { lonLatToGibsPct } from "@/lib/weather/maps";
 
-/** Hours of strike history kept before the first satellite frame. */
-const PRE_LOOP_HISTORY_SEC = 6 * 60 * 60;
-/** Hard cap — thousands of drop-shadow DOM nodes freeze the map and look “blank”. */
-const MAX_VISIBLE_STRIKES = 400;
+/**
+ * History shown before the first satellite frame — match full retention so
+ * scrubbing the start of the IR loop still reveals really-old strokes.
+ */
+const PRE_LOOP_HISTORY_SEC = LIGHTNING_AGE_WINDOW_SEC;
+/** Hard cap — thousands of DOM markers freeze the map; sample spatially. */
+const MAX_VISIBLE_STRIKES = 900;
 
 function strikesForReference(
   strikes: LightningStrike[],
@@ -36,12 +41,16 @@ function strikesForReference(
     timelineEnd > timelineStart &&
     strikes.length > 0
   ) {
+    const alignStart = timelineStart - PRE_LOOP_HISTORY_SEC;
+    const alignEnd = timelineEnd;
+
     let dataStart = Infinity;
     let dataEnd = -Infinity;
     for (const s of strikes) {
       if (s.time < dataStart) dataStart = s.time;
       if (s.time > dataEnd) dataEnd = s.time;
     }
+
     // Live-only buffers often share nearly identical timestamps; nudge so
     // alignStrikesToTimeline can stretch them across the IR loop.
     if (!(dataEnd > dataStart)) {
@@ -50,11 +59,17 @@ function strikesForReference(
         time: dataStart - (strikes.length - 1 - i) * 45,
       }));
     }
-    working = alignStrikesToTimeline(
-      working,
-      timelineStart - PRE_LOOP_HISTORY_SEC,
-      timelineEnd,
-    );
+
+    if (
+      shouldAlignStrikesToTimeline(
+        working,
+        alignStart,
+        alignEnd,
+        timelineStart,
+      )
+    ) {
+      working = alignStrikesToTimeline(working, alignStart, alignEnd);
+    }
   }
 
   let visible = filterStrikesAtTime(working, refTime, null);
@@ -66,7 +81,7 @@ function strikesForReference(
     visible = filterStrikesAtTime(strikes, Math.max(refTime, wall), null);
   }
 
-  return visible.slice(0, MAX_VISIBLE_STRIKES);
+  return sampleStrikesForDisplay(visible, MAX_VISIBLE_STRIKES);
 }
 
 function useNowTick(enabled: boolean) {

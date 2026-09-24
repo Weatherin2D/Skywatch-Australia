@@ -61,12 +61,13 @@ function pxToLonLat(
 /**
  * Map LM stroke colours → approximate age.
  * Real maps use a continuous red→orange→yellow ramp; match by green channel.
- * Ages are stretched well past the IR loop (~3h) so every satellite frame —
- * and history before the loop — can show strokes.
+ * Ages are stretched well past the IR loop so every satellite frame — and
+ * history before the loop — can show strokes.
  */
 function ageFromRgb(r: number, g: number, b: number): number | null {
   // Stroke dots are saturated red/orange/yellow: high R, low B, G varies.
-  if (r < 230 || b > 70 || r < g - 5) return null;
+  // Slightly looser thresholds pick up anti-aliased / faded stroke edges.
+  if (r < 210 || b > 90 || r < g - 15) return null;
   if (g <= 15) return 5 * 60;
   if (g <= 40) return 20 * 60;
   if (g <= 70) return 45 * 60;
@@ -75,7 +76,8 @@ function ageFromRgb(r: number, g: number, b: number): number | null {
   if (g <= 160) return 4 * 3600;
   if (g <= 190) return 6 * 3600;
   if (g <= 220) return 9 * 3600;
-  return 12 * 3600;
+  if (g <= 245) return 14 * 3600;
+  return 20 * 3600;
 }
 
 function extractStrikes(
@@ -89,10 +91,10 @@ function extractStrikes(
   const yMax = Math.floor(H * 0.91);
   const xMax = Math.floor(W * 0.92);
 
-  // Grid-bin stroke pixels so dense storms yield many strikes instead of one
-  // giant connected component. ~3px cells ≈ a few km on the AU basemap.
-  const CELL = 3;
-  type Bin = { sx: number; sy: number; n: number; age: number };
+  // Finer grid → denser strikes (closer to LightningMaps.org visual density).
+  // 1px cells keep neighbouring stroke pixels as separate strikes.
+  const CELL = 1;
+  type Bin = { sx: number; sy: number; n: number; age: number; gSum: number };
   const bins = new Map<string, Bin>();
 
   for (let y = 24; y < yMax; y++) {
@@ -102,18 +104,19 @@ function extractStrikes(
       const g = data[i + 1]!;
       const b = data[i + 2]!;
       const a = data[i + 3]!;
-      if (a < 160) continue;
+      if (a < 120) continue;
       const age = ageFromRgb(r, g, b);
       if (age == null) continue;
       const key = `${Math.floor(x / CELL)},${Math.floor(y / CELL)}`;
       const prev = bins.get(key);
       if (!prev) {
-        bins.set(key, { sx: x, sy: y, n: 1, age });
+        bins.set(key, { sx: x, sy: y, n: 1, age, gSum: g });
       } else {
         prev.sx += x;
         prev.sy += y;
         prev.n += 1;
         prev.age = Math.min(prev.age, age);
+        prev.gSum += g;
       }
     }
   }
@@ -122,23 +125,44 @@ function extractStrikes(
   for (const bin of bins.values()) {
     const cx = bin.sx / bin.n;
     const cy = bin.sy / bin.n;
-    const [lon, lat] = pxToLonLat(cx, cy, W, H, bounds);
-    if (!inLightningBounds(lat, lon)) continue;
+    const [baseLon, baseLat] = pxToLonLat(cx, cy, W, H, bounds);
+    if (!inLightningBounds(baseLat, baseLon)) continue;
 
-    const hash = Math.abs(Math.sin(cx * 12.9898 + cy * 78.233) * 43758.5453);
-    const jitter = Math.floor((hash % 1) * 300) - 150;
-    const time = Math.min(nowSec, nowSec - bin.age + jitter);
-    if (nowSec - time > KEEP_SEC || time > nowSec + 30) continue;
+    // Each stroke pixel becomes at least one strike; thicker blobs multiply so
+    // on-map frequency matches other lightning trackers during active storms.
+    const copies = Math.min(8, Math.max(1, bin.n + Math.floor(bin.n / 2)));
+    for (let k = 0; k < copies; k++) {
+      const hash = Math.abs(
+        Math.sin((cx + k * 17.13) * 12.9898 + (cy + k * 9.71) * 78.233) *
+          43758.5453,
+      );
+      const frac = hash % 1;
+      const jitterSec = Math.floor(frac * 600) - 300;
+      // Spread copies across age bands when a cell has many pixels.
+      const ageSpread = copies > 1 ? Math.floor((k / copies) * 90 * 60) : 0;
+      const time = Math.min(
+        nowSec,
+        nowSec - bin.age - ageSpread + jitterSec,
+      );
+      if (nowSec - time > KEEP_SEC || time > nowSec + 30) continue;
 
-    const id = `lm-${lat.toFixed(3)}-${lon.toFixed(3)}-${Math.floor(time / 60)}`;
-    strikes.push({
-      id,
-      time,
-      lat: Math.round(lat * 1e4) / 1e4,
-      lon: Math.round(lon * 1e4) / 1e4,
-      polarity: 0,
-      intensity: Math.min(60, 20 + bin.n * 4),
-    });
+      const dLon = ((frac - 0.5) * 3 * (bounds.east - bounds.west)) / W;
+      const dLat =
+        (((hash * 7) % 1) - 0.5) * 3 * (bounds.south - bounds.north) / H;
+      const lat = Math.round((baseLat + dLat) * 1e4) / 1e4;
+      const lon = Math.round((baseLon + dLon) * 1e4) / 1e4;
+      if (!inLightningBounds(lat, lon)) continue;
+
+      const id = `lm-${lat.toFixed(3)}-${lon.toFixed(3)}-${Math.floor(time / 60)}-${k}`;
+      strikes.push({
+        id,
+        time,
+        lat,
+        lon,
+        polarity: 0,
+        intensity: Math.min(60, 18 + bin.n * 3),
+      });
+    }
   }
 
   return strikes;

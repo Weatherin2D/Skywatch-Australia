@@ -149,3 +149,110 @@ export function alignStrikesToTimeline(
     return time === s.time ? s : { ...s, time };
   });
 }
+
+/** True when buffered history already spans the requested timeline. */
+export function strikeHistoryCoversTimeline(
+  strikes: LightningStrike[],
+  timelineStart: number,
+  timelineEnd: number,
+): boolean {
+  if (strikes.length < 2) return false;
+  if (!(timelineEnd > timelineStart)) return true;
+  let dataStart = Infinity;
+  let dataEnd = -Infinity;
+  for (const s of strikes) {
+    if (s.time < dataStart) dataStart = s.time;
+    if (s.time > dataEnd) dataEnd = s.time;
+  }
+  if (!(dataEnd > dataStart)) return false;
+  const needSpan = timelineEnd - timelineStart;
+  const dataSpan = dataEnd - dataStart;
+  // Reach near the timeline start and cover most of the requested span.
+  return dataStart <= timelineStart + 30 * 60 && dataSpan >= needSpan * 0.85;
+}
+
+/**
+ * Decide whether to stretch timestamps onto the satellite (+ pre-loop) range.
+ * Absolute times win when history is long AND early frames already have
+ * enough strokes; otherwise live floods would leave the start of the loop blank.
+ */
+export function shouldAlignStrikesToTimeline(
+  strikes: LightningStrike[],
+  timelineStart: number,
+  timelineEnd: number,
+  /** First satellite frame — used to judge early-loop density. */
+  loopStart: number,
+): boolean {
+  if (strikes.length === 0) return false;
+  if (!(timelineEnd > timelineStart)) return false;
+
+  let dataStart = Infinity;
+  let dataEnd = -Infinity;
+  let beforeLoop = 0;
+  for (const s of strikes) {
+    if (s.time < dataStart) dataStart = s.time;
+    if (s.time > dataEnd) dataEnd = s.time;
+    if (s.time <= loopStart) beforeLoop += 1;
+  }
+
+  // Identical / near-identical timestamps must be stretched.
+  if (!(dataEnd > dataStart + 60)) return true;
+
+  if (!strikeHistoryCoversTimeline(strikes, timelineStart, timelineEnd)) {
+    return true;
+  }
+
+  // Long span with almost all activity after loopStart → early frames blank.
+  const minEarly = Math.min(120, Math.max(40, Math.floor(strikes.length * 0.12)));
+  return beforeLoop < minEarly;
+}
+
+/**
+ * Cap visible markers without favouring only the newest storm cells.
+ * Mixes spatial grid picks with age-stratified picks so early satellite
+ * frames still show older strokes instead of going blank.
+ */
+export function sampleStrikesForDisplay(
+  strikes: LightningStrike[],
+  maxVisible: number,
+): LightningStrike[] {
+  if (strikes.length <= maxVisible) return strikes;
+
+  // ~0.35° cells across AU — keeps storm structure without DOM overload.
+  const CELL = 0.35;
+  const byCell = new Map<string, LightningStrike>();
+  for (const s of strikes) {
+    const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
+    const prev = byCell.get(key);
+    // Prefer the newest strike in each cell (still representative of activity).
+    if (!prev || s.time > prev.time) byCell.set(key, s);
+  }
+  let picked = [...byCell.values()];
+
+  if (picked.length > maxVisible) {
+    // Age-stratify so we don't drop all old strokes when the map is busy.
+    picked.sort((a, b) => a.time - b.time);
+    const buckets = 8;
+    const out: LightningStrike[] = [];
+    const per = Math.max(1, Math.floor(maxVisible / buckets));
+    for (let b = 0; b < buckets; b++) {
+      const lo = Math.floor((b * picked.length) / buckets);
+      const hi = Math.floor(((b + 1) * picked.length) / buckets);
+      const slice = picked.slice(lo, hi);
+      // Within each age band, keep the newest (most relevant at that era).
+      slice.sort((a, b) => b.time - a.time);
+      out.push(...slice.slice(0, per));
+    }
+    // Fill remainder with globally newest not yet chosen.
+    if (out.length < maxVisible) {
+      const have = new Set(out.map((s) => s.id));
+      const rest = [...picked]
+        .sort((a, b) => b.time - a.time)
+        .filter((s) => !have.has(s.id));
+      out.push(...rest.slice(0, maxVisible - out.length));
+    }
+    picked = out.slice(0, maxVisible);
+  }
+
+  return picked.sort((a, b) => b.time - a.time);
+}

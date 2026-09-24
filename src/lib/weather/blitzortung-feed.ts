@@ -62,12 +62,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV7?: GlobalFeed;
+  __skywatchBlitzFeedV8?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV7) {
-    g.__skywatchBlitzFeedV7 = {
+  if (!g.__skywatchBlitzFeedV8) {
+    g.__skywatchBlitzFeedV8 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -81,7 +81,7 @@ function getState(): GlobalFeed {
       started: false,
     };
   }
-  return g.__skywatchBlitzFeedV7;
+  return g.__skywatchBlitzFeedV8;
 }
 
 function ingest(state: GlobalFeed, obj: Record<string, unknown>) {
@@ -263,12 +263,19 @@ export function ensureLightningFeed() {
   void runBackfill(state);
   state.backfillTimer = setInterval(() => {
     void runBackfill(state);
-  }, 30_000);
+  }, 20_000);
 }
 
-export function getLiveLightningSnapshot(): LiveLightningSnapshot {
+/**
+ * Snapshot for API responses. Awaits LightningMaps backfill when the buffer is
+ * still sparse so the first request after a cold start is not empty.
+ */
+export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();
   const state = getState();
+  if (state.strikes.size < 80) {
+    await runBackfill(state);
+  }
   prune(state);
   const strikes = [...state.strikes.values()].sort((a, b) => b.time - a.time);
   const liveHosts = [...state.sockets.entries()]
