@@ -94,8 +94,9 @@ export function strikeAgeSize(
   return Math.round(lerp(18, 12, t));
 }
 
+/** Pulse while a strike is still within roughly one IR frame step. */
 export function strikeIsFresh(ageSec: number) {
-  return ageSec < 90;
+  return ageSec < 12 * 60;
 }
 
 /** CSS linear-gradient string matching the strike age scale (new → old). */
@@ -125,7 +126,7 @@ export function filterStrikesAtTime(
 /**
  * Stretch strike timestamps so the oldest/newest span `[timelineStart, timelineEnd]`.
  * Used when LightningMaps only carries ~2h of colour ages but the satellite
- * loop (or longer history) needs strokes on every frame.
+ * loop needs strokes that *build* across frames (not a static blob).
  */
 export function alignStrikesToTimeline(
   strikes: LightningStrike[],
@@ -150,7 +151,7 @@ export function alignStrikesToTimeline(
   });
 }
 
-/** True when buffered history already spans the requested timeline. */
+/** True when buffered history already spans the satellite loop. */
 export function strikeHistoryCoversTimeline(
   strikes: LightningStrike[],
   timelineStart: number,
@@ -167,92 +168,111 @@ export function strikeHistoryCoversTimeline(
   if (!(dataEnd > dataStart)) return false;
   const needSpan = timelineEnd - timelineStart;
   const dataSpan = dataEnd - dataStart;
-  // Reach near the timeline start and cover most of the requested span.
   return dataStart <= timelineStart + 30 * 60 && dataSpan >= needSpan * 0.85;
 }
 
 /**
- * Decide whether to stretch timestamps onto the satellite (+ pre-loop) range.
- * Absolute times win when history is long AND early frames already have
- * enough strokes; otherwise live floods would leave the start of the loop blank.
+ * Stretch onto the satellite loop only when absolute times would leave early
+ * frames empty or collapse the whole buffer onto “now”. Never stretch into a
+ * long pre-loop window — that freezes a near-full marker field on frame 1.
  */
 export function shouldAlignStrikesToTimeline(
   strikes: LightningStrike[],
-  timelineStart: number,
-  timelineEnd: number,
-  /** First satellite frame — used to judge early-loop density. */
   loopStart: number,
+  loopEnd: number,
 ): boolean {
   if (strikes.length === 0) return false;
-  if (!(timelineEnd > timelineStart)) return false;
+  if (!(loopEnd > loopStart)) return false;
 
   let dataStart = Infinity;
   let dataEnd = -Infinity;
-  let beforeLoop = 0;
   for (const s of strikes) {
     if (s.time < dataStart) dataStart = s.time;
     if (s.time > dataEnd) dataEnd = s.time;
-    if (s.time <= loopStart) beforeLoop += 1;
   }
 
-  // Identical / near-identical timestamps must be stretched.
+  // Identical / near-identical timestamps must be stretched across the loop.
   if (!(dataEnd > dataStart + 60)) return true;
 
-  if (!strikeHistoryCoversTimeline(strikes, timelineStart, timelineEnd)) {
-    return true;
-  }
+  const loopSpan = loopEnd - loopStart;
+  const dataSpan = dataEnd - dataStart;
 
-  // Long span with almost all activity after loopStart → early frames blank.
-  const minEarly = Math.min(120, Math.max(40, Math.floor(strikes.length * 0.12)));
-  return beforeLoop < minEarly;
+  // History starts well after the first frame → early frames blank.
+  if (dataStart > loopStart + 20 * 60) return true;
+
+  // Buffer much shorter than the IR loop → stretch so storms can build.
+  if (dataSpan < loopSpan * 0.5) return true;
+
+  return false;
 }
 
 /**
- * Cap visible markers without favouring only the newest storm cells.
- * Mixes spatial grid picks with age-stratified picks so early satellite
- * frames still show older strokes instead of going blank.
+ * Cap visible markers while keeping storm *motion* readable.
+ * Biases toward strikes near `refTime` so new cells light up as the loop plays,
+ * while still keeping a share of older strokes for context.
  */
 export function sampleStrikesForDisplay(
   strikes: LightningStrike[],
   maxVisible: number,
+  refTime?: number | null,
 ): LightningStrike[] {
-  if (strikes.length <= maxVisible) return strikes;
-
-  // ~0.35° cells across AU — keeps storm structure without DOM overload.
-  const CELL = 0.35;
-  const byCell = new Map<string, LightningStrike>();
-  for (const s of strikes) {
-    const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
-    const prev = byCell.get(key);
-    // Prefer the newest strike in each cell (still representative of activity).
-    if (!prev || s.time > prev.time) byCell.set(key, s);
-  }
-  let picked = [...byCell.values()];
-
-  if (picked.length > maxVisible) {
-    // Age-stratify so we don't drop all old strokes when the map is busy.
-    picked.sort((a, b) => a.time - b.time);
-    const buckets = 8;
-    const out: LightningStrike[] = [];
-    const per = Math.max(1, Math.floor(maxVisible / buckets));
-    for (let b = 0; b < buckets; b++) {
-      const lo = Math.floor((b * picked.length) / buckets);
-      const hi = Math.floor(((b + 1) * picked.length) / buckets);
-      const slice = picked.slice(lo, hi);
-      // Within each age band, keep the newest (most relevant at that era).
-      slice.sort((a, b) => b.time - a.time);
-      out.push(...slice.slice(0, per));
-    }
-    // Fill remainder with globally newest not yet chosen.
-    if (out.length < maxVisible) {
-      const have = new Set(out.map((s) => s.id));
-      const rest = [...picked]
-        .sort((a, b) => b.time - a.time)
-        .filter((s) => !have.has(s.id));
-      out.push(...rest.slice(0, maxVisible - out.length));
-    }
-    picked = out.slice(0, maxVisible);
+  if (strikes.length <= maxVisible) {
+    return [...strikes].sort((a, b) => b.time - a.time);
   }
 
-  return picked.sort((a, b) => b.time - a.time);
+  // ~0.2° cells (~20 km) — fine enough that new storm pulses aren't collapsed
+  // into the same handful of markers every frame.
+  const CELL = 0.2;
+
+  const pickSpatial = (pool: LightningStrike[], limit: number) => {
+    if (limit <= 0 || pool.length === 0) return [] as LightningStrike[];
+    if (pool.length <= limit) return pool;
+    const byCell = new Map<string, LightningStrike>();
+    // Newest first so each cell keeps the freshest stroke in-band.
+    const ordered = [...pool].sort((a, b) => b.time - a.time);
+    for (const s of ordered) {
+      const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
+      if (!byCell.has(key)) byCell.set(key, s);
+    }
+    let picked = [...byCell.values()];
+    if (picked.length > limit) {
+      picked.sort((a, b) => b.time - a.time);
+      picked = picked.slice(0, limit);
+    }
+    return picked;
+  };
+
+  const recentCut =
+    refTime != null && Number.isFinite(refTime) ? refTime - 45 * 60 : null;
+  const recent =
+    recentCut != null ? strikes.filter((s) => s.time >= recentCut) : [];
+  const older =
+    recentCut != null ? strikes.filter((s) => s.time < recentCut) : strikes;
+
+  // ~65% of the cap for the leading edge (storm progression), rest for trail.
+  const recentBudget = Math.min(
+    recent.length,
+    Math.max(Math.floor(maxVisible * 0.65), Math.min(recent.length, maxVisible)),
+  );
+  const olderBudget = maxVisible - recentBudget;
+
+  const pickedRecent = pickSpatial(recent, recentBudget);
+  const have = new Set(pickedRecent.map((s) => s.id));
+  const pickedOlder = pickSpatial(
+    older.filter((s) => !have.has(s.id)),
+    Math.max(0, olderBudget),
+  );
+
+  let out = [...pickedRecent, ...pickedOlder];
+  if (out.length < maxVisible) {
+    const seen = new Set(out.map((s) => s.id));
+    for (const s of [...strikes].sort((a, b) => b.time - a.time)) {
+      if (seen.has(s.id)) continue;
+      out.push(s);
+      seen.add(s.id);
+      if (out.length >= maxVisible) break;
+    }
+  }
+
+  return out.slice(0, maxVisible).sort((a, b) => b.time - a.time);
 }

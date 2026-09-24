@@ -20,10 +20,10 @@ import {
 import { lonLatToGibsPct } from "@/lib/weather/maps";
 
 /**
- * History shown before the first satellite frame — match full retention so
- * scrubbing the start of the IR loop still reveals really-old strokes.
+ * Keep a full day of strokes relative to the active frame so really-old hits
+ * remain, while the leading edge still advances with the IR loop.
  */
-const PRE_LOOP_HISTORY_SEC = LIGHTNING_AGE_WINDOW_SEC;
+const FRAME_LOOKBACK_MIN = Math.round(LIGHTNING_AGE_WINDOW_SEC / 60);
 /** Hard cap — thousands of DOM markers freeze the map; sample spatially. */
 const MAX_VISIBLE_STRIKES = 900;
 
@@ -41,9 +41,6 @@ function strikesForReference(
     timelineEnd > timelineStart &&
     strikes.length > 0
   ) {
-    const alignStart = timelineStart - PRE_LOOP_HISTORY_SEC;
-    const alignEnd = timelineEnd;
-
     let dataStart = Infinity;
     let dataEnd = -Infinity;
     for (const s of strikes) {
@@ -60,28 +57,27 @@ function strikesForReference(
       }));
     }
 
-    if (
-      shouldAlignStrikesToTimeline(
-        working,
-        alignStart,
-        alignEnd,
-        timelineStart,
-      )
-    ) {
-      working = alignStrikesToTimeline(working, alignStart, alignEnd);
+    // Align onto the satellite loop only — never into a long pre-loop window,
+    // which froze nearly the full marker field on frame 1.
+    if (shouldAlignStrikesToTimeline(working, timelineStart, timelineEnd)) {
+      working = alignStrikesToTimeline(working, timelineStart, timelineEnd);
     }
   }
 
-  let visible = filterStrikesAtTime(working, refTime, null);
+  let visible = filterStrikesAtTime(working, refTime, FRAME_LOOKBACK_MIN);
 
   // Safety net: if frame sync filtered everything (e.g. timeline props missing
   // while the active frame is older than live strikes), still show recent hits.
   if (visible.length === 0 && strikes.length > 0) {
     const wall = Math.floor(Date.now() / 1000);
-    visible = filterStrikesAtTime(strikes, Math.max(refTime, wall), null);
+    visible = filterStrikesAtTime(
+      strikes,
+      Math.max(refTime, wall),
+      FRAME_LOOKBACK_MIN,
+    );
   }
 
-  return sampleStrikesForDisplay(visible, MAX_VISIBLE_STRIKES);
+  return sampleStrikesForDisplay(visible, MAX_VISIBLE_STRIKES, refTime);
 }
 
 function useNowTick(enabled: boolean) {
