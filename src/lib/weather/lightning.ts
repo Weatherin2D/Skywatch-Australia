@@ -114,8 +114,9 @@ export function strikeAgeSize(
 }
 
 /**
- * Windy-style opacity: full at flash, ease toward 0 at the 3h cut.
- * Past the window → 0 (icon must not render).
+ * Windy-style opacity along the trail.
+ * Newest flashes are full-bright; older strikes fade so each IR frame’s
+ * leading edge is obvious, then vanish at the 3h cut.
  */
 export function strikeOpacity(
   ageSec: number,
@@ -123,9 +124,14 @@ export function strikeOpacity(
 ): number {
   if (ageSec < 0) return 0;
   if (ageSec >= windowSec) return 0;
-  const t = ageSec / windowSec;
-  // Stay readable early, then fall off steeply into the cut (ease-in fade).
-  return clamp01(1 - t * t);
+  // ~10 min: full flash (≈ one Himawari step)
+  if (ageSec <= 10 * 60) return 1;
+  // → 1h: still clear but dimming
+  if (ageSec <= 60 * 60) {
+    return clamp01(1 - 0.4 * ((ageSec - 10 * 60) / (50 * 60)));
+  }
+  // → 3h: fade out to the hard cut
+  return clamp01(0.6 * (1 - (ageSec - 60 * 60) / (windowSec - 60 * 60)));
 }
 
 /** Brief flash window after a strike occurs on the animation clock. */
