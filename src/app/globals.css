@@ -212,6 +212,12 @@
   flex-shrink: 0;
   /* Single halo — dual drop-shadows on hundreds of markers stall the GPU */
   filter: drop-shadow(0 0 1.25px #000);
+  /* Windy-style trail: opacity eases as age updates with the animation clock */
+  transition: opacity 180ms linear, transform 180ms ease-out;
+}
+
+.skywatch-lightning-strike {
+  transition: opacity 180ms linear;
 }
 
 .skywatch-lightning-crosshair::before,

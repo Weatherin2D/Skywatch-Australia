@@ -33,18 +33,21 @@ export const LIGHTNING_AU_BOUNDS = {
 export const LIGHTNING_AGE_WINDOW_SEC = 24 * 60 * 60;
 
 /**
- * Max age relative to the active frame before a strike icon is removed.
- * Once a stroke is older than this vs the scrubbed/played time, it disappears.
+ * Windy-style trail: strikes remain after they flash, then vanish.
+ * Hard cut at 3h relative to the animation clock (user requirement).
  */
 export const LIGHTNING_VISIBLE_WINDOW_SEC = 3 * 60 * 60;
 
-/** Colour ramp matches the visible window (new → fully red at 3h, then gone). */
+/** Colour ramp spans the same trail (new → red at 3h, then gone). */
 export const LIGHTNING_COLOR_WINDOW_SEC = LIGHTNING_VISIBLE_WINDOW_SEC;
 
+/** Cap DOM markers (Windy uses canvas; we keep a spatial sample). */
+export const LIGHTNING_MAX_VISIBLE = 800;
+
 const GRADIENT_STOPS = [
-  { t: 0, r: 255, g: 255, b: 255 }, // white — newest
-  { t: 0.45, r: 255, g: 202, b: 40 }, // yellow
-  { t: 1, r: 239, g: 83, b: 80 }, // red — oldest
+  { t: 0, r: 255, g: 255, b: 255 }, // white — newest flash
+  { t: 0.35, r: 255, g: 202, b: 40 }, // yellow
+  { t: 1, r: 239, g: 83, b: 80 }, // red — end of trail
 ] as const;
 
 function clamp01(n: number) {
@@ -62,14 +65,13 @@ export function strikeAgeSeconds(strike: LightningStrike, refTimeSec: number) {
 /** 0 = brand new, 1 = oldest in the window. */
 export function strikeAgeNorm(
   ageSec: number,
-  windowSec = LIGHTNING_AGE_WINDOW_SEC,
+  windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ) {
   return clamp01(ageSec / windowSec);
 }
 
 /**
  * Continuous white → yellow → red colour from strike age.
- * Intermediate ages blend between stops (not discrete bands).
  */
 export function strikeAgeColor(
   ageSec: number,
@@ -90,48 +92,63 @@ export function strikeAgeColor(
   return `rgb(${r}, ${g}, ${bl})`;
 }
 
-/** Crosshair size scales slightly as strikes age. */
+/** Crosshair size scales slightly as strikes age along the trail. */
 export function strikeAgeSize(
   ageSec: number,
   windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ) {
   const t = strikeAgeNorm(ageSec, windowSec);
-  return Math.round(lerp(18, 12, t));
+  return Math.round(lerp(18, 11, t));
 }
 
-/** Pulse while a strike is still within roughly one IR frame step. */
+/**
+ * Windy-style opacity: full at flash, ease toward 0 at the 3h cut.
+ * Past the window → 0 (icon must not render).
+ */
+export function strikeOpacity(
+  ageSec: number,
+  windowSec = LIGHTNING_VISIBLE_WINDOW_SEC,
+): number {
+  if (ageSec < 0) return 0;
+  if (ageSec >= windowSec) return 0;
+  const t = ageSec / windowSec;
+  // Stay readable early, then fall off steeply into the cut (ease-in fade).
+  return clamp01(1 - t * t);
+}
+
+/** Brief flash window after a strike occurs on the animation clock. */
 export function strikeIsFresh(ageSec: number) {
-  return ageSec < 12 * 60;
+  return ageSec >= 0 && ageSec < 90;
 }
 
 /** CSS linear-gradient string matching the strike age scale (new → old). */
 export function lightningAgeGradientCss() {
-  return "linear-gradient(to right, #ffffff 0%, #ffca28 45%, #ef5350 100%)";
+  return "linear-gradient(to right, #ffffff 0%, #ffca28 35%, #ef5350 100%)";
 }
 
 /**
- * Strikes that have already occurred by `refTime`.
- * Pass `windowMinutes` to limit lookback; omit / null / <=0 to keep every
- * strike at or before the reference time (full history for satellite scrub).
+ * Strikes that have already occurred by `animTime` and are still inside the
+ * Windy-style trail (not older than the visible window).
  */
 export function filterStrikesAtTime(
   strikes: LightningStrike[],
-  refTime: number,
+  animTime: number,
   windowMinutes?: number | null,
 ): LightningStrike[] {
-  const cutoff =
+  const windowSec =
     windowMinutes == null || windowMinutes <= 0
-      ? Number.NEGATIVE_INFINITY
-      : refTime - windowMinutes * 60;
+      ? LIGHTNING_VISIBLE_WINDOW_SEC
+      : windowMinutes * 60;
+  const cutoff = animTime - windowSec;
   return strikes
-    .filter((s) => s.time <= refTime && s.time >= cutoff)
+    .filter((s) => s.time <= animTime && s.time > cutoff)
     .sort((a, b) => b.time - a.time);
 }
 
 /**
- * Stretch strike timestamps so the oldest/newest span `[timelineStart, timelineEnd]`.
- * Used when LightningMaps only carries ~2h of colour ages but the satellite
- * loop needs strokes that *build* across frames (not a static blob).
+ * Only used when the live socket dumps identical timestamps (no real ages).
+ * Spreads them evenly across the satellite loop so playback still animates.
+ * Prefer absolute times whenever the buffer has a real span.
  */
 export function alignStrikesToTimeline(
   strikes: LightningStrike[],
@@ -156,128 +173,84 @@ export function alignStrikesToTimeline(
   });
 }
 
-/** True when buffered history already spans the satellite loop. */
-export function strikeHistoryCoversTimeline(
-  strikes: LightningStrike[],
-  timelineStart: number,
-  timelineEnd: number,
-): boolean {
-  if (strikes.length < 2) return false;
-  if (!(timelineEnd > timelineStart)) return true;
-  let dataStart = Infinity;
-  let dataEnd = -Infinity;
-  for (const s of strikes) {
-    if (s.time < dataStart) dataStart = s.time;
-    if (s.time > dataEnd) dataEnd = s.time;
-  }
-  if (!(dataEnd > dataStart)) return false;
-  const needSpan = timelineEnd - timelineStart;
-  const dataSpan = dataEnd - dataStart;
-  return dataStart <= timelineStart + 30 * 60 && dataSpan >= needSpan * 0.85;
-}
-
-/**
- * Stretch onto the satellite loop only when absolute times would leave early
- * frames empty or collapse the whole buffer onto “now”. Never stretch into a
- * long pre-loop window — that freezes a near-full marker field on frame 1.
- */
+/** True only when timestamps are collapsed (live flood with no history). */
 export function shouldAlignStrikesToTimeline(
   strikes: LightningStrike[],
   loopStart: number,
   loopEnd: number,
 ): boolean {
-  if (strikes.length === 0) return false;
+  if (strikes.length < 2) return false;
   if (!(loopEnd > loopStart)) return false;
-
   let dataStart = Infinity;
   let dataEnd = -Infinity;
   for (const s of strikes) {
     if (s.time < dataStart) dataStart = s.time;
     if (s.time > dataEnd) dataEnd = s.time;
   }
-
-  // Identical / near-identical timestamps must be stretched across the loop.
-  if (!(dataEnd > dataStart + 60)) return true;
-
-  const loopSpan = loopEnd - loopStart;
-  const dataSpan = dataEnd - dataStart;
-
-  // History starts well after the first frame → early frames blank.
-  if (dataStart > loopStart + 20 * 60) return true;
-
-  // Buffer much shorter than the IR loop → stretch so storms can build.
-  if (dataSpan < loopSpan * 0.5) return true;
-
-  return false;
+  return !(dataEnd > dataStart + 60);
 }
 
 /**
- * Cap visible markers while keeping storm *motion* readable.
- * Biases toward strikes near `refTime` so new cells light up as the loop plays,
- * while still keeping a share of older strokes for context.
+ * Spatial sample for DOM budget — prefer newest so the flash edge stays dense
+ * (Windy keeps the leading edge sharp while older trail fades via opacity).
  */
 export function sampleStrikesForDisplay(
   strikes: LightningStrike[],
   maxVisible: number,
-  refTime?: number | null,
+  _refTime?: number | null,
 ): LightningStrike[] {
   if (strikes.length <= maxVisible) {
     return [...strikes].sort((a, b) => b.time - a.time);
   }
 
-  // ~0.2° cells (~20 km) — fine enough that new storm pulses aren't collapsed
-  // into the same handful of markers every frame.
-  const CELL = 0.2;
+  const CELL = 0.18;
+  const byCell = new Map<string, LightningStrike>();
+  for (const s of [...strikes].sort((a, b) => b.time - a.time)) {
+    const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
+    if (!byCell.has(key)) byCell.set(key, s);
+  }
+  let picked = [...byCell.values()];
+  if (picked.length > maxVisible) {
+    picked.sort((a, b) => b.time - a.time);
+    picked = picked.slice(0, maxVisible);
+  }
+  return picked;
+}
 
-  const pickSpatial = (pool: LightningStrike[], limit: number) => {
-    if (limit <= 0 || pool.length === 0) return [] as LightningStrike[];
-    if (pool.length <= limit) return pool;
-    const byCell = new Map<string, LightningStrike>();
-    // Newest first so each cell keeps the freshest stroke in-band.
-    const ordered = [...pool].sort((a, b) => b.time - a.time);
-    for (const s of ordered) {
-      const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
-      if (!byCell.has(key)) byCell.set(key, s);
+/**
+ * Windy-style strike set for an animation clock reading.
+ * Absolute times; optional collapse-align only when the buffer has no span.
+ */
+export function strikesForAnimation(
+  strikes: LightningStrike[],
+  animTime: number,
+  timelineStart?: number | null,
+  timelineEnd?: number | null,
+): LightningStrike[] {
+  let working = strikes;
+
+  if (
+    timelineStart != null &&
+    timelineEnd != null &&
+    timelineEnd > timelineStart &&
+    strikes.length > 0 &&
+    shouldAlignStrikesToTimeline(strikes, timelineStart, timelineEnd)
+  ) {
+    let dataStart = Infinity;
+    for (const s of strikes) {
+      if (s.time < dataStart) dataStart = s.time;
     }
-    let picked = [...byCell.values()];
-    if (picked.length > limit) {
-      picked.sort((a, b) => b.time - a.time);
-      picked = picked.slice(0, limit);
-    }
-    return picked;
-  };
-
-  const recentCut =
-    refTime != null && Number.isFinite(refTime) ? refTime - 45 * 60 : null;
-  const recent =
-    recentCut != null ? strikes.filter((s) => s.time >= recentCut) : [];
-  const older =
-    recentCut != null ? strikes.filter((s) => s.time < recentCut) : strikes;
-
-  // ~65% of the cap for the leading edge (storm progression), rest for trail.
-  const recentBudget = Math.min(
-    recent.length,
-    Math.max(Math.floor(maxVisible * 0.65), Math.min(recent.length, maxVisible)),
-  );
-  const olderBudget = maxVisible - recentBudget;
-
-  const pickedRecent = pickSpatial(recent, recentBudget);
-  const have = new Set(pickedRecent.map((s) => s.id));
-  const pickedOlder = pickSpatial(
-    older.filter((s) => !have.has(s.id)),
-    Math.max(0, olderBudget),
-  );
-
-  let out = [...pickedRecent, ...pickedOlder];
-  if (out.length < maxVisible) {
-    const seen = new Set(out.map((s) => s.id));
-    for (const s of [...strikes].sort((a, b) => b.time - a.time)) {
-      if (seen.has(s.id)) continue;
-      out.push(s);
-      seen.add(s.id);
-      if (out.length >= maxVisible) break;
-    }
+    const nudged = strikes.map((s, i) => ({
+      ...s,
+      time: dataStart - (strikes.length - 1 - i) * 45,
+    }));
+    working = alignStrikesToTimeline(nudged, timelineStart, timelineEnd);
   }
 
-  return out.slice(0, maxVisible).sort((a, b) => b.time - a.time);
+  const visible = filterStrikesAtTime(
+    working,
+    animTime,
+    Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 60),
+  );
+  return sampleStrikesForDisplay(visible, LIGHTNING_MAX_VISIBLE, animTime);
 }

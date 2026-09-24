@@ -56,6 +56,10 @@ type Props = {
   /** Oldest/newest satellite frame times for stretching strike history. */
   lightningTimelineStart?: number | null;
   lightningTimelineEnd?: number | null;
+  /** Windy-style continuous trail while the IR loop is playing. */
+  lightningPlaying?: boolean;
+  lightningMsPerFrame?: number;
+  lightningNextFrameTime?: number | null;
   showSynoptic?: boolean;
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
@@ -209,6 +213,9 @@ export function HomeMap({
   lightningFrameSynced = false,
   lightningTimelineStart = null,
   lightningTimelineEnd = null,
+  lightningPlaying = false,
+  lightningMsPerFrame = 500,
+  lightningNextFrameTime = null,
   showSynoptic = false,
   synopticFrames = [],
   synopticGeoJson = null,
@@ -254,6 +261,9 @@ export function HomeMap({
           referenceTime={lightningReferenceTime}
           timelineStart={lightningTimelineStart}
           timelineEnd={lightningTimelineEnd}
+          playing={lightningPlaying}
+          msPerFrame={lightningMsPerFrame}
+          nextFrameTime={lightningNextFrameTime}
         />
         {showSynoptic ? (
           <SynopticLegend
@@ -276,6 +286,9 @@ export function HomeMap({
             frameSynced={lightningFrameSynced}
             timelineStart={lightningTimelineStart}
             timelineEnd={lightningTimelineEnd}
+            playing={lightningPlaying}
+            msPerFrame={lightningMsPerFrame}
+            nextFrameTime={lightningNextFrameTime}
           />
         ) : null}
       </div>
@@ -314,6 +327,9 @@ export function HomeMap({
           referenceTime={lightningReferenceTime}
           timelineStart={lightningTimelineStart}
           timelineEnd={lightningTimelineEnd}
+          playing={lightningPlaying}
+          msPerFrame={lightningMsPerFrame}
+          nextFrameTime={lightningNextFrameTime}
         />
         <MapTools />
       </MapContainer>
@@ -340,6 +356,9 @@ export function HomeMap({
           frameSynced={lightningFrameSynced}
           timelineStart={lightningTimelineStart}
           timelineEnd={lightningTimelineEnd}
+          playing={lightningPlaying}
+          msPerFrame={lightningMsPerFrame}
+          nextFrameTime={lightningNextFrameTime}
         />
       ) : null}
 

@@ -1,82 +1,88 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Marker, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
-  alignStrikesToTimeline,
-  filterStrikesAtTime,
   LIGHTNING_VISIBLE_WINDOW_SEC,
   lightningAgeGradientCss,
-  sampleStrikesForDisplay,
-  shouldAlignStrikesToTimeline,
   strikeAgeColor,
   strikeAgeSeconds,
   strikeAgeSize,
   strikeIsFresh,
+  strikeOpacity,
+  strikesForAnimation,
 } from "@/lib/weather/lightning";
 import { lonLatToGibsPct } from "@/lib/weather/maps";
 
 /**
- * Drop strike icons once they are older than 3h relative to the active frame.
- * As the loop plays forward, aged-out strokes disappear from that frame on.
+ * Windy-style animation clock.
+ * While playing, smoothly advances from the current frame time toward the next
+ * so strikes flash/fade continuously instead of only snapping on frame changes.
+ * When paused/scrubbed, locks to the discrete frame time.
  */
-const FRAME_LOOKBACK_MIN = Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 60);
-/** Hard cap — thousands of DOM markers freeze the map; sample spatially. */
-const MAX_VISIBLE_STRIKES = 900;
-
-function strikesForReference(
-  strikes: LightningStrike[],
-  refTime: number,
-  timelineStart: number | null | undefined,
-  timelineEnd: number | null | undefined,
+function useWindyAnimTime(
+  enabled: boolean,
+  referenceTime: number | null | undefined,
+  playing: boolean,
+  msPerFrame: number,
+  nextFrameTime: number | null | undefined,
 ) {
-  let working = strikes;
+  const wall = useNowTick(enabled && referenceTime == null);
+  const base = referenceTime ?? wall;
+  const [animTime, setAnimTime] = useState(base);
+  const baseRef = useRef(base);
+  const nextRef = useRef(nextFrameTime);
+  const playingRef = useRef(playing);
+  const msRef = useRef(msPerFrame);
+  baseRef.current = base;
+  nextRef.current = nextFrameTime;
+  playingRef.current = playing;
+  msRef.current = msPerFrame;
 
-  if (
-    timelineStart != null &&
-    timelineEnd != null &&
-    timelineEnd > timelineStart &&
-    strikes.length > 0
-  ) {
-    let dataStart = Infinity;
-    let dataEnd = -Infinity;
-    for (const s of strikes) {
-      if (s.time < dataStart) dataStart = s.time;
-      if (s.time > dataEnd) dataEnd = s.time;
+  useEffect(() => {
+    if (!enabled) return;
+
+    if (!playing || referenceTime == null) {
+      setAnimTime(base);
+      return;
     }
 
-    // Live-only buffers often share nearly identical timestamps; nudge so
-    // alignStrikesToTimeline can stretch them across the IR loop.
-    if (!(dataEnd > dataStart)) {
-      working = strikes.map((s, i) => ({
-        ...s,
-        time: dataStart - (strikes.length - 1 - i) * 45,
-      }));
-    }
+    const from = base;
+    const to =
+      nextFrameTime != null && nextFrameTime > from
+        ? nextFrameTime
+        : from + Math.max(60, Math.round(msPerFrame / 10));
+    const started = performance.now();
+    const duration = Math.max(80, msPerFrame);
+    let raf = 0;
 
-    // Align onto the satellite loop only — never into a long pre-loop window,
-    // which froze nearly the full marker field on frame 1.
-    if (shouldAlignStrikesToTimeline(working, timelineStart, timelineEnd)) {
-      working = alignStrikesToTimeline(working, timelineStart, timelineEnd);
-    }
-  }
+    const tick = (now: number) => {
+      if (!playingRef.current) {
+        setAnimTime(baseRef.current);
+        return;
+      }
+      const u = Math.min(1, (now - started) / duration);
+      // Ease slightly so flashes bunch near frame boundaries less harshly.
+      const eased = u * u * (3 - 2 * u);
+      setAnimTime(Math.round(from + (to - from) * eased));
+      if (u < 1) raf = requestAnimationFrame(tick);
+    };
 
-  let visible = filterStrikesAtTime(working, refTime, FRAME_LOOKBACK_MIN);
+    setAnimTime(from);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [
+    enabled,
+    playing,
+    referenceTime,
+    base,
+    nextFrameTime,
+    msPerFrame,
+  ]);
 
-  // Safety net: if frame sync filtered everything (e.g. timeline props missing
-  // while the active frame is older than live strikes), still show recent hits.
-  if (visible.length === 0 && strikes.length > 0) {
-    const wall = Math.floor(Date.now() / 1000);
-    visible = filterStrikesAtTime(
-      strikes,
-      Math.max(refTime, wall),
-      FRAME_LOOKBACK_MIN,
-    );
-  }
-
-  return sampleStrikesForDisplay(visible, MAX_VISIBLE_STRIKES, refTime);
+  return animTime;
 }
 
 function useNowTick(enabled: boolean) {
@@ -91,22 +97,16 @@ function useNowTick(enabled: boolean) {
   return now;
 }
 
-function useReferenceTime(
-  enabled: boolean,
-  referenceTime: number | null | undefined,
-) {
-  const now = useNowTick(enabled && referenceTime == null);
-  return referenceTime ?? now;
-}
-
 function CrosshairIcon({
   color,
   size,
   pulse,
+  opacity,
 }: {
   color: string;
   size: number;
   pulse?: boolean;
+  opacity: number;
 }) {
   const arm = Math.max(4, Math.round(size * 0.4));
   const gap = Math.max(2, Math.round(size * 0.12));
@@ -123,6 +123,7 @@ function CrosshairIcon({
           width: size,
           height: size,
           color,
+          opacity,
           ["--lg-arm" as string]: `${arm}px`,
           ["--lg-gap" as string]: `${gap}px`,
           ["--lg-thick" as string]: `${thick}px`,
@@ -136,58 +137,84 @@ function CrosshairIcon({
   );
 }
 
-function crosshairHtml(color: string, size: number, pulse: boolean) {
+function crosshairHtml(
+  color: string,
+  size: number,
+  pulse: boolean,
+  opacity: number,
+) {
   const arm = Math.max(4, Math.round(size * 0.4));
   const gap = Math.max(2, Math.round(size * 0.12));
   const thick = Math.max(2, size * 0.14);
   const cls = pulse
     ? "skywatch-lightning-crosshair skywatch-lightning-crosshair--new"
     : "skywatch-lightning-crosshair";
-  return `<span class="${cls}" style="width:${size}px;height:${size}px;color:${color};--lg-arm:${arm}px;--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
+  return `<span class="${cls}" style="width:${size}px;height:${size}px;color:${color};opacity:${opacity};--lg-arm:${arm}px;--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
 }
 
-function makeCrosshairIcon(color: string, size: number, pulse: boolean) {
+function makeCrosshairIcon(
+  color: string,
+  size: number,
+  pulse: boolean,
+  opacity: number,
+) {
   return L.divIcon({
     className: "skywatch-lightning-marker",
-    html: crosshairHtml(color, size, pulse),
+    html: crosshairHtml(color, size, pulse, opacity),
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
 }
 
-/** Satellite-frame lightning crosshairs, aged vs active frame time. */
+type LightningAnimProps = {
+  strikes: LightningStrike[];
+  enabled: boolean;
+  referenceTime?: number | null;
+  timelineStart?: number | null;
+  timelineEnd?: number | null;
+  /** Satellite loop is playing — drive continuous Windy-style clock. */
+  playing?: boolean;
+  msPerFrame?: number;
+  /** Unix time of the next loop frame (for inter-frame interpolation). */
+  nextFrameTime?: number | null;
+};
+
+/** Satellite-frame lightning — Windy trail + our crosshairs / age colours. */
 export function SatelliteLightningOverlay({
   strikes,
   enabled,
   referenceTime = null,
   timelineStart = null,
   timelineEnd = null,
-}: {
-  strikes: LightningStrike[];
-  enabled: boolean;
-  referenceTime?: number | null;
-  /** Oldest satellite frame time — used to stretch history across the loop. */
-  timelineStart?: number | null;
-  /** Newest satellite frame time. */
-  timelineEnd?: number | null;
-}) {
-  const refTime = useReferenceTime(enabled, referenceTime);
+  playing = false,
+  msPerFrame = 500,
+  nextFrameTime = null,
+}: LightningAnimProps) {
+  const animTime = useWindyAnimTime(
+    enabled,
+    referenceTime,
+    playing,
+    msPerFrame,
+    nextFrameTime,
+  );
   const visible = useMemo(() => {
     if (!enabled) return [];
-    return strikesForReference(
+    return strikesForAnimation(
       strikes,
-      refTime,
+      animTime,
       timelineStart,
       timelineEnd,
     );
-  }, [enabled, strikes, refTime, timelineStart, timelineEnd]);
+  }, [enabled, strikes, animTime, timelineStart, timelineEnd]);
 
   if (!enabled || visible.length === 0) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-[50] overflow-hidden">
       {visible.map((strike, index) => {
-        const age = strikeAgeSeconds(strike, refTime);
+        const age = strikeAgeSeconds(strike, animTime);
+        const opacity = strikeOpacity(age);
+        if (opacity <= 0.02) return null;
         const color = strikeAgeColor(age);
         const size = strikeAgeSize(age);
         const { x, y } = lonLatToGibsPct(strike.lon, strike.lat);
@@ -195,13 +222,14 @@ export function SatelliteLightningOverlay({
         return (
           <span
             key={strike.id}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
+            className="skywatch-lightning-strike absolute -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${x}%`, top: `${y}%` }}
           >
             <CrosshairIcon
               color={color}
               size={size}
-              pulse={index < 12 && strikeIsFresh(age)}
+              opacity={opacity}
+              pulse={index < 16 && strikeIsFresh(age)}
             />
           </span>
         );
@@ -210,47 +238,54 @@ export function SatelliteLightningOverlay({
   );
 }
 
-/** Leaflet lightning crosshairs for Map / Radar views. */
+/** Leaflet lightning — same Windy trail model for Map / Radar views. */
 export function LeafletLightningOverlay({
   strikes,
   enabled,
   referenceTime = null,
   timelineStart = null,
   timelineEnd = null,
-}: {
-  strikes: LightningStrike[];
-  enabled: boolean;
-  referenceTime?: number | null;
-  timelineStart?: number | null;
-  timelineEnd?: number | null;
-}) {
-  const refTime = useReferenceTime(enabled, referenceTime);
+  playing = false,
+  msPerFrame = 500,
+  nextFrameTime = null,
+}: LightningAnimProps) {
+  const animTime = useWindyAnimTime(
+    enabled,
+    referenceTime,
+    playing,
+    msPerFrame,
+    nextFrameTime,
+  );
   const visible = useMemo(() => {
     if (!enabled) return [];
-    return strikesForReference(
+    return strikesForAnimation(
       strikes,
-      refTime,
+      animTime,
       timelineStart,
       timelineEnd,
     );
-  }, [enabled, strikes, refTime, timelineStart, timelineEnd]);
+  }, [enabled, strikes, animTime, timelineStart, timelineEnd]);
 
   if (!enabled) return null;
 
   return (
     <>
       {visible.map((strike, index) => {
-        const age = strikeAgeSeconds(strike, refTime);
+        const age = strikeAgeSeconds(strike, animTime);
+        const opacity = strikeOpacity(age);
+        if (opacity <= 0.02) return null;
         const color = strikeAgeColor(age);
         const size = strikeAgeSize(age);
         return (
           <Marker
             key={strike.id}
             position={[strike.lat, strike.lon]}
+            opacity={opacity}
             icon={makeCrosshairIcon(
               color,
               size,
-              index < 12 && strikeIsFresh(age),
+              index < 16 && strikeIsFresh(age),
+              opacity,
             )}
             interactive
           >
@@ -274,6 +309,9 @@ export function LightningLegend({
   frameSynced = false,
   timelineStart = null,
   timelineEnd = null,
+  playing = false,
+  msPerFrame = 500,
+  nextFrameTime = null,
 }: {
   strikes: LightningStrike[];
   attribution?: string | null;
@@ -283,11 +321,20 @@ export function LightningLegend({
   frameSynced?: boolean;
   timelineStart?: number | null;
   timelineEnd?: number | null;
+  playing?: boolean;
+  msPerFrame?: number;
+  nextFrameTime?: number | null;
 }) {
-  const refTime = referenceTime ?? Math.floor(Date.now() / 1000);
-  const visible = strikesForReference(
+  const animTime = useWindyAnimTime(
+    true,
+    frameSynced ? referenceTime : null,
+    frameSynced && playing,
+    msPerFrame,
+    nextFrameTime,
+  );
+  const visible = strikesForAnimation(
     strikes,
-    refTime,
+    animTime,
     frameSynced ? timelineStart : null,
     frameSynced ? timelineEnd : null,
   );
@@ -328,7 +375,7 @@ export function LightningLegend({
         <p className="mb-2 max-w-[12rem] text-[10px] leading-snug text-white/75">
           {status === "live" || status === "reconnecting"
             ? frameSynced && referenceTime != null
-              ? "No strikes at this frame time — play the loop as storms develop…"
+              ? "No strikes in this trail window — play as storms develop…"
               : `No strikes over Australia in the last ${visibleLabelHours}h — listening live…`
             : "Connecting to live lightning feed…"}
         </p>

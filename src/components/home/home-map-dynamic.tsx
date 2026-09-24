@@ -41,6 +41,9 @@ export function HomeMapDynamic({
   lightningFrameSynced,
   lightningTimelineStart,
   lightningTimelineEnd,
+  lightningPlaying,
+  lightningMsPerFrame,
+  lightningNextFrameTime,
   showSynoptic,
   synopticFrames,
   synopticGeoJson,
@@ -70,6 +73,9 @@ export function HomeMapDynamic({
   lightningFrameSynced?: boolean;
   lightningTimelineStart?: number | null;
   lightningTimelineEnd?: number | null;
+  lightningPlaying?: boolean;
+  lightningMsPerFrame?: number;
+  lightningNextFrameTime?: number | null;
   showSynoptic?: boolean;
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
@@ -101,6 +107,9 @@ export function HomeMapDynamic({
       lightningFrameSynced={lightningFrameSynced}
       lightningTimelineStart={lightningTimelineStart}
       lightningTimelineEnd={lightningTimelineEnd}
+      lightningPlaying={lightningPlaying}
+      lightningMsPerFrame={lightningMsPerFrame}
+      lightningNextFrameTime={lightningNextFrameTime}
       showSynoptic={showSynoptic}
       synopticFrames={synopticFrames}
       synopticGeoJson={synopticGeoJson}
