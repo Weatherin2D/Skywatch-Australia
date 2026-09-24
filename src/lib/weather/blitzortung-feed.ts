@@ -21,6 +21,7 @@ import {
   parseStrikeMessage,
   toStrike,
 } from "@/lib/weather/blitzortung-parse";
+import { fetchLightningMapsBackfill } from "@/lib/weather/lightningmaps-backfill";
 
 const WS_HOSTS = [
   "wss://ws1.blitzortung.org",
@@ -70,17 +71,18 @@ type GlobalFeed = {
   reconnectTimers: Map<string, ReturnType<typeof setTimeout>>;
   pruneTimer: ReturnType<typeof setInterval> | null;
   persistTimer: ReturnType<typeof setInterval> | null;
+  backfillTimer: ReturnType<typeof setInterval> | null;
   started: boolean;
   persistDirty: boolean;
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV9?: GlobalFeed;
+  __skywatchBlitzFeedV10?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV9) {
-    g.__skywatchBlitzFeedV9 = {
+  if (!g.__skywatchBlitzFeedV10) {
+    g.__skywatchBlitzFeedV10 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -91,23 +93,24 @@ function getState(): GlobalFeed {
       reconnectTimers: new Map(),
       pruneTimer: null,
       persistTimer: null,
+      backfillTimer: null,
       started: false,
       persistDirty: false,
     };
   }
-  return g.__skywatchBlitzFeedV9;
+  return g.__skywatchBlitzFeedV10;
 }
 
-function isRealStrikeId(id: string) {
-  // Drop legacy LightningMaps PNG inventions (lm-*) — inaccurate ages.
-  return !id.startsWith("lm-");
+function isAcceptedStrikeId(id: string) {
+  // Accept live Blitzortung (bz-) and corrected LightningMaps 2h backfill (lm-).
+  return id.startsWith("bz-") || id.startsWith("lm-");
 }
 
 function ingest(state: GlobalFeed, obj: Record<string, unknown>) {
   state.receivedTotal += 1;
   const strike = toStrike(obj);
   if (!strike) return;
-  if (!isRealStrikeId(strike.id)) return;
+  if (!isAcceptedStrikeId(strike.id)) return;
   state.receivedInBounds += 1;
   state.strikes.set(strike.id, strike);
   state.status = "live";
@@ -117,7 +120,7 @@ function ingest(state: GlobalFeed, obj: Record<string, unknown>) {
 function prune(state: GlobalFeed) {
   const cutoff = Math.floor(Date.now() / 1000) - WINDOW_SEC;
   for (const [id, strike] of state.strikes) {
-    if (!isRealStrikeId(id) || strike.time < cutoff) {
+    if (!isAcceptedStrikeId(id) || strike.time < cutoff) {
       state.strikes.delete(id);
       state.persistDirty = true;
     }
@@ -140,7 +143,7 @@ async function loadPersisted(state: GlobalFeed) {
     const cutoff = Math.floor(Date.now() / 1000) - WINDOW_SEC;
     let n = 0;
     for (const s of parsed.strikes) {
-      if (!s?.id || !isRealStrikeId(s.id)) continue;
+      if (!s?.id || !isAcceptedStrikeId(s.id)) continue;
       if (!Number.isFinite(s.time) || s.time < cutoff) continue;
       if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue;
       state.strikes.set(s.id, s);
@@ -160,7 +163,7 @@ async function savePersisted(state: GlobalFeed) {
   state.persistDirty = false;
   try {
     const strikes = [...state.strikes.values()]
-      .filter((s) => isRealStrikeId(s.id))
+      .filter((s) => isAcceptedStrikeId(s.id))
       .sort((a, b) => b.time - a.time)
       .slice(0, MAX_BUFFER);
     await fs.writeFile(
@@ -315,22 +318,58 @@ export function ensureLightningFeed() {
   state.persistTimer = setInterval(() => {
     void savePersisted(state);
   }, PERSIST_EVERY_MS);
+  void runMapsBackfill(state);
+  state.backfillTimer = setInterval(() => {
+    void runMapsBackfill(state);
+  }, 30_000);
 }
 
 /**
- * Snapshot for API responses. Uses only real Blitzortung timestamps so each
- * satellite frame filters accurately (Windy-style absolute-time trail).
+ * HTTP backfill from LightningMaps PNGs using the real ~2h colour-age scale.
+ * Needed on serverless where long-lived Blitzortung sockets often cannot stay up.
+ * Live bz- strikes always win over lm- estimates at the same cell.
+ */
+async function runMapsBackfill(state: GlobalFeed) {
+  try {
+    const { strikes } = await fetchLightningMapsBackfill();
+    for (const strike of strikes) {
+      let dominated = false;
+      for (const existing of state.strikes.values()) {
+        if (!existing.id.startsWith("bz-")) continue;
+        if (Math.abs(existing.lat - strike.lat) > 0.08) continue;
+        if (Math.abs(existing.lon - strike.lon) > 0.08) continue;
+        if (Math.abs(existing.time - strike.time) > 15 * 60) continue;
+        dominated = true;
+        break;
+      }
+      if (dominated) continue;
+      const prev = state.strikes.get(strike.id);
+      if (!prev || strike.time >= prev.time) {
+        state.strikes.set(strike.id, strike);
+        if (!prev) state.receivedInBounds += 1;
+        state.persistDirty = true;
+      }
+    }
+  } catch (err) {
+    console.error("lightning maps backfill error", err);
+  }
+}
+
+/**
+ * Snapshot for API responses. Uses absolute strike times so each satellite
+ * frame filters the true trail (Windy-style). Blitzortung live + LightningMaps
+ * 2h backfill (same open network family Windy used before commercial LINET).
  */
 export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();
   const state = getState();
-  // Brief wait on empty cold start so WS/MQTT can deliver first strikes.
+  await runMapsBackfill(state);
   if (state.strikes.size < 5) {
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 800));
   }
   prune(state);
   const strikes = [...state.strikes.values()]
-    .filter((s) => isRealStrikeId(s.id))
+    .filter((s) => isAcceptedStrikeId(s.id))
     .sort((a, b) => b.time - a.time);
   const liveHosts = [...state.sockets.entries()]
     .filter(([, ws]) => ws.readyState === WebSocket.OPEN)
@@ -345,6 +384,6 @@ export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot>
     windowMinutes: Math.round(WINDOW_SEC / 60),
     source: "blitzortung",
     attribution:
-      "Live lightning © Blitzortung.org (CC BY-SA) — open network (Windy uses commercial Nowcast LINET)",
+      "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — open network (Windy uses commercial Nowcast LINET)",
   };
 }

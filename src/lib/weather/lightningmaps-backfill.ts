@@ -36,8 +36,11 @@ const MAPS = [
 ] as const;
 
 const USER_AGENT = "SkyWatchAustralia/1.0";
-/** Keep a full day so old strokes survive beyond the IR loop. */
-const KEEP_SEC = 24 * 60 * 60;
+/**
+ * LightningMaps regional PNGs only encode ~2 hours of stroke age.
+ * Do NOT invent multi-hour ages — that made the tracker inaccurate vs Windy.
+ */
+const KEEP_SEC = 2 * 60 * 60;
 /** Cache LM maps briefly; refresh often for live density. */
 const CACHE_TTL_SEC = 25;
 
@@ -59,25 +62,21 @@ function pxToLonLat(
 }
 
 /**
- * Map LM stroke colours → approximate age.
- * Real maps use a continuous red→orange→yellow ramp; match by green channel.
- * Ages are stretched well past the IR loop so every satellite frame — and
- * history before the loop — can show strokes.
+ * Map LM stroke colours → age (seconds).
+ * LightningMaps’ published ramp is ~0–2h (white/yellow → orange → red).
+ * Cap at 2h so we never invent older timestamps than the map encodes.
  */
 function ageFromRgb(r: number, g: number, b: number): number | null {
   // Stroke dots are saturated red/orange/yellow: high R, low B, G varies.
-  // Slightly looser thresholds pick up anti-aliased / faded stroke edges.
   if (r < 210 || b > 90 || r < g - 15) return null;
-  if (g <= 15) return 5 * 60;
-  if (g <= 40) return 20 * 60;
-  if (g <= 70) return 45 * 60;
-  if (g <= 100) return 90 * 60;
-  if (g <= 130) return 2.5 * 3600;
-  if (g <= 160) return 4 * 3600;
-  if (g <= 190) return 6 * 3600;
-  if (g <= 220) return 9 * 3600;
-  if (g <= 245) return 14 * 3600;
-  return 20 * 3600;
+  if (g <= 15) return 2 * 60; // newest
+  if (g <= 40) return 10 * 60;
+  if (g <= 70) return 25 * 60;
+  if (g <= 100) return 45 * 60;
+  if (g <= 140) return 70 * 60;
+  if (g <= 180) return 95 * 60;
+  if (g <= 220) return 110 * 60;
+  return 120 * 60; // oldest colour on the map ≈ 2h
 }
 
 function extractStrikes(
@@ -128,27 +127,22 @@ function extractStrikes(
     const [baseLon, baseLat] = pxToLonLat(cx, cy, W, H, bounds);
     if (!inLightningBounds(baseLat, baseLon)) continue;
 
-    // Each stroke pixel becomes at least one strike; thicker blobs multiply so
-    // on-map frequency matches other lightning trackers during active storms.
-    const copies = Math.min(8, Math.max(1, bin.n + Math.floor(bin.n / 2)));
+    // One strike per cell by default; dense blobs get a few nearby copies
+    // with tiny time jitter (not multi-hour age invention).
+    const copies = Math.min(4, Math.max(1, Math.ceil(bin.n / 3)));
     for (let k = 0; k < copies; k++) {
       const hash = Math.abs(
         Math.sin((cx + k * 17.13) * 12.9898 + (cy + k * 9.71) * 78.233) *
           43758.5453,
       );
       const frac = hash % 1;
-      const jitterSec = Math.floor(frac * 600) - 300;
-      // Spread copies across age bands when a cell has many pixels.
-      const ageSpread = copies > 1 ? Math.floor((k / copies) * 90 * 60) : 0;
-      const time = Math.min(
-        nowSec,
-        nowSec - bin.age - ageSpread + jitterSec,
-      );
+      const jitterSec = Math.floor(frac * 180) - 90;
+      const time = Math.min(nowSec, nowSec - bin.age + jitterSec);
       if (nowSec - time > KEEP_SEC || time > nowSec + 30) continue;
 
-      const dLon = ((frac - 0.5) * 3 * (bounds.east - bounds.west)) / W;
+      const dLon = ((frac - 0.5) * 2.5 * (bounds.east - bounds.west)) / W;
       const dLat =
-        (((hash * 7) % 1) - 0.5) * 3 * (bounds.south - bounds.north) / H;
+        (((hash * 7) % 1) - 0.5) * 2.5 * (bounds.south - bounds.north) / H;
       const lat = Math.round((baseLat + dLat) * 1e4) / 1e4;
       const lon = Math.round((baseLon + dLon) * 1e4) / 1e4;
       if (!inLightningBounds(lat, lon)) continue;

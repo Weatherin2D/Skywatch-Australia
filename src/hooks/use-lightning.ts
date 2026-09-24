@@ -31,8 +31,6 @@ function mergeStrike(
   map: Map<string, LightningStrike>,
   strike: LightningStrike,
 ) {
-  // Ignore legacy LightningMaps PNG inventions (fake ages).
-  if (strike.id.startsWith("lm-")) return;
   map.set(strike.id, strike);
 }
 
@@ -129,7 +127,7 @@ export function useLightning(enabled: boolean) {
         status: "live",
         live: true,
         attribution:
-          "Live lightning © Blitzortung.org (CC BY-SA)",
+          "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA)",
       });
     });
 
