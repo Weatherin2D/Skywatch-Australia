@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Marker, Tooltip } from "react-leaflet";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Marker } from "react-leaflet";
 import L from "leaflet";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
+  LIGHTNING_MAX_VISIBLE,
+  LIGHTNING_MAX_VISIBLE_DOM,
   LIGHTNING_VISIBLE_WINDOW_SEC,
   lightningAgeGradientCss,
   strikeAgeColor,
+  strikeAgeRgb,
   strikeAgeSeconds,
   strikeAgeSize,
   strikeIsFresh,
@@ -16,74 +24,16 @@ import {
 } from "@/lib/weather/lightning";
 import { lonLatToGibsPct } from "@/lib/weather/maps";
 
-/**
- * Windy-style animation clock.
- * While playing, smoothly advances from the current frame time toward the next
- * so strikes flash/fade continuously instead of only snapping on frame changes.
- * When paused/scrubbed, locks to the discrete frame time.
- */
-function useWindyAnimTime(
-  enabled: boolean,
-  referenceTime: number | null | undefined,
-  playing: boolean,
-  msPerFrame: number,
-  nextFrameTime: number | null | undefined,
-) {
-  const wall = useNowTick(enabled && referenceTime == null);
-  const base = referenceTime ?? wall;
-  const [animTime, setAnimTime] = useState(base);
-  const baseRef = useRef(base);
-  const nextRef = useRef(nextFrameTime);
-  const playingRef = useRef(playing);
-  const msRef = useRef(msPerFrame);
-  baseRef.current = base;
-  nextRef.current = nextFrameTime;
-  playingRef.current = playing;
-  msRef.current = msPerFrame;
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    if (!playing || referenceTime == null) {
-      setAnimTime(base);
-      return;
-    }
-
-    const from = base;
-    const to =
-      nextFrameTime != null && nextFrameTime > from
-        ? nextFrameTime
-        : from + Math.max(60, Math.round(msPerFrame / 10));
-    const started = performance.now();
-    const duration = Math.max(80, msPerFrame);
-    let raf = 0;
-
-    const tick = (now: number) => {
-      if (!playingRef.current) {
-        setAnimTime(baseRef.current);
-        return;
-      }
-      const u = Math.min(1, (now - started) / duration);
-      // Ease slightly so flashes bunch near frame boundaries less harshly.
-      const eased = u * u * (3 - 2 * u);
-      setAnimTime(Math.round(from + (to - from) * eased));
-      if (u < 1) raf = requestAnimationFrame(tick);
-    };
-
-    setAnimTime(from);
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [
-    enabled,
-    playing,
-    referenceTime,
-    base,
-    nextFrameTime,
-    msPerFrame,
-  ]);
-
-  return animTime;
-}
+type LightningAnimProps = {
+  strikes: LightningStrike[];
+  enabled: boolean;
+  referenceTime?: number | null;
+  timelineStart?: number | null;
+  timelineEnd?: number | null;
+  playing?: boolean;
+  msPerFrame?: number;
+  nextFrameTime?: number | null;
+};
 
 function useNowTick(enabled: boolean) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -97,89 +47,63 @@ function useNowTick(enabled: boolean) {
   return now;
 }
 
-function CrosshairIcon({
-  color,
-  size,
-  pulse,
-  opacity,
-}: {
-  color: string;
-  size: number;
-  pulse?: boolean;
-  opacity: number;
-}) {
-  const arm = Math.max(4, Math.round(size * 0.4));
-  const gap = Math.max(2, Math.round(size * 0.12));
-  const thick = Math.max(2, size * 0.14);
-  return (
-    <span
-      className={
-        pulse
-          ? "skywatch-lightning-crosshair skywatch-lightning-crosshair--new relative block"
-          : "skywatch-lightning-crosshair relative block"
-      }
-      style={
-        {
-          width: size,
-          height: size,
-          color,
-          opacity,
-          ["--lg-arm" as string]: `${arm}px`,
-          ["--lg-gap" as string]: `${gap}px`,
-          ["--lg-thick" as string]: `${thick}px`,
-        } as CSSProperties
-      }
-      aria-hidden
-    >
-      <i />
-      <b />
-    </span>
-  );
+/** Discrete animation clock — updates on frame change, not every rAF. */
+function useFrameAnimTime(
+  enabled: boolean,
+  referenceTime: number | null | undefined,
+) {
+  const wall = useNowTick(enabled && referenceTime == null);
+  return referenceTime ?? wall;
 }
 
-function crosshairHtml(
-  color: string,
+function drawCrosshair(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
   size: number,
-  pulse: boolean,
+  r: number,
+  g: number,
+  b: number,
   opacity: number,
 ) {
-  const arm = Math.max(4, Math.round(size * 0.4));
-  const gap = Math.max(2, Math.round(size * 0.12));
-  const thick = Math.max(2, size * 0.14);
-  const cls = pulse
-    ? "skywatch-lightning-crosshair skywatch-lightning-crosshair--new"
-    : "skywatch-lightning-crosshair";
-  return `<span class="${cls}" style="width:${size}px;height:${size}px;color:${color};opacity:${opacity};--lg-arm:${arm}px;--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
+  const half = size / 2;
+  const gap = Math.max(1.5, size * 0.12);
+  const thick = Math.max(1.5, size * 0.14);
+  const arm = half - gap;
+  if (arm <= 0.5) return;
+
+  ctx.globalAlpha = opacity;
+  ctx.strokeStyle = `rgb(${r},${g},${b})`;
+  ctx.lineWidth = thick;
+  ctx.lineCap = "butt";
+
+  // Top
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - half);
+  ctx.lineTo(cx, cy - gap);
+  ctx.stroke();
+  // Bottom
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + gap);
+  ctx.lineTo(cx, cy + half);
+  ctx.stroke();
+  // Left
+  ctx.beginPath();
+  ctx.moveTo(cx - half, cy);
+  ctx.lineTo(cx - gap, cy);
+  ctx.stroke();
+  // Right
+  ctx.beginPath();
+  ctx.moveTo(cx + gap, cy);
+  ctx.lineTo(cx + half, cy);
+  ctx.stroke();
 }
 
-function makeCrosshairIcon(
-  color: string,
-  size: number,
-  pulse: boolean,
-  opacity: number,
-) {
-  return L.divIcon({
-    className: "skywatch-lightning-marker",
-    html: crosshairHtml(color, size, pulse, opacity),
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  });
-}
-
-type LightningAnimProps = {
-  strikes: LightningStrike[];
-  enabled: boolean;
-  referenceTime?: number | null;
-  timelineStart?: number | null;
-  timelineEnd?: number | null;
-  /** Satellite loop is playing — drive continuous Windy-style clock. */
-  playing?: boolean;
-  msPerFrame?: number;
-  /** Unix time of the next loop frame (for inter-frame interpolation). */
-  nextFrameTime?: number | null;
-};
-
-/** Satellite-frame lightning — Windy trail + our crosshairs / age colours. */
+/**
+ * Satellite lightning on a single canvas (Windy-style).
+ * Paints in rAF while playing — no React re-render per tick.
+ * Snaps and repaints on every discrete frame when scrubbing.
+ */
 export function SatelliteLightningOverlay({
   strikes,
   enabled,
@@ -190,72 +114,211 @@ export function SatelliteLightningOverlay({
   msPerFrame = 500,
   nextFrameTime = null,
 }: LightningAnimProps) {
-  const animTime = useWindyAnimTime(
-    enabled,
-    referenceTime,
-    playing,
-    msPerFrame,
-    nextFrameTime,
-  );
-  const visible = useMemo(() => {
-    if (!enabled) return [];
-    return strikesForAnimation(
-      strikes,
-      animTime,
-      timelineStart,
-      timelineEnd,
-    );
-  }, [enabled, strikes, animTime, timelineStart, timelineEnd]);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [count, setCount] = useState(0);
 
-  if (!enabled || visible.length === 0) return null;
+  const strikesRef = useRef(strikes);
+  const timelineStartRef = useRef(timelineStart);
+  const timelineEndRef = useRef(timelineEnd);
+  strikesRef.current = strikes;
+  timelineStartRef.current = timelineStart;
+  timelineEndRef.current = timelineEnd;
+
+  const paint = useRef((animTime: number) => {
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return 0;
+
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cssW = wrap.clientWidth;
+    const cssH = wrap.clientHeight;
+    if (cssW < 2 || cssH < 2) return 0;
+
+    const pw = Math.round(cssW * dpr);
+    const ph = Math.round(cssH * dpr);
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+    }
+
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return 0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const visible = strikesForAnimation(
+      strikesRef.current,
+      animTime,
+      timelineStartRef.current,
+      timelineEndRef.current,
+      LIGHTNING_MAX_VISIBLE,
+    );
+
+    // Oldest first so fresh flashes paint on top.
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const strike = visible[i]!;
+      const age = strikeAgeSeconds(strike, animTime);
+      const opacity = strikeOpacity(age);
+      if (opacity <= 0.03) continue;
+      const { x, y } = lonLatToGibsPct(strike.lon, strike.lat);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const { r, g, b } = strikeAgeRgb(age);
+      const size = strikeAgeSize(age);
+      const fresh = strikeIsFresh(age);
+      const pulse = fresh ? 1 + 0.12 * Math.sin(animTime * 8 + i) : 1;
+      drawCrosshair(
+        ctx,
+        (x / 100) * cssW,
+        (y / 100) * cssH,
+        size * pulse,
+        r,
+        g,
+        b,
+        opacity,
+      );
+    }
+    return visible.length;
+  }).current;
+
+  // Scrub / pause: repaint whenever the active frame time changes.
+  useEffect(() => {
+    if (!enabled) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      setCount(0);
+      return;
+    }
+    if (playing) return;
+    const t =
+      referenceTime ?? Math.floor(Date.now() / 1000);
+    const n = paint(t);
+    setCount(n);
+  }, [
+    enabled,
+    playing,
+    referenceTime,
+    strikes,
+    timelineStart,
+    timelineEnd,
+    paint,
+  ]);
+
+  // Play: interpolate clock in rAF and paint — zero React commits per tick.
+  useEffect(() => {
+    if (!enabled || !playing || referenceTime == null) return;
+
+    const from = referenceTime;
+    const to =
+      nextFrameTime != null && nextFrameTime > from
+        ? nextFrameTime
+        : from + Math.max(60, Math.round(msPerFrame / 8));
+    const started = performance.now();
+    const duration = Math.max(80, msPerFrame);
+    let raf = 0;
+    let lastCountAt = 0;
+
+    const tick = (now: number) => {
+      const u = Math.min(1, (now - started) / duration);
+      const eased = u * u * (3 - 2 * u);
+      const animTime = Math.round(from + (to - from) * eased);
+      const n = paint(animTime);
+      // Update legend count ~4×/sec, not every frame.
+      if (now - lastCountAt > 250) {
+        lastCountAt = now;
+        setCount(n);
+      }
+      if (u < 1) raf = requestAnimationFrame(tick);
+      else setCount(n);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [
+    enabled,
+    playing,
+    referenceTime,
+    nextFrameTime,
+    msPerFrame,
+    strikes,
+    timelineStart,
+    timelineEnd,
+    paint,
+  ]);
+
+  // Keep canvas sized with the map.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || !enabled) return;
+    const ro = new ResizeObserver(() => {
+      const t = referenceTime ?? Math.floor(Date.now() / 1000);
+      const n = paint(t);
+      if (!playing) setCount(n);
+    });
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [enabled, paint, playing, referenceTime]);
+
+  if (!enabled) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-[50] overflow-hidden">
-      {visible.map((strike, index) => {
-        const age = strikeAgeSeconds(strike, animTime);
-        const opacity = strikeOpacity(age);
-        if (opacity <= 0.02) return null;
-        const color = strikeAgeColor(age);
-        const size = strikeAgeSize(age);
-        const { x, y } = lonLatToGibsPct(strike.lon, strike.lat);
-        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-        return (
-          <span
-            key={strike.id}
-            className="skywatch-lightning-strike absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${x}%`, top: `${y}%` }}
-          >
-            <CrosshairIcon
-              color={color}
-              size={size}
-              opacity={opacity}
-              pulse={index < 16 && strikeIsFresh(age)}
-            />
-          </span>
-        );
-      })}
+    <div
+      ref={wrapRef}
+      className="pointer-events-none absolute inset-0 z-[50] overflow-hidden"
+    >
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+      {/* Hidden count bridge for legend via custom event would be overkill —
+          legend computes its own from referenceTime. */}
+      <span className="sr-only" aria-live="polite">
+        {count} lightning strikes
+      </span>
     </div>
   );
 }
 
-/** Leaflet lightning — same Windy trail model for Map / Radar views. */
+const iconCache = new Map<string, L.DivIcon>();
+
+function crosshairHtml(color: string, size: number, opacity: number) {
+  const gap = Math.max(2, Math.round(size * 0.12));
+  const thick = Math.max(2, size * 0.14);
+  return `<span class="skywatch-lightning-crosshair" style="width:${size}px;height:${size}px;color:${color};opacity:${opacity};--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
+}
+
+function cachedCrosshairIcon(color: string, size: number, opacity: number) {
+  // Quantize to keep cache small.
+  const op = Math.round(opacity * 10) / 10;
+  const key = `${color}|${size}|${op}`;
+  let icon = iconCache.get(key);
+  if (!icon) {
+    icon = L.divIcon({
+      className: "skywatch-lightning-marker",
+      html: crosshairHtml(color, size, op),
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+    iconCache.set(key, icon);
+    if (iconCache.size > 200) {
+      const first = iconCache.keys().next().value;
+      if (first) iconCache.delete(first);
+    }
+  }
+  return icon;
+}
+
+/** Leaflet map/radar — discrete frame updates only, tiny DOM budget. */
 export function LeafletLightningOverlay({
   strikes,
   enabled,
   referenceTime = null,
   timelineStart = null,
   timelineEnd = null,
-  playing = false,
-  msPerFrame = 500,
-  nextFrameTime = null,
 }: LightningAnimProps) {
-  const animTime = useWindyAnimTime(
-    enabled,
-    referenceTime,
-    playing,
-    msPerFrame,
-    nextFrameTime,
-  );
+  const animTime = useFrameAnimTime(enabled, referenceTime);
   const visible = useMemo(() => {
     if (!enabled) return [];
     return strikesForAnimation(
@@ -263,6 +326,7 @@ export function LeafletLightningOverlay({
       animTime,
       timelineStart,
       timelineEnd,
+      LIGHTNING_MAX_VISIBLE_DOM,
     );
   }, [enabled, strikes, animTime, timelineStart, timelineEnd]);
 
@@ -270,10 +334,10 @@ export function LeafletLightningOverlay({
 
   return (
     <>
-      {visible.map((strike, index) => {
+      {visible.map((strike) => {
         const age = strikeAgeSeconds(strike, animTime);
         const opacity = strikeOpacity(age);
-        if (opacity <= 0.02) return null;
+        if (opacity <= 0.05) return null;
         const color = strikeAgeColor(age);
         const size = strikeAgeSize(age);
         return (
@@ -281,19 +345,9 @@ export function LeafletLightningOverlay({
             key={strike.id}
             position={[strike.lat, strike.lon]}
             opacity={opacity}
-            icon={makeCrosshairIcon(
-              color,
-              size,
-              index < 16 && strikeIsFresh(age),
-              opacity,
-            )}
-            interactive
-          >
-            <Tooltip direction="top" offset={[0, -6]}>
-              Lightning · {Math.round(age / 60)} min ago
-              {strike.polarity ? (strike.polarity > 0 ? " · +" : " · −") : ""}
-            </Tooltip>
-          </Marker>
+            icon={cachedCrosshairIcon(color, size, opacity)}
+            interactive={false}
+          />
         );
       })}
     </>
@@ -309,9 +363,6 @@ export function LightningLegend({
   frameSynced = false,
   timelineStart = null,
   timelineEnd = null,
-  playing = false,
-  msPerFrame = 500,
-  nextFrameTime = null,
 }: {
   strikes: LightningStrike[];
   attribution?: string | null;
@@ -325,18 +376,20 @@ export function LightningLegend({
   msPerFrame?: number;
   nextFrameTime?: number | null;
 }) {
-  const animTime = useWindyAnimTime(
-    true,
-    frameSynced ? referenceTime : null,
-    frameSynced && playing,
-    msPerFrame,
-    nextFrameTime,
-  );
-  const visible = strikesForAnimation(
-    strikes,
-    animTime,
-    frameSynced ? timelineStart : null,
-    frameSynced ? timelineEnd : null,
+  // Legend follows discrete frame time (cheap) — not the rAF clock.
+  const animTime =
+    (frameSynced ? referenceTime : null) ??
+    Math.floor(Date.now() / 1000);
+  const visible = useMemo(
+    () =>
+      strikesForAnimation(
+        strikes,
+        animTime,
+        frameSynced ? timelineStart : null,
+        frameSynced ? timelineEnd : null,
+        LIGHTNING_MAX_VISIBLE,
+      ),
+    [strikes, animTime, frameSynced, timelineStart, timelineEnd],
   );
   const visibleLabelHours = Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 3600);
 

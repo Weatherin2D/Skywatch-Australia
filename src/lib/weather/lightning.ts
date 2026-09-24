@@ -41,8 +41,10 @@ export const LIGHTNING_VISIBLE_WINDOW_SEC = 3 * 60 * 60;
 /** Colour ramp spans the same trail (new → red at 3h, then gone). */
 export const LIGHTNING_COLOR_WINDOW_SEC = LIGHTNING_VISIBLE_WINDOW_SEC;
 
-/** Cap DOM markers (Windy uses canvas; we keep a spatial sample). */
-export const LIGHTNING_MAX_VISIBLE = 800;
+/** Cap for canvas satellite trail (cheap to paint). */
+export const LIGHTNING_MAX_VISIBLE = 1200;
+/** Cap for Leaflet DOM markers (expensive). */
+export const LIGHTNING_MAX_VISIBLE_DOM = 120;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest flash
@@ -77,6 +79,15 @@ export function strikeAgeColor(
   ageSec: number,
   windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ): string {
+  const { r, g, b } = strikeAgeRgb(ageSec, windowSec);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** RGB components for canvas painting (avoids string parse per strike). */
+export function strikeAgeRgb(
+  ageSec: number,
+  windowSec = LIGHTNING_COLOR_WINDOW_SEC,
+): { r: number; g: number; b: number } {
   const t = strikeAgeNorm(ageSec, windowSec);
   let i = 0;
   while (i < GRADIENT_STOPS.length - 2 && t > GRADIENT_STOPS[i + 1]!.t) {
@@ -86,10 +97,11 @@ export function strikeAgeColor(
   const b = GRADIENT_STOPS[i + 1]!;
   const span = b.t - a.t || 1;
   const u = clamp01((t - a.t) / span);
-  const r = Math.round(lerp(a.r, b.r, u));
-  const g = Math.round(lerp(a.g, b.g, u));
-  const bl = Math.round(lerp(a.b, b.b, u));
-  return `rgb(${r}, ${g}, ${bl})`;
+  return {
+    r: Math.round(lerp(a.r, b.r, u)),
+    g: Math.round(lerp(a.g, b.g, u)),
+    b: Math.round(lerp(a.b, b.b, u)),
+  };
 }
 
 /** Crosshair size scales slightly as strikes age along the trail. */
@@ -129,6 +141,7 @@ export function lightningAgeGradientCss() {
 /**
  * Strikes that have already occurred by `animTime` and are still inside the
  * Windy-style trail (not older than the visible window).
+ * Expects input in any order; returns newest-first.
  */
 export function filterStrikesAtTime(
   strikes: LightningStrike[],
@@ -140,15 +153,17 @@ export function filterStrikesAtTime(
       ? LIGHTNING_VISIBLE_WINDOW_SEC
       : windowMinutes * 60;
   const cutoff = animTime - windowSec;
-  return strikes
-    .filter((s) => s.time <= animTime && s.time > cutoff)
-    .sort((a, b) => b.time - a.time);
+  const out: LightningStrike[] = [];
+  for (const s of strikes) {
+    if (s.time <= animTime && s.time > cutoff) out.push(s);
+  }
+  out.sort((a, b) => b.time - a.time);
+  return out;
 }
 
 /**
  * Only used when the live socket dumps identical timestamps (no real ages).
  * Spreads them evenly across the satellite loop so playback still animates.
- * Prefer absolute times whenever the buffer has a real span.
  */
 export function alignStrikesToTimeline(
   strikes: LightningStrike[],
@@ -191,41 +206,39 @@ export function shouldAlignStrikesToTimeline(
 }
 
 /**
- * Spatial sample for DOM budget — prefer newest so the flash edge stays dense
- * (Windy keeps the leading edge sharp while older trail fades via opacity).
+ * Spatial sample — prefer newest so the flash edge stays dense.
+ * Finer cells so adjacent frames don't collapse to the same markers.
  */
 export function sampleStrikesForDisplay(
   strikes: LightningStrike[],
   maxVisible: number,
-  _refTime?: number | null,
 ): LightningStrike[] {
-  if (strikes.length <= maxVisible) {
-    return [...strikes].sort((a, b) => b.time - a.time);
-  }
+  if (strikes.length <= maxVisible) return strikes;
 
-  const CELL = 0.18;
+  const CELL = 0.12;
   const byCell = new Map<string, LightningStrike>();
-  for (const s of [...strikes].sort((a, b) => b.time - a.time)) {
+  for (const s of strikes) {
     const key = `${Math.floor(s.lon / CELL)},${Math.floor(s.lat / CELL)}`;
-    if (!byCell.has(key)) byCell.set(key, s);
+    const prev = byCell.get(key);
+    if (!prev || s.time > prev.time) byCell.set(key, s);
   }
-  let picked = [...byCell.values()];
-  if (picked.length > maxVisible) {
-    picked.sort((a, b) => b.time - a.time);
-    picked = picked.slice(0, maxVisible);
+  if (byCell.size <= maxVisible) {
+    return [...byCell.values()].sort((a, b) => b.time - a.time);
   }
-  return picked;
+  return [...byCell.values()]
+    .sort((a, b) => b.time - a.time)
+    .slice(0, maxVisible);
 }
 
 /**
  * Windy-style strike set for an animation clock reading.
- * Absolute times; optional collapse-align only when the buffer has no span.
  */
 export function strikesForAnimation(
   strikes: LightningStrike[],
   animTime: number,
   timelineStart?: number | null,
   timelineEnd?: number | null,
+  maxVisible: number = LIGHTNING_MAX_VISIBLE,
 ): LightningStrike[] {
   let working = strikes;
 
@@ -252,5 +265,5 @@ export function strikesForAnimation(
     animTime,
     Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 60),
   );
-  return sampleStrikesForDisplay(visible, LIGHTNING_MAX_VISIBLE, animTime);
+  return sampleStrikesForDisplay(visible, maxVisible);
 }
