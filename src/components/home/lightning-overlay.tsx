@@ -7,8 +7,7 @@ import type { LightningStrike } from "@/lib/weather/lightning";
 import {
   alignStrikesToTimeline,
   filterStrikesAtTime,
-  LIGHTNING_AGE_WINDOW_SEC,
-  LIGHTNING_COLOR_WINDOW_SEC,
+  LIGHTNING_VISIBLE_WINDOW_SEC,
   lightningAgeGradientCss,
   sampleStrikesForDisplay,
   shouldAlignStrikesToTimeline,
@@ -20,10 +19,10 @@ import {
 import { lonLatToGibsPct } from "@/lib/weather/maps";
 
 /**
- * Keep a full day of strokes relative to the active frame so really-old hits
- * remain, while the leading edge still advances with the IR loop.
+ * Drop strike icons once they are older than 3h relative to the active frame.
+ * As the loop plays forward, aged-out strokes disappear from that frame on.
  */
-const FRAME_LOOKBACK_MIN = Math.round(LIGHTNING_AGE_WINDOW_SEC / 60);
+const FRAME_LOOKBACK_MIN = Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 60);
 /** Hard cap — thousands of DOM markers freeze the map; sample spatially. */
 const MAX_VISIBLE_STRIKES = 900;
 
@@ -292,8 +291,7 @@ export function LightningLegend({
     frameSynced ? timelineStart : null,
     frameSynced ? timelineEnd : null,
   );
-  const windowLabelMin = Math.round(LIGHTNING_COLOR_WINDOW_SEC / 60);
-  const retainLabelHours = Math.round(LIGHTNING_AGE_WINDOW_SEC / 3600);
+  const visibleLabelHours = Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 3600);
 
   const statusLabel =
     status === "live"
@@ -331,7 +329,7 @@ export function LightningLegend({
           {status === "live" || status === "reconnecting"
             ? frameSynced && referenceTime != null
               ? "No strikes at this frame time — play the loop as storms develop…"
-              : `No strikes over Australia in the last ${retainLabelHours}h — listening live…`
+              : `No strikes over Australia in the last ${visibleLabelHours}h — listening live…`
             : "Connecting to live lightning feed…"}
         </p>
       ) : null}
@@ -339,18 +337,18 @@ export function LightningLegend({
         <div
           className="h-2 w-full border border-white/20"
           style={{ background: lightningAgeGradientCss() }}
-          aria-label={`Lightning age colour scale from new to ${windowLabelMin} minutes`}
+          aria-label={`Lightning age colour scale from new to ${visibleLabelHours} hours`}
         />
         <div className="mt-1 flex justify-between text-[9px] text-white/75">
           <span>New</span>
-          <span>{windowLabelMin >= 120 ? `${Math.round(windowLabelMin / 60)}h` : `${windowLabelMin} min`}</span>
+          <span>{visibleLabelHours}h</span>
         </div>
       </div>
       <p className="mt-1.5 text-[9px] text-white/60">
         {visible.length} strikes ·{" "}
         {frameSynced && referenceTime != null
           ? "synced to satellite frame"
-          : `last ${retainLabelHours}h`}
+          : `last ${visibleLabelHours}h`}
       </p>
       {attribution ? (
         <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">

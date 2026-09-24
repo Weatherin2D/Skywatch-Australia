@@ -29,12 +29,17 @@ export const LIGHTNING_AU_BOUNDS = {
   north: -1,
 } as const;
 
-/** Retention window for buffered strikes (seconds).
- * Long enough to cover the full IR loop and keep “really old” strokes. */
+/** Retention window for buffered strikes (seconds). */
 export const LIGHTNING_AGE_WINDOW_SEC = 24 * 60 * 60;
 
-/** Colour ramp window — older than this still shows, just fully red. */
-export const LIGHTNING_COLOR_WINDOW_SEC = 6 * 60 * 60;
+/**
+ * Max age relative to the active frame before a strike icon is removed.
+ * Once a stroke is older than this vs the scrubbed/played time, it disappears.
+ */
+export const LIGHTNING_VISIBLE_WINDOW_SEC = 3 * 60 * 60;
+
+/** Colour ramp matches the visible window (new → fully red at 3h, then gone). */
+export const LIGHTNING_COLOR_WINDOW_SEC = LIGHTNING_VISIBLE_WINDOW_SEC;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest
