@@ -57,7 +57,7 @@ async function probeGibsWms(
         method: "GET",
         headers: { "User-Agent": "SkyWatchAustralia/1.0" },
         cache: "no-store",
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(8000),
       },
     );
     if (!res.ok) return false;
@@ -73,6 +73,13 @@ async function probeGibsWms(
   } catch {
     return false;
   }
+}
+
+/** When NASA probing fails (timeouts / egress blips), still offer a loop. */
+function fallbackGibsLatestMs(): number {
+  // Himawari via GIBS is typically 40–90 minutes behind wall clock.
+  const lagMs = 70 * 60 * 1000;
+  return Math.floor((Date.now() - lagMs) / GIBS_STEP_MS) * GIBS_STEP_MS;
 }
 
 async function findLatestGibsTime(
@@ -187,7 +194,8 @@ async function buildAllSatelliteProducts(): Promise<{
   const gibsLatestMs =
     (await findLatestGibsTime("infrared")) ??
     (await findLatestGibsTime("airmass")) ??
-    (await findLatestGibsTime("visible"));
+    (await findLatestGibsTime("visible")) ??
+    fallbackGibsLatestMs();
 
   const built = await Promise.all(
     SATELLITE_PRODUCTS.map(async (meta) => {
@@ -257,9 +265,9 @@ export async function GET(request: NextRequest) {
           const meta = getSatelliteProduct(product);
           const gibsLatestMs =
             meta.provider === "gibs"
-              ? await findLatestGibsTime(
+              ? ((await findLatestGibsTime(
                   meta.id === "visible" ? "infrared" : meta.id,
-                )
+                )) ?? fallbackGibsLatestMs())
               : null;
           products[product] = {
             frames: await buildProductFrames(meta, gibsLatestMs),

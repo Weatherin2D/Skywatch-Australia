@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSatelliteProductId } from "@/lib/weather/maps";
 import { getCachedFrame } from "@/lib/weather/frame-cache";
-import { fetchAndCacheFrame } from "@/lib/weather/fetch-frame";
+import { fetchAndCacheFrameResilient } from "@/lib/weather/fetch-frame";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const frame = await fetchAndCacheFrame(productRaw, timeUnix);
+  const frame = await fetchAndCacheFrameResilient(productRaw, timeUnix);
   if (!frame) {
     return NextResponse.json({ error: "Frame not ready" }, { status: 404 });
   }
@@ -46,7 +46,9 @@ export async function GET(request: NextRequest) {
     headers: {
       "Content-Type": frame.contentType,
       "Cache-Control": "public, max-age=86400, immutable",
-      "X-Frame-Cache": "MISS",
+      "X-Frame-Cache":
+        frame.resolvedTime === timeUnix ? "MISS" : "NEAR-MISS",
+      "X-Frame-Resolved-Time": String(frame.resolvedTime),
       "Content-Length": String(frame.body.length),
     },
   });

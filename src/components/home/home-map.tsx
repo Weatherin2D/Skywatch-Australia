@@ -129,6 +129,7 @@ function DemoRadarBlobs() {
 /**
  * Double-buffered frame view: keep the last good frame painted while the next
  * image downloads/decodes, then swap atomically to avoid black flashes.
+ * Retries once on error so a single GIBS blip does not blank the loop.
  */
 function SatelliteFrameView({
   url,
@@ -141,35 +142,57 @@ function SatelliteFrameView({
 }) {
   const [displayUrl, setDisplayUrl] = useState<string | null>(url);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!url) {
       setDisplayUrl(null);
       setPendingUrl(null);
+      setFailed(false);
       return;
     }
-    if (url === displayUrl) return;
+    if (url === displayUrl) {
+      setFailed(false);
+      return;
+    }
 
     let cancelled = false;
+    let attempts = 0;
     setPendingUrl(url);
-    const img = new window.Image();
-    img.decoding = "async";
-    const commit = () => {
-      if (cancelled) return;
-      setDisplayUrl(url);
-      setPendingUrl(null);
+    setFailed(false);
+
+    const load = () => {
+      attempts += 1;
+      const img = new window.Image();
+      img.decoding = "async";
+      const commit = () => {
+        if (cancelled) return;
+        setDisplayUrl(url);
+        setPendingUrl(null);
+        setFailed(false);
+      };
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          void img.decode().then(commit).catch(commit);
+        } else {
+          commit();
+        }
+      };
+      img.onerror = () => {
+        if (cancelled) return;
+        if (attempts < 2) {
+          window.setTimeout(load, 600);
+          return;
+        }
+        setPendingUrl(null);
+        // Keep the previous good frame if we have one; otherwise surface failure.
+        if (!displayUrl) setFailed(true);
+      };
+      // Cache-bust only on retry so the first paint can hit the server cache.
+      img.src = attempts === 1 ? url : `${url}&retry=${attempts}`;
     };
-    img.onload = () => {
-      if (typeof img.decode === "function") {
-        void img.decode().then(commit).catch(commit);
-      } else {
-        commit();
-      }
-    };
-    img.onerror = () => {
-      if (!cancelled) setPendingUrl(null);
-    };
-    img.src = url;
+
+    load();
     return () => {
       cancelled = true;
     };
@@ -177,8 +200,12 @@ function SatelliteFrameView({
 
   if (!displayUrl) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] text-sm text-white/70">
-        {pendingUrl ? "Loading frame…" : "Loading satellite frames…"}
+      <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] px-4 text-center text-sm text-white/70">
+        {failed
+          ? "Satellite frame unavailable — scrub or wait for the next refresh…"
+          : pendingUrl
+            ? "Loading frame…"
+            : "Loading satellite frames…"}
       </div>
     );
   }
