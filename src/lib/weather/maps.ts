@@ -327,3 +327,21 @@ export function timelineEdgeLabels(
   );
   return { start, mid, end };
 }
+
+/** Closest frame at or before refUnix; falls back to oldest/newest ends. */
+export function pickWeatherFrame(
+  frames: WeatherFrame[],
+  refUnix: number,
+): WeatherFrame | null {
+  if (frames.length === 0) return null;
+  let best: WeatherFrame | null = null;
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (const frame of frames) {
+    const delta = Math.abs(frame.time - refUnix);
+    if (delta < bestDelta) {
+      best = frame;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}

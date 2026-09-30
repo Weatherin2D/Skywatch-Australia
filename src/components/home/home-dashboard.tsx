@@ -48,6 +48,7 @@ import {
   frameIndexToScrub,
   getPlaybackSpeed,
   getSatelliteProduct,
+  pickWeatherFrame,
   scrubToFrameIndex,
   timelineEdgeLabels,
   type PlaybackSpeedId,
@@ -174,6 +175,7 @@ export function HomeDashboard() {
     error: synopticError,
   } = useSynoptic(showSynoptic);
 
+  const showRadarOverlay = layers.radar;
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
   const showLoopUi = mode === "Satellite" || mode === "Radar";
@@ -193,6 +195,23 @@ export function HomeDashboard() {
     radarLoopFrames.length > 0
       ? frameIndexToScrub(radarIndex, radarLoopFrames.length)
       : 100;
+
+  /** Rain radar overlay frame: time-matched on Satellite, latest on Map. */
+  const overlayRadarFrame = useMemo(() => {
+    if (!showRadarOverlay || showRadarUi || radarFrames.length === 0) {
+      return null;
+    }
+    if (showSatelliteLoop && activeFrame) {
+      return pickWeatherFrame(radarFrames, activeFrame.time);
+    }
+    return radarFrames[radarFrames.length - 1] ?? null;
+  }, [
+    showRadarOverlay,
+    showRadarUi,
+    showSatelliteLoop,
+    activeFrame,
+    radarFrames,
+  ]);
 
   const {
     readyCount,
@@ -413,7 +432,8 @@ export function HomeDashboard() {
         <div className="space-y-3">
           <Panel title="Map overlays">
             <p className="mb-2 text-[11px] text-[var(--ink)]/70">
-              Live layers synced to the satellite timeline when available.
+              Live layers on Map and Satellite — rain radar and lightning sync to
+              the loop timeline when available.
             </p>
             <ul className="space-y-2.5">
               {WEATHER_LAYERS.map((layer) => (
@@ -577,12 +597,12 @@ export function HomeDashboard() {
           >
             <HomeMapDynamic
               mode={mode}
-              showRadarOverlay={showRadarUi}
+              showRadarOverlay={showRadarOverlay}
               frameTileUrl={
                 showRadarUi
                   ? (activeRadarFrame?.tileUrlTemplate ?? null)
-                  : showSatelliteLoop
-                    ? (activeFrame?.tileUrlTemplate ?? null)
+                  : showRadarOverlay
+                    ? (overlayRadarFrame?.tileUrlTemplate ?? null)
                     : null
               }
               frameImageUrl={
@@ -596,7 +616,9 @@ export function HomeDashboard() {
                   ? `${satProduct}-${activeFrame.time}-${satelliteSource ?? "wx"}`
                   : showRadarUi && activeRadarFrame
                     ? `radar-${activeRadarFrame.time}`
-                    : undefined
+                    : showRadarOverlay && overlayRadarFrame
+                      ? `radar-overlay-${overlayRadarFrame.time}`
+                      : undefined
               }
               frameOpacity={1}
               frameAlt={
@@ -604,7 +626,11 @@ export function HomeDashboard() {
                   ? `${satProductMeta.label} satellite loop frame`
                   : "Radar loop frame"
               }
-              legend={showRadarUi ? "radar" : null}
+              legend={
+                showRadarUi || (showRadarOverlay && !showSatelliteLoop)
+                  ? "radar"
+                  : null
+              }
               mapSettings={mapSettings}
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}

@@ -2,6 +2,7 @@
 export const WEATHER_LAYERS = [
   { id: "lightning", label: "Lightning tracker" },
   { id: "synoptic", label: "Synoptic MSLP" },
+  { id: "radar", label: "Rain radar" },
 ] as const;
 
 export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
@@ -9,6 +10,7 @@ export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
 export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
   lightning: true,
   synoptic: false,
+  radar: false,
 };
 
 /** Cartographic toggles for the national map (below weather overlays). */

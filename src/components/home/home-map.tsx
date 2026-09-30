@@ -28,7 +28,7 @@ import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotat
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
-import { GIBS_AU_ASPECT } from "@/lib/weather/maps";
+import { GIBS_AU_ASPECT, GIBS_AU_BOUNDS } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
@@ -97,6 +97,21 @@ function MapTools() {
   );
 }
 
+function FitAuBounds() {
+  const map = useMap();
+  useEffect(() => {
+    map.fitBounds(GIBS_AU_BOUNDS, { animate: false, padding: [0, 0] });
+    const onResize = () => {
+      map.invalidateSize({ animate: false });
+      map.fitBounds(GIBS_AU_BOUNDS, { animate: false, padding: [0, 0] });
+    };
+    map.whenReady(onResize);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [map]);
+  return null;
+}
+
 function DemoRadarBlobs() {
   // Fallback only when RainViewer tiles fail to load — soft demo cells.
   const cells = [
@@ -124,6 +139,55 @@ function DemoRadarBlobs() {
         />
       ))}
     </>
+  );
+}
+
+function RadarIntensityLegend() {
+  return (
+    <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-[var(--brand)]/20 bg-[var(--bom-blue)]/95 px-3 py-2 text-[var(--brand)]">
+      <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--brand)]/80">
+        Radar intensity
+      </p>
+      <div className="flex h-2 w-36 overflow-hidden">
+        <span className="flex-1 bg-emerald-400" />
+        <span className="flex-1 bg-lime-400" />
+        <span className="flex-1 bg-yellow-400" />
+        <span className="flex-1 bg-orange-400" />
+        <span className="flex-1 bg-red-500" />
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/75">
+        <span>Light</span>
+        <span>Heavy</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * RainViewer tiles over the fixed Himawari frame. Same EPSG:3857 crop as GIBS
+ * so radar cells line up with the IR image without converting satellite to Leaflet.
+ */
+function SatelliteRadarOverlay({ tileUrl }: { tileUrl: string }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[4]">
+      <MapContainer
+        center={[-25.5, 134.5]}
+        zoom={4}
+        className="h-full w-full !bg-transparent [&_.leaflet-container]:!bg-transparent [&_.leaflet-tile-pane]:!opacity-100"
+        zoomControl={false}
+        attributionControl={false}
+        dragging={false}
+        doubleClickZoom={false}
+        scrollWheelZoom={false}
+        boxZoom={false}
+        keyboard={false}
+        touchZoom={false}
+        style={{ background: "transparent" }}
+      >
+        <FitAuBounds />
+        <TileLayer key={tileUrl} url={tileUrl} opacity={0.72} />
+      </MapContainer>
+    </div>
   );
 }
 
@@ -227,9 +291,9 @@ export function HomeMap({
   mode,
   showRadarOverlay = false,
   frameTileUrl = null,
-  frameImageUrl = null,
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
+  frameImageUrl = null,
   legend = null,
   mapSettings,
   showLightning = false,
@@ -255,6 +319,8 @@ export function HomeMap({
   synopticFrameSynced = false,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
+  const radarTiles =
+    frameTileUrl && (showRadarOverlay || mode === "Radar") ? frameTileUrl : null;
 
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
@@ -272,6 +338,9 @@ export function HomeMap({
           alt={frameAlt}
           opacity={frameOpacity}
         />
+        {showRadarOverlay && frameTileUrl ? (
+          <SatelliteRadarOverlay tileUrl={frameTileUrl} />
+        ) : null}
         <SatelliteSynopticOverlay
           frames={synopticFrames}
           enabled={showSynoptic}
@@ -319,6 +388,7 @@ export function HomeMap({
             nextFrameTime={lightningNextFrameTime}
           />
         ) : null}
+        {showRadarOverlay && frameTileUrl ? <RadarIntensityLegend /> : null}
       </div>
     );
   }
@@ -337,8 +407,8 @@ export function HomeMap({
       >
         <MapModeEffect mode={mode} />
         <TileLayer url={basemapUrl} attribution="Esri" />
-        {frameTileUrl ? (
-          <TileLayer key={frameTileUrl} url={frameTileUrl} opacity={0.78} />
+        {radarTiles ? (
+          <TileLayer key={radarTiles} url={radarTiles} opacity={0.78} />
         ) : mode === "Radar" ? (
           <DemoRadarBlobs />
         ) : null}
@@ -391,23 +461,8 @@ export function HomeMap({
         />
       ) : null}
 
-      {legend === "radar" || (showRadarOverlay && mode === "Radar") ? (
-        <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-[var(--brand)]/20 bg-[var(--bom-blue)]/95 px-3 py-2 text-[var(--brand)]">
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--brand)]/80">
-            Radar intensity
-          </p>
-          <div className="flex h-2 w-36 overflow-hidden">
-            <span className="flex-1 bg-emerald-400" />
-            <span className="flex-1 bg-lime-400" />
-            <span className="flex-1 bg-yellow-400" />
-            <span className="flex-1 bg-orange-400" />
-            <span className="flex-1 bg-red-500" />
-          </div>
-          <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/75">
-            <span>Light</span>
-            <span>Heavy</span>
-          </div>
-        </div>
+      {legend === "radar" || (showRadarOverlay && radarTiles) ? (
+        <RadarIntensityLegend />
       ) : null}
     </div>
   );
