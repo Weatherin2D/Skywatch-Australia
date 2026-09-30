@@ -195,7 +195,8 @@ export function HomeDashboard() {
       return null;
     }
     if (showSatelliteLoop && activeFrame) {
-      return pickWeatherFrame(radarFrames, activeFrame.time);
+      // RainViewer steps are 10 minutes — ignore frames outside that tolerance.
+      return pickWeatherFrame(radarFrames, activeFrame.time, 10 * 60);
     }
     return radarFrames[radarFrames.length - 1] ?? null;
   }, [

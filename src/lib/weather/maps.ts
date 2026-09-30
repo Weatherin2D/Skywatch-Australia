@@ -328,10 +328,11 @@ export function timelineEdgeLabels(
   return { start, mid, end };
 }
 
-/** Closest frame at or before refUnix; falls back to oldest/newest ends. */
+/** Closest frame to refUnix. Returns null when farther than maxDeltaSec. */
 export function pickWeatherFrame(
   frames: WeatherFrame[],
   refUnix: number,
+  maxDeltaSec: number = Number.POSITIVE_INFINITY,
 ): WeatherFrame | null {
   if (frames.length === 0) return null;
   let best: WeatherFrame | null = null;
@@ -343,5 +344,40 @@ export function pickWeatherFrame(
       bestDelta = delta;
     }
   }
+  if (!best || bestDelta > maxDeltaSec) return null;
   return best;
+}
+
+/** Keep only frames that fall inside the RainViewer radar past window. */
+export function trimFramesToRadarWindow(
+  frames: WeatherFrame[],
+  radar: WeatherFrame[],
+  padSec = 5 * 60,
+): WeatherFrame[] {
+  if (frames.length === 0 || radar.length === 0) return frames;
+  const start = radar[0]!.time - padSec;
+  const end = radar[radar.length - 1]!.time + padSec;
+  const trimmed = frames.filter((f) => f.time >= start && f.time <= end);
+  return trimmed.length >= 3 ? trimmed : frames;
+}
+
+/**
+ * Build GIBS/RealEarth times on the same 10-minute spine as RainViewer radar,
+ * clipped to imagery that is actually available (not newer than satLatest).
+ */
+export function alignTimesToRadar(
+  radarTimesUnix: number[],
+  satLatestUnix: number,
+  stepSec = 10 * 60,
+  maxCount = 18,
+): number[] {
+  if (radarTimesUnix.length === 0) return [];
+  const latest = satLatestUnix + stepSec / 2;
+  const snapped = new Set<number>();
+  for (const t of radarTimesUnix) {
+    if (t > latest) continue;
+    const s = Math.round(t / stepSec) * stepSec;
+    if (s > 0 && s <= latest) snapped.add(s);
+  }
+  return [...snapped].sort((a, b) => a - b).slice(-maxCount);
 }

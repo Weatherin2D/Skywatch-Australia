@@ -3,6 +3,7 @@ import {
   DEFAULT_SATELLITE_PRODUCT,
   GIBS_AU_BOUNDS,
   SATELLITE_PRODUCTS,
+  alignTimesToRadar,
   gibsHimawariWmsUrl,
   getSatelliteProduct,
   isSatelliteProductId,
@@ -10,6 +11,7 @@ import {
   rainviewerTileUrl,
   satelliteFrameProxyUrl,
   toIsoZ,
+  trimFramesToRadarWindow,
   type SatelliteProductId,
   type SatelliteProductMeta,
   type WeatherFrame,
@@ -22,6 +24,7 @@ export const revalidate = 0;
 
 const RAINVIEWER_URL = "https://api.rainviewer.com/public/weather-maps.json";
 const GIBS_STEP_MS = 10 * 60 * 1000;
+const GIBS_STEP_SEC = 10 * 60;
 const GIBS_PROBE_MAX = 12;
 const GIBS_PROBE_BATCH = 4;
 const GIBS_PROBE_WIDTH = 96;
@@ -172,20 +175,55 @@ function normalizeRainviewerFrames(
 async function buildProductFrames(
   meta: SatelliteProductMeta,
   gibsLatestMs: number | null,
+  radarTimesUnix: number[] = [],
 ): Promise<WeatherFrame[]> {
   if (meta.provider === "realearth" && meta.realearthProduct) {
     const times = await fetchRealEarthTimes(meta.realearthProduct, FRAME_COUNT);
+    if (radarTimesUnix.length >= 3 && times.length > 0) {
+      const latest = times[times.length - 1]!;
+      const aligned = alignTimesToRadar(
+        radarTimesUnix,
+        latest,
+        GIBS_STEP_SEC,
+        FRAME_COUNT,
+      );
+      if (aligned.length >= 3) {
+        // Prefer RealEarth's native stamps that fall on the radar spine.
+        const allowed = new Set(aligned);
+        const filtered = times.filter((t) =>
+          [...allowed].some((a) => Math.abs(a - t) <= GIBS_STEP_SEC / 2),
+        );
+        if (filtered.length >= 3) return buildFramesFromTimes(meta.id, filtered);
+        return buildFramesFromTimes(meta.id, aligned);
+      }
+    }
     return buildFramesFromTimes(meta.id, times);
   }
   if (gibsLatestMs == null) return [];
+  const latestUnix = Math.floor(gibsLatestMs / 1000);
+  if (radarTimesUnix.length >= 3) {
+    const aligned = alignTimesToRadar(
+      radarTimesUnix,
+      latestUnix,
+      GIBS_STEP_SEC,
+      FRAME_COUNT,
+    );
+    if (aligned.length >= 3) {
+      return buildFramesFromTimes(meta.id, aligned);
+    }
+  }
   return buildFramesAtLatest(meta.id, gibsLatestMs);
 }
 
 /**
  * Build every catalog product. GIBS products share one probed timeline;
  * RealEarth products use SSEC's native 10-minute time list.
+ * When RainViewer radar is available, satellite times are snapped onto the
+ * same 10-minute spine so rain radar and IR cover the same period.
  */
-async function buildAllSatelliteProducts(): Promise<{
+async function buildAllSatelliteProducts(
+  radarTimesUnix: number[] = [],
+): Promise<{
   products: WeatherMapsPayload["satellite"]["products"];
   source: WeatherMapsPayload["satellite"]["source"];
 }> {
@@ -199,7 +237,11 @@ async function buildAllSatelliteProducts(): Promise<{
 
   const built = await Promise.all(
     SATELLITE_PRODUCTS.map(async (meta) => {
-      const frames = await buildProductFrames(meta, gibsLatestMs);
+      const frames = await buildProductFrames(
+        meta,
+        gibsLatestMs,
+        radarTimesUnix,
+      );
       return [meta.id, frames] as const;
     }),
   );
@@ -258,9 +300,15 @@ export async function GET(request: NextRequest) {
       })
       .catch(() => null);
 
-    const satellitePromise = wantAll
-      ? buildAllSatelliteProducts()
-      : (async () => {
+    // RainViewer first so satellite frames can share its 2h / 10-minute spine.
+    const rv = await rvPromise;
+    const host = rv?.host ?? "https://tilecache.rainviewer.com";
+    const radarPast = normalizeRainviewerFrames(host, rv?.radar?.past, "radar");
+    const radarTimesUnix = radarPast.map((f) => f.time);
+
+    const satellite = wantAll
+      ? await buildAllSatelliteProducts(radarTimesUnix)
+      : await (async () => {
           const products = emptyProductFrames();
           const meta = getSatelliteProduct(product);
           const gibsLatestMs =
@@ -270,7 +318,11 @@ export async function GET(request: NextRequest) {
                 )) ?? fallbackGibsLatestMs())
               : null;
           products[product] = {
-            frames: await buildProductFrames(meta, gibsLatestMs),
+            frames: await buildProductFrames(
+              meta,
+              gibsLatestMs,
+              radarTimesUnix,
+            ),
           };
           return {
             products,
@@ -281,9 +333,18 @@ export async function GET(request: NextRequest) {
           };
         })();
 
-    const [rv, satellite] = await Promise.all([rvPromise, satellitePromise]);
+    // Safety net: if a product somehow still extends past radar, clip it.
+    if (radarPast.length >= 3) {
+      for (const id of Object.keys(satellite.products) as SatelliteProductId[]) {
+        satellite.products[id] = {
+          frames: trimFramesToRadarWindow(
+            satellite.products[id].frames,
+            radarPast,
+          ),
+        };
+      }
+    }
 
-    const host = rv?.host ?? "https://tilecache.rainviewer.com";
     const generated = rv?.generated ?? Math.floor(Date.now() / 1000);
     const activeProduct = wantAll ? DEFAULT_SATELLITE_PRODUCT : product;
     const frames = satellite.products[activeProduct].frames;
@@ -299,7 +360,7 @@ export async function GET(request: NextRequest) {
         products: satellite.products,
       },
       radar: {
-        past: normalizeRainviewerFrames(host, rv?.radar?.past, "radar"),
+        past: radarPast,
         source: "rainviewer",
       },
     };
