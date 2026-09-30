@@ -146,8 +146,9 @@ export function HomeDashboard() {
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
     DEFAULT_PLAYBACK_SPEED,
   );
-  const frameIndexRef = useRef(0);
-  frameIndexRef.current = frameIndex;
+  /** Respect manual pause; autoplay resumes only after user hits play again. */
+  const userPausedRef = useRef(false);
+  const autoPlayKeyRef = useRef("");
 
   const {
     satelliteFrames,
@@ -216,10 +217,13 @@ export function HomeDashboard() {
   const {
     readyCount,
     total: preloadTotal,
-    isUrlReady,
+    allReady,
   } = useFramePreloader(loopFrames, showSatelliteLoop);
-  const readyGateRef = useRef({ isUrlReady });
-  readyGateRef.current = { isUrlReady };
+
+  const loopIdentity = useMemo(() => {
+    if (loopFrames.length === 0) return "";
+    return `${satProduct}:${loopFrames[0]?.time ?? 0}:${loopFrames[loopFrames.length - 1]?.time ?? 0}:${loopFrames.length}`;
+  }, [loopFrames, satProduct]);
 
   // Prefetch synoptic analyses that cover the satellite loop into the shared
   // memory cache so play-from-start never waits on the network.
@@ -238,86 +242,64 @@ export function HomeDashboard() {
     void prefetchSynopticGeoJson(urls);
   }, [showSynoptic, showSatelliteLoop, loopFrames, synopticFrames]);
 
-  // Jump to latest frame when the product/mode loop set changes
+  // Reset to start when the loop catalog identity changes (product / mode / frames).
   useEffect(() => {
+    if (!showSatelliteLoop) return;
     if (loopFrames.length === 0) {
       setFrameIndex(0);
       return;
     }
-    setPlaying(false);
-    setFrameIndex(loopFrames.length - 1);
-  }, [loopFrames.length, mode, satProduct]);
+    setFrameIndex(0);
+    autoPlayKeyRef.current = "";
+    userPausedRef.current = false;
+  }, [loopIdentity, showSatelliteLoop, loopFrames.length]);
 
   useEffect(() => {
     if (radarLoopFrames.length === 0) {
       setRadarIndex(0);
       return;
     }
-    setPlaying(false);
-    setRadarIndex(radarLoopFrames.length - 1);
+    setRadarIndex(0);
   }, [radarLoopFrames.length, mode]);
 
-  // Ready-gated satellite playback: advance only when the next frame is cached
+  // Auto-start once a usable buffer is warm (or the whole loop is ready).
+  useEffect(() => {
+    if (!showSatelliteLoop || loopFrames.length === 0) return;
+    if (userPausedRef.current) return;
+    if (autoPlayKeyRef.current === loopIdentity && playing) return;
+
+    const minReady = Math.min(loopFrames.length, Math.max(4, Math.ceil(loopFrames.length * 0.25)));
+    if (!allReady && readyCount < minReady) return;
+
+    autoPlayKeyRef.current = loopIdentity;
+    setFrameIndex(0);
+    setPlaying(true);
+  }, [
+    showSatelliteLoop,
+    loopFrames.length,
+    loopIdentity,
+    readyCount,
+    allReady,
+    playing,
+  ]);
+
+  // Auto-start radar loop the same way.
+  useEffect(() => {
+    if (!showRadarUi || radarLoopFrames.length === 0) return;
+    if (userPausedRef.current) return;
+    setPlaying(true);
+  }, [showRadarUi, radarLoopFrames.length]);
+
+  // Fixed-cadence satellite playback — never stall waiting on a frame.
+  // SatelliteFrameView holds the last good image if the next is still decoding.
   useEffect(() => {
     if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
-
-    let cancelled = false;
-    let timer = 0;
-
-    const schedule = (delay: number, fn: () => void) => {
-      timer = window.setTimeout(fn, delay);
-    };
-
-    const tick = () => {
-      if (cancelled) return;
-      const prev = frameIndexRef.current;
-      let next = (prev + 1) % loopFrames.length;
-      // Prefer the immediate next frame; if it is not ready yet, wait on it
-      // rather than skipping ahead (so every frame is shown once cached).
-      const url = loopFrames[next]?.imageUrl;
-
-      const apply = () => {
-        if (cancelled) return;
-        setFrameIndex(next);
-        schedule(playback.msPerFrame, tick);
-      };
-
-      if (!url || readyGateRef.current.isUrlReady(url)) {
-        apply();
-        return;
-      }
-
-      const img = new window.Image();
-      let settled = false;
-      const finish = () => {
-        if (settled || cancelled) return;
-        settled = true;
-        apply();
-      };
-      const wait = window.setTimeout(finish, Math.max(playback.msPerFrame * 3, 1500));
-      img.onload = () => {
-        window.clearTimeout(wait);
-        if (typeof img.decode === "function") {
-          void img.decode().then(finish).catch(finish);
-        } else {
-          finish();
-        }
-      };
-      img.onerror = () => {
-        window.clearTimeout(wait);
-        // Skip broken frame
-        next = (next + 1) % loopFrames.length;
-        finish();
-      };
-      img.src = url;
-    };
-
-    schedule(playback.msPerFrame, tick);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [playing, showSatelliteLoop, loopFrames, playback.msPerFrame]);
+    const n = loopFrames.length;
+    const id = window.setInterval(() => {
+      setFrameIndex((prev) => (prev + 1) % n);
+    }, playback.msPerFrame);
+    return () => window.clearInterval(id);
+  }, [playing, showSatelliteLoop, loopFrames.length, playback.msPerFrame]);
 
   useEffect(() => {
     if (!playing || !showRadarUi || radarLoopFrames.length === 0) return;
@@ -328,7 +310,10 @@ export function HomeDashboard() {
   }, [playing, showRadarUi, radarLoopFrames.length, playback.msPerFrame]);
 
   useEffect(() => {
-    if (!showLoopUi) setPlaying(false);
+    if (!showLoopUi) {
+      setPlaying(false);
+      userPausedRef.current = false;
+    }
   }, [showLoopUi]);
 
   useEffect(() => {
@@ -697,25 +682,15 @@ export function HomeDashboard() {
                 type="button"
                 onClick={() => {
                   if (playing) {
+                    userPausedRef.current = true;
                     setPlaying(false);
                     return;
                   }
                   if (loopFrames.length === 0) return;
+                  userPausedRef.current = false;
                   const restart = frameIndex >= loopFrames.length - 1;
-                  const startPlay = () => {
-                    if (restart) setFrameIndex(0);
-                    setPlaying(true);
-                  };
-                  if (restart && showSynoptic && synopticFrames.length > 0) {
-                    const urls = new Set<string>();
-                    for (const sat of loopFrames) {
-                      const syn = pickSynopticFrame(synopticFrames, sat.time);
-                      if (syn?.geojsonUrl) urls.add(syn.geojsonUrl);
-                    }
-                    void prefetchSynopticGeoJson(urls).finally(startPlay);
-                    return;
-                  }
-                  startPlay();
+                  if (restart) setFrameIndex(0);
+                  setPlaying(true);
                 }}
                 disabled={
                   loopFrames.length === 0 ||
@@ -781,6 +756,7 @@ export function HomeDashboard() {
                       value={scrub}
                       disabled={loopFrames.length === 0}
                       onChange={(e) => {
+                        userPausedRef.current = true;
                         setPlaying(false);
                         const next = scrubToFrameIndex(
                           Number(e.target.value),
@@ -806,10 +782,12 @@ export function HomeDashboard() {
                 type="button"
                 onClick={() => {
                   if (playing) {
+                    userPausedRef.current = true;
                     setPlaying(false);
                     return;
                   }
                   if (radarLoopFrames.length === 0) return;
+                  userPausedRef.current = false;
                   if (radarIndex >= radarLoopFrames.length - 1) {
                     setRadarIndex(0);
                   }
@@ -879,6 +857,7 @@ export function HomeDashboard() {
                       max={100}
                       value={radarScrub}
                       onChange={(e) => {
+                        userPausedRef.current = true;
                         setPlaying(false);
                         setRadarIndex(
                           scrubToFrameIndex(

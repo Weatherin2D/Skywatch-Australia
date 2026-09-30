@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeatherFrame } from "@/lib/weather/maps";
 
-const PRELOAD_CONCURRENCY = 4;
+const PRELOAD_CONCURRENCY = 8;
 
 /**
  * Preloads satellite frame images with limited concurrency so the browser
  * connection pool is not flooded. Reports which URLs are fully loaded.
+ * Loads in playback order (oldest → newest) so autoplay from frame 0 stays smooth.
  */
 export function useFramePreloader(frames: WeatherFrame[], enabled = true) {
   const [readyUrls, setReadyUrls] = useState<Set<string>>(() => new Set());
@@ -26,8 +27,7 @@ export function useFramePreloader(frames: WeatherFrame[], enabled = true) {
 
     let cancelled = false;
     let active = 0;
-    // Prefer latest frames first (timeline starts at the end)
-    const queue = [...urls].reverse().filter((u) => !readyRef.current.has(u));
+    const queue = urls.filter((u) => !readyRef.current.has(u));
 
     const markReady = (url: string) => {
       if (readyRef.current.has(url)) return;
@@ -48,7 +48,6 @@ export function useFramePreloader(frames: WeatherFrame[], enabled = true) {
           pump();
         };
         img.onload = () => {
-          // decode() when available so paint is not janky mid-loop
           if (typeof img.decode === "function") {
             void img.decode().then(done).catch(done);
           } else {

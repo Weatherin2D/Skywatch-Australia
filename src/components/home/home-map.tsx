@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -185,16 +185,15 @@ function SatelliteRadarOverlay({ tileUrl }: { tileUrl: string }) {
         style={{ background: "transparent" }}
       >
         <FitAuBounds />
-        <TileLayer key={tileUrl} url={tileUrl} opacity={0.72} />
+        <TileLayer url={tileUrl} opacity={0.72} />
       </MapContainer>
     </div>
   );
 }
 
 /**
- * Double-buffered frame view: keep the last good frame painted while the next
- * image downloads/decodes, then swap atomically to avoid black flashes.
- * Retries once on error so a single GIBS blip does not blank the loop.
+ * Hold the last good frame until the next URL is ready. Cached images commit
+ * immediately so fixed-cadence playback does not wait on decode.
  */
 function SatelliteFrameView({
   url,
@@ -205,72 +204,63 @@ function SatelliteFrameView({
   alt: string;
   opacity?: number;
 }) {
-  const [displayUrl, setDisplayUrl] = useState<string | null>(url);
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const displayRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!url) {
+      displayRef.current = null;
       setDisplayUrl(null);
-      setPendingUrl(null);
       setFailed(false);
       return;
     }
-    if (url === displayUrl) {
+    if (url === displayRef.current) {
       setFailed(false);
       return;
     }
 
     let cancelled = false;
     let attempts = 0;
-    setPendingUrl(url);
-    setFailed(false);
+
+    const commit = () => {
+      if (cancelled) return;
+      displayRef.current = url;
+      setDisplayUrl(url);
+      setFailed(false);
+    };
 
     const load = () => {
       attempts += 1;
       const img = new window.Image();
-      img.decoding = "async";
-      const commit = () => {
-        if (cancelled) return;
-        setDisplayUrl(url);
-        setPendingUrl(null);
-        setFailed(false);
-      };
-      img.onload = () => {
-        if (typeof img.decode === "function") {
-          void img.decode().then(commit).catch(commit);
-        } else {
-          commit();
-        }
-      };
+      const src = attempts === 1 ? url : `${url}&retry=${attempts}`;
+      img.onload = commit;
       img.onerror = () => {
         if (cancelled) return;
         if (attempts < 2) {
-          window.setTimeout(load, 600);
+          window.setTimeout(load, 400);
           return;
         }
-        setPendingUrl(null);
-        // Keep the previous good frame if we have one; otherwise surface failure.
-        if (!displayUrl) setFailed(true);
+        if (!displayRef.current) setFailed(true);
       };
-      // Cache-bust only on retry so the first paint can hit the server cache.
-      img.src = attempts === 1 ? url : `${url}&retry=${attempts}`;
+      img.src = src;
+      if (img.complete && img.naturalWidth > 0) {
+        commit();
+      }
     };
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [url, displayUrl]);
+  }, [url]);
 
   if (!displayUrl) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] px-4 text-center text-sm text-white/70">
         {failed
           ? "Satellite frame unavailable — scrub or wait for the next refresh…"
-          : pendingUrl
-            ? "Loading frame…"
-            : "Loading satellite frames…"}
+          : "Loading satellite frames…"}
       </div>
     );
   }
@@ -408,7 +398,7 @@ export function HomeMap({
         <MapModeEffect mode={mode} />
         <TileLayer url={basemapUrl} attribution="Esri" />
         {radarTiles ? (
-          <TileLayer key={radarTiles} url={radarTiles} opacity={0.78} />
+          <TileLayer url={radarTiles} opacity={0.78} />
         ) : mode === "Radar" ? (
           <DemoRadarBlobs />
         ) : null}
