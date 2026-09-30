@@ -374,9 +374,18 @@ export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot>
   const liveHosts = [...state.sockets.entries()]
     .filter(([, ws]) => ws.readyState === WebSocket.OPEN)
     .map(([h]) => h);
+  // LM PNG backfill is enough for a useful trail; don't flash RECONNECTING
+  // when the open network socket is down but maps are populated.
+  const status =
+    strikes.length > 0 &&
+    (state.status === "connecting" ||
+      state.status === "reconnecting" ||
+      state.status === "error")
+      ? "live"
+      : state.status;
   return {
     strikes,
-    status: state.status,
+    status,
     connectedHost: liveHosts[0] ?? state.host,
     generated: Math.floor(Date.now() / 1000),
     receivedTotal: state.receivedTotal,
