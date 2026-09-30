@@ -2,7 +2,7 @@
 
 Professional Australian weather site — radar, forecasts, severe weather, and deeper insight.
 
-**Live (when deployed):** Vercel project for this repo  
+**Live (when deployed):** [SkyWatch Australia](https://temporary-agile-redwood-j3y08rc.vercel.app)  
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
 ## Current product surface
