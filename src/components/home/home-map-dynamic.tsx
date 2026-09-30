@@ -30,15 +30,10 @@ export function HomeMapDynamic({
   frameKey,
   frameOpacity,
   frameAlt,
-  legend,
   mapSettings,
   showLightning,
   lightningStrikes,
-  lightningAttribution,
-  lightningStatus,
-  lightningLive,
   lightningReferenceTime,
-  lightningFrameSynced,
   lightningTimelineStart,
   lightningTimelineEnd,
   lightningPlaying,
@@ -48,11 +43,7 @@ export function HomeMapDynamic({
   synopticFrames,
   synopticGeoJson,
   synopticValidTime,
-  synopticAttribution,
-  synopticLoading,
-  synopticError,
   synopticReferenceTime,
-  synopticFrameSynced,
 }: {
   mode: MapMode;
   showRadarOverlay?: boolean;
@@ -62,15 +53,10 @@ export function HomeMapDynamic({
   frameKey?: string | number;
   frameOpacity?: number;
   frameAlt?: string;
-  legend?: "radar" | "satellite" | null;
   mapSettings: MapSettingsState;
   showLightning?: boolean;
   lightningStrikes?: LightningStrike[];
-  lightningAttribution?: string | null;
-  lightningStatus?: "connecting" | "live" | "reconnecting" | "error" | null;
-  lightningLive?: boolean;
   lightningReferenceTime?: number | null;
-  lightningFrameSynced?: boolean;
   lightningTimelineStart?: number | null;
   lightningTimelineEnd?: number | null;
   lightningPlaying?: boolean;
@@ -80,11 +66,7 @@ export function HomeMapDynamic({
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
-  synopticAttribution?: string | null;
-  synopticLoading?: boolean;
-  synopticError?: string | null;
   synopticReferenceTime?: number | null;
-  synopticFrameSynced?: boolean;
 }) {
   return (
     <HomeMap
@@ -96,15 +78,10 @@ export function HomeMapDynamic({
       frameKey={frameKey}
       frameOpacity={frameOpacity}
       frameAlt={frameAlt}
-      legend={legend}
       mapSettings={mapSettings}
       showLightning={showLightning}
       lightningStrikes={lightningStrikes}
-      lightningAttribution={lightningAttribution}
-      lightningStatus={lightningStatus}
-      lightningLive={lightningLive}
       lightningReferenceTime={lightningReferenceTime}
-      lightningFrameSynced={lightningFrameSynced}
       lightningTimelineStart={lightningTimelineStart}
       lightningTimelineEnd={lightningTimelineEnd}
       lightningPlaying={lightningPlaying}
@@ -114,11 +91,7 @@ export function HomeMapDynamic({
       synopticFrames={synopticFrames}
       synopticGeoJson={synopticGeoJson}
       synopticValidTime={synopticValidTime}
-      synopticAttribution={synopticAttribution}
-      synopticLoading={synopticLoading}
-      synopticError={synopticError}
       synopticReferenceTime={synopticReferenceTime}
-      synopticFrameSynced={synopticFrameSynced}
     />
   );
 }

@@ -159,21 +159,13 @@ export function HomeDashboard() {
   } = useWeatherMaps(satProduct);
 
   const showLightning = layers.lightning;
-  const {
-    strikes: lightningStrikes,
-    attribution: lightningAttribution,
-    status: lightningStatus,
-    live: lightningLive,
-  } = useLightning(showLightning);
+  const { strikes: lightningStrikes } = useLightning(showLightning);
 
   const showSynoptic = layers.synoptic;
   const {
     frames: synopticFrames,
     geojson: synopticGeoJson,
     validTime: synopticValidTime,
-    attribution: synopticAttribution,
-    loading: synopticLoading,
-    error: synopticError,
   } = useSynoptic(showSynoptic);
 
   const showRadarOverlay = layers.radar;
@@ -611,17 +603,9 @@ export function HomeDashboard() {
                   ? `${satProductMeta.label} satellite loop frame`
                   : "Radar loop frame"
               }
-              legend={
-                showRadarUi || (showRadarOverlay && !showSatelliteLoop)
-                  ? "radar"
-                  : null
-              }
               mapSettings={mapSettings}
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}
-              lightningAttribution={lightningAttribution}
-              lightningStatus={lightningStatus}
-              lightningLive={lightningLive}
               lightningReferenceTime={
                 showSatelliteLoop
                   ? (activeFrame?.time ?? null)
@@ -629,7 +613,6 @@ export function HomeDashboard() {
                     ? (activeRadarFrame?.time ?? null)
                     : null
               }
-              lightningFrameSynced={showSatelliteLoop || showRadarUi}
               lightningTimelineStart={
                 showSatelliteLoop && loopFrames.length > 0
                   ? (loopFrames[0]?.time ?? null)
@@ -662,9 +645,6 @@ export function HomeDashboard() {
               synopticFrames={synopticFrames}
               synopticGeoJson={synopticGeoJson}
               synopticValidTime={synopticValidTime}
-              synopticAttribution={synopticAttribution}
-              synopticLoading={synopticLoading}
-              synopticError={synopticError}
               synopticReferenceTime={
                 showSatelliteLoop
                   ? (activeFrame?.time ?? null)
@@ -672,7 +652,6 @@ export function HomeDashboard() {
                     ? (activeRadarFrame?.time ?? null)
                     : null
               }
-              synopticFrameSynced={showSatelliteLoop || showRadarUi}
             />
           </div>
 

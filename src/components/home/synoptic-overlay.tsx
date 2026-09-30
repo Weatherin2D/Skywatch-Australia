@@ -15,7 +15,6 @@ import type {
   SynopticGeoJson,
 } from "@/lib/weather/synoptic-contour";
 import {
-  formatFrameTimeAEST,
   GIBS_AU_ASPECT,
   lonLatToGibsPct,
 } from "@/lib/weather/maps";
@@ -575,62 +574,5 @@ export function LeafletSynopticOverlay({
       pointToLayer={pointToLayer}
       pathOptions={{ opacity }}
     />
-  );
-}
-
-export function SynopticLegend({
-  frames,
-  attribution,
-  referenceTime = null,
-  loading,
-  error,
-  validTime = null,
-  frameSynced = false,
-}: {
-  frames: SynopticFrame[];
-  attribution?: string | null;
-  referenceTime?: number | null;
-  loading?: boolean;
-  error?: string | null;
-  validTime?: number | null;
-  frameSynced?: boolean;
-}) {
-  const now = Math.floor(Date.now() / 1000);
-  const ref = referenceTime ?? validTime ?? now;
-  const frame = pickSynopticFrame(frames, ref);
-  const time = frame?.time ?? validTime;
-
-  return (
-    <div className="pointer-events-none absolute top-3 right-3 z-[1000] max-w-[15rem] border border-white/25 bg-black/70 px-2.5 py-2 text-white backdrop-blur-sm">
-      <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[var(--bom-yellow)]">
-        Synoptic chart
-      </p>
-      {error ? (
-        <p className="text-[10px] text-red-300">{error}</p>
-      ) : loading && !time ? (
-        <p className="text-[10px] text-white/75">Loading MSLP field…</p>
-      ) : time ? (
-        <>
-          <p className="text-[11px] text-white/90">
-            MSLP · fronts · {formatFrameTimeAEST(time)}
-          </p>
-          <p className="mt-0.5 text-[9px] text-white/55">
-            Isobars 4 hPa · cold / warm / trough
-          </p>
-          {frameSynced && referenceTime != null ? (
-            <p className="mt-0.5 text-[9px] text-emerald-300/90">
-              Synced to satellite frame
-            </p>
-          ) : null}
-        </>
-      ) : (
-        <p className="text-[10px] text-white/75">No field available</p>
-      )}
-      {attribution ? (
-        <p className="mt-1.5 text-[8px] leading-snug text-white/45">
-          {attribution}
-        </p>
-      ) : null}
-    </div>
   );
 }

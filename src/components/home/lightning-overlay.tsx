@@ -13,7 +13,6 @@ import {
   LIGHTNING_MAX_VISIBLE,
   LIGHTNING_MAX_VISIBLE_DOM,
   LIGHTNING_VISIBLE_WINDOW_SEC,
-  lightningAgeGradientCss,
   strikeAgeColor,
   strikeAgeRgb,
   strikeAgeSeconds,
@@ -334,110 +333,5 @@ export function LeafletLightningOverlay({
         );
       })}
     </>
-  );
-}
-
-export function LightningLegend({
-  strikes,
-  attribution,
-  status,
-  live,
-  referenceTime = null,
-  frameSynced = false,
-  timelineStart = null,
-  timelineEnd = null,
-}: {
-  strikes: LightningStrike[];
-  attribution?: string | null;
-  status?: "connecting" | "live" | "reconnecting" | "error" | null;
-  live?: boolean;
-  referenceTime?: number | null;
-  frameSynced?: boolean;
-  timelineStart?: number | null;
-  timelineEnd?: number | null;
-  playing?: boolean;
-  msPerFrame?: number;
-  nextFrameTime?: number | null;
-}) {
-  // Legend follows discrete frame time (cheap) — not the rAF clock.
-  const animTime =
-    (frameSynced ? referenceTime : null) ??
-    Math.floor(Date.now() / 1000);
-  const visible = useMemo(
-    () =>
-      strikesForAnimation(
-        strikes,
-        animTime,
-        frameSynced ? timelineStart : null,
-        frameSynced ? timelineEnd : null,
-        LIGHTNING_MAX_VISIBLE,
-      ),
-    [strikes, animTime, frameSynced, timelineStart, timelineEnd],
-  );
-  const visibleLabelHours = Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 3600);
-
-  const statusLabel =
-    status === "live"
-      ? "LIVE"
-      : status === "reconnecting"
-        ? "RECONNECTING"
-        : status === "connecting"
-          ? "CONNECTING"
-          : status === "error"
-            ? "OFFLINE"
-            : live
-              ? "LIVE"
-              : "…";
-
-  return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-[1000] border border-white/25 bg-black/70 px-2.5 py-2 text-white backdrop-blur-sm">
-      <div className="mb-1.5 flex items-center gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--bom-yellow)]">
-          Lightning tracker
-        </p>
-        <span
-          className={
-            status === "live"
-              ? "rounded-sm bg-emerald-500/90 px-1 py-px text-[8px] font-bold tracking-wide text-black"
-              : status === "error"
-                ? "rounded-sm bg-red-500/90 px-1 py-px text-[8px] font-bold tracking-wide text-white"
-                : "rounded-sm bg-amber-400/90 px-1 py-px text-[8px] font-bold tracking-wide text-black"
-          }
-        >
-          {statusLabel}
-        </span>
-      </div>
-      {visible.length === 0 ? (
-        <p className="mb-2 max-w-[12rem] text-[10px] leading-snug text-white/75">
-          {status === "live" || status === "reconnecting"
-            ? frameSynced && referenceTime != null
-              ? "No strikes in this trail window — play as storms develop…"
-              : `No strikes over Australia in the last ${visibleLabelHours}h — listening live…`
-            : "Connecting to live lightning feed…"}
-        </p>
-      ) : null}
-      <div className="w-[11.5rem]">
-        <div
-          className="h-2 w-full border border-white/20"
-          style={{ background: lightningAgeGradientCss() }}
-          aria-label={`Lightning age colour scale from new to ${visibleLabelHours} hours`}
-        />
-        <div className="mt-1 flex justify-between text-[9px] text-white/75">
-          <span>New</span>
-          <span>{visibleLabelHours}h</span>
-        </div>
-      </div>
-      <p className="mt-1.5 text-[9px] text-white/60">
-        {visible.length} strikes ·{" "}
-        {frameSynced && referenceTime != null
-          ? "synced to frame"
-          : `last ${visibleLabelHours}h`}
-      </p>
-      {attribution ? (
-        <p className="mt-0.5 max-w-[12rem] text-[8px] leading-snug text-white/45">
-          {attribution}
-        </p>
-      ) : null}
-    </div>
   );
 }

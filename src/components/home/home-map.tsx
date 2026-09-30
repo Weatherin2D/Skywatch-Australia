@@ -16,13 +16,11 @@ import {
 import { LeafletMapAnnotations } from "@/components/home/leaflet-map-annotations";
 import {
   LeafletLightningOverlay,
-  LightningLegend,
   SatelliteLightningOverlay,
 } from "@/components/home/lightning-overlay";
 import {
   LeafletSynopticOverlay,
   SatelliteSynopticOverlay,
-  SynopticLegend,
 } from "@/components/home/synoptic-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
 import type { LightningStrike } from "@/lib/weather/lightning";
@@ -42,17 +40,11 @@ type Props = {
   frameKey?: string | number;
   frameOpacity?: number;
   frameAlt?: string;
-  legend?: "radar" | "satellite" | null;
   mapSettings: MapSettingsState;
   showLightning?: boolean;
   lightningStrikes?: LightningStrike[];
-  lightningAttribution?: string | null;
-  lightningStatus?: "connecting" | "live" | "reconnecting" | "error" | null;
-  lightningLive?: boolean;
   /** Active satellite frame unix time; null = wall clock (Map/Radar or latest frame). */
   lightningReferenceTime?: number | null;
-  /** True while Satellite loop is active (legend: synced to frame). */
-  lightningFrameSynced?: boolean;
   /** Oldest/newest satellite frame times for stretching strike history. */
   lightningTimelineStart?: number | null;
   lightningTimelineEnd?: number | null;
@@ -64,13 +56,8 @@ type Props = {
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
-  synopticAttribution?: string | null;
-  synopticLoading?: boolean;
-  synopticError?: string | null;
   /** Frame time for chart pick; null = wall clock. */
   synopticReferenceTime?: number | null;
-  /** True while Satellite loop drives the synoptic valid time. */
-  synopticFrameSynced?: boolean;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -139,27 +126,6 @@ function DemoRadarBlobs() {
         />
       ))}
     </>
-  );
-}
-
-function RadarIntensityLegend() {
-  return (
-    <div className="pointer-events-none absolute bottom-3 right-3 z-[1000] border border-[var(--brand)]/20 bg-[var(--bom-blue)]/95 px-3 py-2 text-[var(--brand)]">
-      <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--brand)]/80">
-        Radar intensity
-      </p>
-      <div className="flex h-2 w-36 overflow-hidden">
-        <span className="flex-1 bg-emerald-400" />
-        <span className="flex-1 bg-lime-400" />
-        <span className="flex-1 bg-yellow-400" />
-        <span className="flex-1 bg-orange-400" />
-        <span className="flex-1 bg-red-500" />
-      </div>
-      <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/75">
-        <span>Light</span>
-        <span>Heavy</span>
-      </div>
-    </div>
   );
 }
 
@@ -284,15 +250,10 @@ export function HomeMap({
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
   frameImageUrl = null,
-  legend = null,
   mapSettings,
   showLightning = false,
   lightningStrikes = [],
-  lightningAttribution = null,
-  lightningStatus = null,
-  lightningLive = false,
   lightningReferenceTime = null,
-  lightningFrameSynced = false,
   lightningTimelineStart = null,
   lightningTimelineEnd = null,
   lightningPlaying = false,
@@ -302,11 +263,7 @@ export function HomeMap({
   synopticFrames = [],
   synopticGeoJson = null,
   synopticValidTime = null,
-  synopticAttribution = null,
-  synopticLoading = false,
-  synopticError = null,
   synopticReferenceTime = null,
-  synopticFrameSynced = false,
 }: Props) {
   const satelliteLoop = mode === "Satellite";
   const radarTiles =
@@ -352,33 +309,6 @@ export function HomeMap({
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
         />
-        {showSynoptic ? (
-          <SynopticLegend
-            frames={synopticFrames}
-            attribution={synopticAttribution}
-            referenceTime={synopticReferenceTime}
-            loading={synopticLoading}
-            error={synopticError}
-            validTime={synopticValidTime}
-            frameSynced={synopticFrameSynced}
-          />
-        ) : null}
-        {showLightning ? (
-          <LightningLegend
-            strikes={lightningStrikes}
-            attribution={lightningAttribution}
-            status={lightningStatus}
-            live={lightningLive}
-            referenceTime={lightningReferenceTime}
-            frameSynced={lightningFrameSynced}
-            timelineStart={lightningTimelineStart}
-            timelineEnd={lightningTimelineEnd}
-            playing={lightningPlaying}
-            msPerFrame={lightningMsPerFrame}
-            nextFrameTime={lightningNextFrameTime}
-          />
-        ) : null}
-        {showRadarOverlay && frameTileUrl ? <RadarIntensityLegend /> : null}
       </div>
     );
   }
@@ -422,38 +352,6 @@ export function HomeMap({
         />
         <MapTools />
       </MapContainer>
-
-      {showSynoptic ? (
-        <SynopticLegend
-          frames={synopticFrames}
-          attribution={synopticAttribution}
-          referenceTime={synopticReferenceTime}
-          loading={synopticLoading}
-          error={synopticError}
-          validTime={synopticValidTime}
-          frameSynced={synopticFrameSynced}
-        />
-      ) : null}
-
-      {showLightning ? (
-        <LightningLegend
-          strikes={lightningStrikes}
-          attribution={lightningAttribution}
-          status={lightningStatus}
-          live={lightningLive}
-          referenceTime={lightningReferenceTime}
-          frameSynced={lightningFrameSynced}
-          timelineStart={lightningTimelineStart}
-          timelineEnd={lightningTimelineEnd}
-          playing={lightningPlaying}
-          msPerFrame={lightningMsPerFrame}
-          nextFrameTime={lightningNextFrameTime}
-        />
-      ) : null}
-
-      {legend === "radar" || (showRadarOverlay && radarTiles) ? (
-        <RadarIntensityLegend />
-      ) : null}
     </div>
   );
 }
