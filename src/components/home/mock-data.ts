@@ -1,17 +1,15 @@
+/** Real map overlays — only layers with working data sources. */
 export const WEATHER_LAYERS = [
   { id: "lightning", label: "Lightning tracker" },
   { id: "synoptic", label: "Synoptic MSLP" },
-  { id: "rainfall", label: "Rainfall (accumulation)" },
-  { id: "wind", label: "Wind" },
-  { id: "gusts", label: "Wind Gusts" },
-  { id: "temperature", label: "Temperature" },
-  { id: "dewpoint", label: "Dew Point" },
-  { id: "pressure", label: "Pressure" },
-  { id: "humidity", label: "Humidity" },
-  { id: "clouds", label: "Clouds" },
 ] as const;
 
 export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
+
+export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
+  lightning: true,
+  synoptic: false,
+};
 
 /** Cartographic toggles for the national map (below weather overlays). */
 export const MAP_SETTINGS = [

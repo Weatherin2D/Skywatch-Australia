@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeatherFrame } from "@/lib/weather/maps";
 
-const PRELOAD_CONCURRENCY = 3;
+const PRELOAD_CONCURRENCY = 4;
 
 /**
  * Preloads satellite frame images with limited concurrency so the browser

@@ -430,7 +430,7 @@ export function LightningLegend({
       <p className="mt-1.5 text-[9px] text-white/60">
         {visible.length} strikes ·{" "}
         {frameSynced && referenceTime != null
-          ? "synced to satellite frame"
+          ? "synced to frame"
           : `last ${visibleLabelHours}h`}
       </p>
       {attribution ? (

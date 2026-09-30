@@ -98,6 +98,7 @@ function MapTools() {
 }
 
 function DemoRadarBlobs() {
+  // Fallback only when RainViewer tiles fail to load — soft demo cells.
   const cells = [
     { lat: -28.2, lon: 152.8, color: "#22c55e" },
     { lat: -29.1, lon: 151.9, color: "#eab308" },
@@ -337,9 +338,10 @@ export function HomeMap({
         <MapModeEffect mode={mode} />
         <TileLayer url={basemapUrl} attribution="Esri" />
         {frameTileUrl ? (
-          <TileLayer key={frameTileUrl} url={frameTileUrl} opacity={0.75} />
+          <TileLayer key={frameTileUrl} url={frameTileUrl} opacity={0.78} />
+        ) : mode === "Radar" ? (
+          <DemoRadarBlobs />
         ) : null}
-        {showRadarOverlay || mode === "Radar" ? <DemoRadarBlobs /> : null}
         <LeafletSynopticOverlay
           frames={synopticFrames}
           enabled={showSynoptic}
