@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
-  CircleMarker,
+  ImageOverlay,
   useMap,
 } from "react-leaflet";
 import { LocateFixed } from "lucide-react";
 import {
   CITY_MARKERS,
+  DEFAULT_MAP_REGION,
+  getMapRegion,
   type MapMode,
+  type MapRegionId,
   type MapSettingsState,
+  type RegionBounds,
 } from "@/components/home/mock-data";
 import { LeafletMapAnnotations } from "@/components/home/leaflet-map-annotations";
 import {
@@ -26,11 +30,16 @@ import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotat
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
-import { GIBS_AU_ASPECT, GIBS_AU_BOUNDS } from "@/lib/weather/maps";
+import {
+  GIBS_AU_ASPECT,
+  GIBS_AU_BOUNDS,
+  boundsMercatorAspect,
+} from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
 type Props = {
   mode: MapMode;
+  regionId?: MapRegionId;
   showRadarOverlay?: boolean;
   /** Leaflet tile URL template for RainViewer frames */
   frameTileUrl?: string | null;
@@ -43,12 +52,10 @@ type Props = {
   mapSettings: MapSettingsState;
   showLightning?: boolean;
   lightningStrikes?: LightningStrike[];
-  /** Active satellite frame unix time; null = wall clock (Map/Radar or latest frame). */
+  /** Active satellite frame unix time; null = wall clock. */
   lightningReferenceTime?: number | null;
-  /** Oldest/newest satellite frame times for stretching strike history. */
   lightningTimelineStart?: number | null;
   lightningTimelineEnd?: number | null;
-  /** Windy-style continuous trail while the IR loop is playing. */
   lightningPlaying?: boolean;
   lightningMsPerFrame?: number;
   lightningNextFrameTime?: number | null;
@@ -56,7 +63,6 @@ type Props = {
   synopticFrames?: SynopticFrame[];
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
-  /** Frame time for chart pick; null = wall clock. */
   synopticReferenceTime?: number | null;
 };
 
@@ -68,15 +74,44 @@ function MapModeEffect({ mode }: { mode: MapMode }) {
   return null;
 }
 
-function MapTools() {
+function FitRegionBounds({
+  bounds,
+  animate = true,
+  padding = 24,
+}: {
+  bounds: RegionBounds;
+  animate?: boolean;
+  padding?: number;
+}) {
+  const map = useMap();
+  const key = `${bounds[0][0]},${bounds[0][1]},${bounds[1][0]},${bounds[1][1]}`;
+  useEffect(() => {
+    map.fitBounds(bounds, {
+      animate,
+      padding: [padding, padding],
+    });
+    const onResize = () => {
+      map.invalidateSize({ animate: false });
+      map.fitBounds(bounds, { animate: false, padding: [padding, padding] });
+    };
+    map.whenReady(onResize);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [map, key, animate, padding, bounds]);
+  return null;
+}
+
+function MapTools({ bounds }: { bounds: RegionBounds }) {
   const map = useMap();
   return (
     <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2">
       <button
         type="button"
         className="flex h-9 w-9 items-center justify-center border border-[var(--brand)]/20 bg-[var(--bom-blue)] text-[var(--brand)] shadow transition hover:bg-[var(--navy-deep)] hover:text-[var(--brand)]"
-        aria-label="Recentre on Australia"
-        onClick={() => map.setView([-25.5, 134.5], 4, { animate: true })}
+        aria-label="Recentre on selected region"
+        onClick={() =>
+          map.fitBounds(bounds, { animate: true, padding: [24, 24] })
+        }
       >
         <LocateFixed className="h-4 w-4" />
       </button>
@@ -84,56 +119,16 @@ function MapTools() {
   );
 }
 
-function FitAuBounds() {
-  const map = useMap();
-  useEffect(() => {
-    map.fitBounds(GIBS_AU_BOUNDS, { animate: false, padding: [0, 0] });
-    const onResize = () => {
-      map.invalidateSize({ animate: false });
-      map.fitBounds(GIBS_AU_BOUNDS, { animate: false, padding: [0, 0] });
-    };
-    map.whenReady(onResize);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [map]);
-  return null;
-}
-
-function DemoRadarBlobs() {
-  // Fallback only when RainViewer tiles fail to load — soft demo cells.
-  const cells = [
-    { lat: -28.2, lon: 152.8, color: "#22c55e" },
-    { lat: -29.1, lon: 151.9, color: "#eab308" },
-    { lat: -30.4, lon: 150.6, color: "#ef4444" },
-    { lat: -32.6, lon: 151.2, color: "#84cc16" },
-    { lat: -33.5, lon: 150.4, color: "#f59e0b" },
-    { lat: -26.8, lon: 152.1, color: "#22c55e" },
-  ];
-  return (
-    <>
-      {cells.map((cell, i) => (
-        <CircleMarker
-          key={i}
-          center={[cell.lat, cell.lon]}
-          radius={18 + (i % 3) * 6}
-          pathOptions={{
-            color: cell.color,
-            fillColor: cell.color,
-            fillOpacity: 0.35,
-            weight: 1,
-            opacity: 0.7,
-          }}
-        />
-      ))}
-    </>
-  );
-}
-
 /**
- * RainViewer tiles over the fixed Himawari frame. Same EPSG:3857 crop as GIBS
- * so radar cells line up with the IR image without converting satellite to Leaflet.
+ * RainViewer tiles over the fixed national Himawari frame.
  */
-function SatelliteRadarOverlay({ tileUrl }: { tileUrl: string }) {
+function SatelliteRadarOverlay({
+  tileUrl,
+  bounds,
+}: {
+  tileUrl: string;
+  bounds: RegionBounds;
+}) {
   return (
     <div className="pointer-events-none absolute inset-0 z-[4]">
       <MapContainer
@@ -150,7 +145,7 @@ function SatelliteRadarOverlay({ tileUrl }: { tileUrl: string }) {
         touchZoom={false}
         style={{ background: "transparent" }}
       >
-        <FitAuBounds />
+        <FitRegionBounds bounds={bounds} animate={false} padding={0} />
         <TileLayer url={tileUrl} opacity={0.72} />
       </MapContainer>
     </div>
@@ -243,8 +238,138 @@ function SatelliteFrameView({
   );
 }
 
+function RegionalSatelliteView({
+  bounds,
+  frameImageUrl,
+  frameAlt,
+  frameOpacity,
+  frameTileUrl,
+  showRadarOverlay,
+  mapSettings,
+  showLightning,
+  lightningStrikes,
+  lightningReferenceTime,
+  lightningTimelineStart,
+  lightningTimelineEnd,
+  lightningPlaying,
+  lightningMsPerFrame,
+  lightningNextFrameTime,
+  showSynoptic,
+  synopticFrames,
+  synopticGeoJson,
+  synopticValidTime,
+  synopticReferenceTime,
+}: {
+  bounds: RegionBounds;
+  frameImageUrl: string | null;
+  frameAlt: string;
+  frameOpacity: number;
+  frameTileUrl: string | null;
+  showRadarOverlay: boolean;
+  mapSettings: MapSettingsState;
+  showLightning: boolean;
+  lightningStrikes: LightningStrike[];
+  lightningReferenceTime: number | null;
+  lightningTimelineStart: number | null;
+  lightningTimelineEnd: number | null;
+  lightningPlaying: boolean;
+  lightningMsPerFrame: number;
+  lightningNextFrameTime: number | null;
+  showSynoptic: boolean;
+  synopticFrames: SynopticFrame[];
+  synopticGeoJson: SynopticGeoJson | null;
+  synopticValidTime: number | null;
+  synopticReferenceTime: number | null;
+}) {
+  const aspect = useMemo(() => boundsMercatorAspect(bounds), [bounds]);
+  const [displayUrl, setDisplayUrl] = useState<string | null>(frameImageUrl);
+
+  useEffect(() => {
+    if (!frameImageUrl) {
+      setDisplayUrl(null);
+      return;
+    }
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => {
+      if (!cancelled) setDisplayUrl(frameImageUrl);
+    };
+    img.onerror = () => {
+      /* keep previous */
+    };
+    img.src = frameImageUrl;
+    if (img.complete && img.naturalWidth > 0) setDisplayUrl(frameImageUrl);
+    return () => {
+      cancelled = true;
+    };
+  }, [frameImageUrl]);
+
+  return (
+    <div
+      className="skywatch-map relative w-full overflow-hidden bg-black"
+      style={{ aspectRatio: String(aspect) }}
+      data-map-mode="Satellite"
+    >
+      <MapContainer
+        key={`sat-region-${bounds[0][0]}-${bounds[1][1]}`}
+        center={[-25.5, 134.5]}
+        zoom={5}
+        className="h-full w-full"
+        zoomControl={false}
+        attributionControl={false}
+        maxBounds={bounds}
+        maxBoundsViscosity={0.85}
+      >
+        <FitRegionBounds bounds={bounds} animate padding={8} />
+        {displayUrl ? (
+          <ImageOverlay
+            key={displayUrl}
+            url={displayUrl}
+            bounds={bounds}
+            opacity={frameOpacity}
+            zIndex={200}
+          />
+        ) : (
+          <TileLayer
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+            attribution="Esri"
+          />
+        )}
+        {showRadarOverlay && frameTileUrl ? (
+          <TileLayer url={frameTileUrl} opacity={0.72} zIndex={350} />
+        ) : null}
+        <LeafletSynopticOverlay
+          frames={synopticFrames}
+          enabled={showSynoptic}
+          referenceTime={synopticReferenceTime}
+          geojson={synopticGeoJson}
+          validTime={synopticValidTime}
+        />
+        <LeafletMapAnnotations settings={mapSettings} />
+        <LeafletLightningOverlay
+          strikes={lightningStrikes}
+          enabled={showLightning}
+          referenceTime={lightningReferenceTime}
+          timelineStart={lightningTimelineStart}
+          timelineEnd={lightningTimelineEnd}
+          playing={lightningPlaying}
+          msPerFrame={lightningMsPerFrame}
+          nextFrameTime={lightningNextFrameTime}
+        />
+        <MapTools bounds={bounds} />
+      </MapContainer>
+      {!displayUrl ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white/80">
+          Loading {frameAlt}…
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function HomeMap({
   mode,
+  regionId = DEFAULT_MAP_REGION,
   showRadarOverlay = false,
   frameTileUrl = null,
   frameOpacity = 1,
@@ -265,14 +390,43 @@ export function HomeMap({
   synopticValidTime = null,
   synopticReferenceTime = null,
 }: Props) {
+  const region = getMapRegion(regionId);
+  const bounds = region.bounds;
+  const isNational = regionId === "national";
   const satelliteLoop = mode === "Satellite";
-  const radarTiles =
-    frameTileUrl && (showRadarOverlay || mode === "Radar") ? frameTileUrl : null;
+  const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
 
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
 
-  // Satellite: full-bleed image, no zoom/pan, fills the border with no letterbox
+  if (satelliteLoop && !isNational) {
+    return (
+      <RegionalSatelliteView
+        bounds={bounds}
+        frameImageUrl={frameImageUrl}
+        frameAlt={frameAlt}
+        frameOpacity={frameOpacity}
+        frameTileUrl={frameTileUrl}
+        showRadarOverlay={showRadarOverlay}
+        mapSettings={mapSettings}
+        showLightning={showLightning}
+        lightningStrikes={lightningStrikes}
+        lightningReferenceTime={lightningReferenceTime}
+        lightningTimelineStart={lightningTimelineStart}
+        lightningTimelineEnd={lightningTimelineEnd}
+        lightningPlaying={lightningPlaying}
+        lightningMsPerFrame={lightningMsPerFrame}
+        lightningNextFrameTime={lightningNextFrameTime}
+        showSynoptic={showSynoptic}
+        synopticFrames={synopticFrames}
+        synopticGeoJson={synopticGeoJson}
+        synopticValidTime={synopticValidTime}
+        synopticReferenceTime={synopticReferenceTime}
+      />
+    );
+  }
+
+  // National satellite: full-bleed image, no zoom/pan
   if (satelliteLoop) {
     return (
       <div
@@ -286,7 +440,10 @@ export function HomeMap({
           opacity={frameOpacity}
         />
         {showRadarOverlay && frameTileUrl ? (
-          <SatelliteRadarOverlay tileUrl={frameTileUrl} />
+          <SatelliteRadarOverlay
+            tileUrl={frameTileUrl}
+            bounds={GIBS_AU_BOUNDS}
+          />
         ) : null}
         <SatelliteSynopticOverlay
           frames={synopticFrames}
@@ -316,7 +473,7 @@ export function HomeMap({
   return (
     <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden">
       <MapContainer
-        key="map-free"
+        key={`map-${regionId}`}
         center={[-25.5, 134.5]}
         zoom={4}
         minZoom={3}
@@ -326,12 +483,9 @@ export function HomeMap({
         attributionControl
       >
         <MapModeEffect mode={mode} />
+        <FitRegionBounds bounds={bounds} animate padding={isNational ? 8 : 28} />
         <TileLayer url={basemapUrl} attribution="Esri" />
-        {radarTiles ? (
-          <TileLayer url={radarTiles} opacity={0.78} />
-        ) : mode === "Radar" ? (
-          <DemoRadarBlobs />
-        ) : null}
+        {radarTiles ? <TileLayer url={radarTiles} opacity={0.78} /> : null}
         <LeafletSynopticOverlay
           frames={synopticFrames}
           enabled={showSynoptic}
@@ -350,7 +504,7 @@ export function HomeMap({
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
         />
-        <MapTools />
+        <MapTools bounds={bounds} />
       </MapContainer>
     </div>
   );

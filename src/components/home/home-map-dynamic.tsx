@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type {
   MapMode,
+  MapRegionId,
   MapSettingsState,
 } from "@/components/home/mock-data";
 import type { LightningStrike } from "@/lib/weather/lightning";
@@ -23,6 +24,7 @@ const HomeMap = dynamic(
 
 export function HomeMapDynamic({
   mode,
+  regionId,
   showRadarOverlay,
   frameTileUrl,
   frameImageUrl,
@@ -46,6 +48,7 @@ export function HomeMapDynamic({
   synopticReferenceTime,
 }: {
   mode: MapMode;
+  regionId?: MapRegionId;
   showRadarOverlay?: boolean;
   frameTileUrl?: string | null;
   frameImageUrl?: string | null;
@@ -71,6 +74,7 @@ export function HomeMapDynamic({
   return (
     <HomeMap
       mode={mode}
+      regionId={regionId}
       showRadarOverlay={showRadarOverlay}
       frameTileUrl={frameTileUrl}
       frameImageUrl={frameImageUrl}

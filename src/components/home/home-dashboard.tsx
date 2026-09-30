@@ -18,18 +18,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
   CAPITAL_NOW,
+  DEFAULT_MAP_REGION,
   DEFAULT_MAP_SETTINGS,
   DEFAULT_WEATHER_LAYERS,
   HIGHLIGHTS,
   MAP_MODES,
+  MAP_REGIONS,
   MAP_SETTINGS,
   MODEL_ROWS,
   SYDNEY_NOW,
   WARNINGS,
   WEEK_FORECAST,
   WEATHER_LAYERS,
+  getMapRegion,
   type LayerId,
   type MapMode,
+  type MapRegionId,
   type MapSettingId,
   type MapSettingsState,
 } from "@/components/home/mock-data";
@@ -49,6 +53,7 @@ import {
   getPlaybackSpeed,
   getSatelliteProduct,
   pickWeatherFrame,
+  satelliteFrameProxyUrl,
   scrubToFrameIndex,
   timelineEdgeLabels,
   type PlaybackSpeedId,
@@ -135,14 +140,16 @@ export function HomeDashboard() {
   const [mapSettings, setMapSettings] =
     useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
   const [mode, setMode] = useState<MapMode>("Satellite");
+  const [regionId, setRegionId] = useState<MapRegionId>(DEFAULT_MAP_REGION);
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     DEFAULT_SATELLITE_PRODUCT,
   );
   const [satMenuOpen, setSatMenuOpen] = useState(false);
+  const [regionMenuOpen, setRegionMenuOpen] = useState(false);
   const satMenuRef = useRef<HTMLDivElement>(null);
+  const regionMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [radarIndex, setRadarIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
     DEFAULT_PLAYBACK_SPEED,
   );
@@ -169,43 +176,36 @@ export function HomeDashboard() {
   } = useSynoptic(showSynoptic);
 
   const showRadarOverlay = layers.radar;
+  const region = getMapRegion(regionId);
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
-  const showLoopUi = mode === "Satellite" || mode === "Radar";
   const showSatelliteLoop = mode === "Satellite";
-  const showRadarUi = mode === "Radar";
 
-  const loopFrames = showSatelliteLoop ? satelliteFrames : [];
+  const loopFrames = useMemo(() => {
+    if (!showSatelliteLoop) return [];
+    return satelliteFrames.map((frame) => ({
+      ...frame,
+      imageUrl: satelliteFrameProxyUrl(satProduct, frame.time, {
+        region: regionId,
+      }),
+      imageBounds: region.bounds,
+    }));
+  }, [showSatelliteLoop, satelliteFrames, satProduct, regionId, region.bounds]);
+
   const activeFrame = loopFrames[frameIndex] ?? null;
   const scrub =
     loopFrames.length > 0
       ? frameIndexToScrub(frameIndex, loopFrames.length)
       : 100;
 
-  const radarLoopFrames = showRadarUi ? radarFrames : [];
-  const activeRadarFrame = radarLoopFrames[radarIndex] ?? null;
-  const radarScrub =
-    radarLoopFrames.length > 0
-      ? frameIndexToScrub(radarIndex, radarLoopFrames.length)
-      : 100;
-
   /** Rain radar overlay frame: time-matched on Satellite, latest on Map. */
   const overlayRadarFrame = useMemo(() => {
-    if (!showRadarOverlay || showRadarUi || radarFrames.length === 0) {
-      return null;
-    }
+    if (!showRadarOverlay || radarFrames.length === 0) return null;
     if (showSatelliteLoop && activeFrame) {
-      // RainViewer steps are 10 minutes — ignore frames outside that tolerance.
       return pickWeatherFrame(radarFrames, activeFrame.time, 10 * 60);
     }
     return radarFrames[radarFrames.length - 1] ?? null;
-  }, [
-    showRadarOverlay,
-    showRadarUi,
-    showSatelliteLoop,
-    activeFrame,
-    radarFrames,
-  ]);
+  }, [showRadarOverlay, showSatelliteLoop, activeFrame, radarFrames]);
 
   const {
     readyCount,
@@ -215,8 +215,8 @@ export function HomeDashboard() {
 
   const loopIdentity = useMemo(() => {
     if (loopFrames.length === 0) return "";
-    return `${satProduct}:${loopFrames[0]?.time ?? 0}:${loopFrames[loopFrames.length - 1]?.time ?? 0}:${loopFrames.length}`;
-  }, [loopFrames, satProduct]);
+    return `${satProduct}:${regionId}:${loopFrames[0]?.time ?? 0}:${loopFrames[loopFrames.length - 1]?.time ?? 0}:${loopFrames.length}`;
+  }, [loopFrames, satProduct, regionId]);
 
   // Prefetch synoptic analyses that cover the satellite loop into the shared
   // memory cache so play-from-start never waits on the network.
@@ -235,7 +235,7 @@ export function HomeDashboard() {
     void prefetchSynopticGeoJson(urls);
   }, [showSynoptic, showSatelliteLoop, loopFrames, synopticFrames]);
 
-  // Reset to start when the loop catalog identity changes (product / mode / frames).
+  // Reset to start when the loop catalog identity changes (product / region / frames).
   useEffect(() => {
     if (!showSatelliteLoop) return;
     if (loopFrames.length === 0) {
@@ -246,14 +246,6 @@ export function HomeDashboard() {
     autoPlayKeyRef.current = "";
     userPausedRef.current = false;
   }, [loopIdentity, showSatelliteLoop, loopFrames.length]);
-
-  useEffect(() => {
-    if (radarLoopFrames.length === 0) {
-      setRadarIndex(0);
-      return;
-    }
-    setRadarIndex(0);
-  }, [radarLoopFrames.length, mode]);
 
   // Auto-start once a usable buffer is warm (or the whole loop is ready).
   useEffect(() => {
@@ -276,15 +268,7 @@ export function HomeDashboard() {
     playing,
   ]);
 
-  // Auto-start radar loop the same way.
-  useEffect(() => {
-    if (!showRadarUi || radarLoopFrames.length === 0) return;
-    if (userPausedRef.current) return;
-    setPlaying(true);
-  }, [showRadarUi, radarLoopFrames.length]);
-
   // Fixed-cadence satellite playback — never stall waiting on a frame.
-  // SatelliteFrameView holds the last good image if the next is still decoding.
   useEffect(() => {
     if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
     const n = loopFrames.length;
@@ -295,29 +279,28 @@ export function HomeDashboard() {
   }, [playing, showSatelliteLoop, loopFrames.length, playback.msPerFrame]);
 
   useEffect(() => {
-    if (!playing || !showRadarUi || radarLoopFrames.length === 0) return;
-    const id = window.setInterval(() => {
-      setRadarIndex((prev) => (prev + 1) % radarLoopFrames.length);
-    }, playback.msPerFrame);
-    return () => window.clearInterval(id);
-  }, [playing, showRadarUi, radarLoopFrames.length, playback.msPerFrame]);
-
-  useEffect(() => {
-    if (!showLoopUi) {
+    if (!showSatelliteLoop) {
       setPlaying(false);
       userPausedRef.current = false;
     }
-  }, [showLoopUi]);
+  }, [showSatelliteLoop]);
 
   useEffect(() => {
-    if (!satMenuOpen) return;
+    if (!satMenuOpen && !regionMenuOpen) return;
     function onPointerDown(e: MouseEvent) {
-      if (!satMenuRef.current?.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (satMenuRef.current && !satMenuRef.current.contains(t)) {
         setSatMenuOpen(false);
+      }
+      if (regionMenuRef.current && !regionMenuRef.current.contains(t)) {
+        setRegionMenuOpen(false);
       }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setSatMenuOpen(false);
+      if (e.key === "Escape") {
+        setSatMenuOpen(false);
+        setRegionMenuOpen(false);
+      }
     }
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKey);
@@ -325,44 +308,29 @@ export function HomeDashboard() {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [satMenuOpen]);
+  }, [satMenuOpen, regionMenuOpen]);
 
   const scrubLabel = useMemo(() => {
-    if (showSatelliteLoop) {
-      if (mapsLoading && loopFrames.length === 0) return "Loading…";
-      if (mapsError && loopFrames.length === 0) return "Unavailable";
-      if (!activeFrame) {
-        if (satProductMeta.daytimeOnly) return "No daytime frames";
-        return "No frames";
-      }
-      return formatFrameTimeAEST(activeFrame.time);
+    if (!showSatelliteLoop) return "";
+    if (mapsLoading && loopFrames.length === 0) return "Loading…";
+    if (mapsError && loopFrames.length === 0) return "Unavailable";
+    if (!activeFrame) {
+      if (satProductMeta.daytimeOnly) return "No daytime frames";
+      return "No frames";
     }
-    if (showRadarUi) {
-      if (mapsLoading && radarLoopFrames.length === 0) return "Loading…";
-      if (!activeRadarFrame) return "No radar frames";
-      return formatFrameTimeAEST(activeRadarFrame.time);
-    }
-    return "";
+    return formatFrameTimeAEST(activeFrame.time);
   }, [
     showSatelliteLoop,
-    showRadarUi,
     mapsLoading,
     mapsError,
     activeFrame,
-    activeRadarFrame,
     loopFrames.length,
-    radarLoopFrames.length,
     satProductMeta.daytimeOnly,
   ]);
 
   const edgeLabels = useMemo(
     () => timelineEdgeLabels(loopFrames),
     [loopFrames],
-  );
-
-  const radarEdgeLabels = useMemo(
-    () => timelineEdgeLabels(radarLoopFrames),
-    [radarLoopFrames],
   );
 
   const loopStatusLabel = useMemo(() => {
@@ -462,8 +430,16 @@ export function HomeDashboard() {
           </Panel>
 
           <div className="border border-white/20 bg-[var(--bom-blue)] px-3 py-3 text-xs text-[var(--brand)]/85">
-            <p className="font-bold text-[var(--brand)]">Australia-wide coverage</p>
-            <p className="mt-1">From tropical coasts to alpine peaks.</p>
+            <p className="font-bold text-[var(--brand)]">
+              {regionId === "national"
+                ? "Australia-wide coverage"
+                : `${region.label} focus`}
+            </p>
+            <p className="mt-1">
+              {regionId === "national"
+                ? "From tropical coasts to alpine peaks."
+                : "Map and satellite zoom into this region — pick National to return."}
+            </p>
           </div>
         </div>
 
@@ -481,6 +457,7 @@ export function HomeDashboard() {
                       aria-haspopup="listbox"
                       aria-expanded={satMenuOpen}
                       onClick={() => {
+                        setRegionMenuOpen(false);
                         if (mode === "Satellite") {
                           setSatMenuOpen((open) => !open);
                         } else {
@@ -550,6 +527,7 @@ export function HomeDashboard() {
                   onClick={() => {
                     setMode(m);
                     setSatMenuOpen(false);
+                    setRegionMenuOpen(false);
                   }}
                   className={cn(
                     "inline-flex items-center gap-0.5 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
@@ -563,6 +541,67 @@ export function HomeDashboard() {
                 </button>
               );
             })}
+
+            <div className="relative" ref={regionMenuRef}>
+              <button
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={regionMenuOpen}
+                onClick={() => {
+                  setSatMenuOpen(false);
+                  setRegionMenuOpen((open) => !open);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                  regionId !== "national"
+                    ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                    : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
+                )}
+              >
+                <ChevronRight className="h-3.5 w-3.5 opacity-80" aria-hidden />
+                Region
+                <span className="font-normal opacity-80">
+                  · {region.short}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 opacity-80 transition",
+                    regionMenuOpen && "rotate-180",
+                  )}
+                  aria-hidden
+                />
+              </button>
+              {regionMenuOpen ? (
+                <ul
+                  role="listbox"
+                  aria-label="Map region"
+                  className="absolute left-0 top-full z-30 mt-1 max-h-80 min-w-[14rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                >
+                  {MAP_REGIONS.map((r) => (
+                    <li key={r.id} role="option" aria-selected={regionId === r.id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-semibold transition",
+                          regionId === r.id
+                            ? "bg-[var(--bom-yellow)]"
+                            : "hover:bg-[var(--navy-deep)]",
+                        )}
+                        onClick={() => {
+                          setRegionId(r.id);
+                          setRegionMenuOpen(false);
+                        }}
+                      >
+                        <span>{r.label}</span>
+                        <span className="text-[10px] font-bold opacity-70">
+                          {r.short}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </div>
 
           <div
@@ -575,13 +614,12 @@ export function HomeDashboard() {
           >
             <HomeMapDynamic
               mode={mode}
+              regionId={regionId}
               showRadarOverlay={showRadarOverlay}
               frameTileUrl={
-                showRadarUi
-                  ? (activeRadarFrame?.tileUrlTemplate ?? null)
-                  : showRadarOverlay
-                    ? (overlayRadarFrame?.tileUrlTemplate ?? null)
-                    : null
+                showRadarOverlay
+                  ? (overlayRadarFrame?.tileUrlTemplate ?? null)
+                  : null
               }
               frameImageUrl={
                 showSatelliteLoop ? (activeFrame?.imageUrl ?? null) : null
@@ -591,67 +629,47 @@ export function HomeDashboard() {
               }
               frameKey={
                 showSatelliteLoop && activeFrame
-                  ? `${satProduct}-${activeFrame.time}-${satelliteSource ?? "wx"}`
-                  : showRadarUi && activeRadarFrame
-                    ? `radar-${activeRadarFrame.time}`
-                    : showRadarOverlay && overlayRadarFrame
-                      ? `radar-overlay-${overlayRadarFrame.time}`
-                      : undefined
+                  ? `${satProduct}-${regionId}-${activeFrame.time}-${satelliteSource ?? "wx"}`
+                  : showRadarOverlay && overlayRadarFrame
+                    ? `radar-overlay-${overlayRadarFrame.time}`
+                    : undefined
               }
               frameOpacity={1}
               frameAlt={
                 showSatelliteLoop
-                  ? `${satProductMeta.label} satellite loop frame`
-                  : "Radar loop frame"
+                  ? `${satProductMeta.label} · ${region.label}`
+                  : "Map frame"
               }
               mapSettings={mapSettings}
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}
               lightningReferenceTime={
-                showSatelliteLoop
-                  ? (activeFrame?.time ?? null)
-                  : showRadarUi
-                    ? (activeRadarFrame?.time ?? null)
-                    : null
+                showSatelliteLoop ? (activeFrame?.time ?? null) : null
               }
               lightningTimelineStart={
                 showSatelliteLoop && loopFrames.length > 0
                   ? (loopFrames[0]?.time ?? null)
-                  : showRadarUi && radarLoopFrames.length > 0
-                    ? (radarLoopFrames[0]?.time ?? null)
-                    : null
+                  : null
               }
               lightningTimelineEnd={
                 showSatelliteLoop && loopFrames.length > 0
                   ? (loopFrames[loopFrames.length - 1]?.time ?? null)
-                  : showRadarUi && radarLoopFrames.length > 0
-                    ? (radarLoopFrames[radarLoopFrames.length - 1]?.time ?? null)
-                    : null
+                  : null
               }
-              lightningPlaying={
-                (showSatelliteLoop || showRadarUi) && playing
-              }
+              lightningPlaying={showSatelliteLoop && playing}
               lightningMsPerFrame={playback.msPerFrame}
               lightningNextFrameTime={
                 showSatelliteLoop && loopFrames.length > 1
                   ? (loopFrames[(frameIndex + 1) % loopFrames.length]?.time ??
                     null)
-                  : showRadarUi && radarLoopFrames.length > 1
-                    ? (radarLoopFrames[
-                        (radarIndex + 1) % radarLoopFrames.length
-                      ]?.time ?? null)
-                    : null
+                  : null
               }
               showSynoptic={showSynoptic}
               synopticFrames={synopticFrames}
               synopticGeoJson={synopticGeoJson}
               synopticValidTime={synopticValidTime}
               synopticReferenceTime={
-                showSatelliteLoop
-                  ? (activeFrame?.time ?? null)
-                  : showRadarUi
-                    ? (activeRadarFrame?.time ?? null)
-                    : null
+                showSatelliteLoop ? (activeFrame?.time ?? null) : null
               }
             />
           </div>
@@ -756,116 +774,14 @@ export function HomeDashboard() {
                 )}
               </div>
             </div>
-          ) : showRadarUi ? (
-            <div className="flex items-center gap-3 border border-white/25 bg-[var(--bom-blue)] px-3 py-2.5 text-[var(--brand)]">
-              <button
-                type="button"
-                onClick={() => {
-                  if (playing) {
-                    userPausedRef.current = true;
-                    setPlaying(false);
-                    return;
-                  }
-                  if (radarLoopFrames.length === 0) return;
-                  userPausedRef.current = false;
-                  if (radarIndex >= radarLoopFrames.length - 1) {
-                    setRadarIndex(0);
-                  }
-                  setPlaying(true);
-                }}
-                disabled={radarLoopFrames.length === 0}
-                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
-                aria-label={playing ? "Pause timeline" : "Play timeline"}
-              >
-                {playing ? (
-                  <Pause className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4 translate-x-px" />
-                )}
-              </button>
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
-                  <span className="font-semibold text-[var(--brand)]">{scrubLabel}</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="hidden sm:inline">
-                      {radarLoopFrames.length > 0
-                        ? "RainViewer radar"
-                        : mapsLoading
-                          ? "Loading radar…"
-                          : "Radar unavailable"}
-                    </span>
-                    {radarLoopFrames.length > 0 ? (
-                      <span className="text-[10px] text-[var(--brand)]/65">
-                        Frame {radarIndex + 1}/{radarLoopFrames.length}
-                      </span>
-                    ) : null}
-                    <div
-                      className="inline-flex items-center gap-0.5"
-                      role="group"
-                      aria-label="Animation speed"
-                    >
-                      {PLAYBACK_SPEEDS.map((speed) => (
-                        <button
-                          key={speed.id}
-                          type="button"
-                          onClick={() => setPlaybackSpeed(speed.id)}
-                          className={cn(
-                            "px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
-                            playbackSpeed === speed.id
-                              ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
-                              : "bg-[var(--navy-deep)] text-[var(--brand)]/80 hover:bg-[var(--page)]/10",
-                          )}
-                          aria-pressed={playbackSpeed === speed.id}
-                        >
-                          {speed.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                {radarLoopFrames.length === 0 ? (
-                  <p className="text-xs text-[var(--brand)]/75">
-                    {mapsLoading
-                      ? "Fetching RainViewer frames…"
-                      : "No radar frames available right now."}
-                  </p>
-                ) : (
-                  <>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={radarScrub}
-                      onChange={(e) => {
-                        userPausedRef.current = true;
-                        setPlaying(false);
-                        setRadarIndex(
-                          scrubToFrameIndex(
-                            Number(e.target.value),
-                            radarLoopFrames.length,
-                          ),
-                        );
-                      }}
-                      className="w-full accent-[var(--bom-yellow)]"
-                      aria-label="Radar timeline"
-                    />
-                    <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/70">
-                      <span>{radarEdgeLabels.start}</span>
-                      <span className="hidden sm:inline">{radarEdgeLabels.mid}</span>
-                      <span>{radarEdgeLabels.end}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
           ) : (
             <p className="border border-white/25 bg-[var(--bom-blue-mid)] px-3 py-2 text-xs text-[var(--ink)]/80">
-              Select{" "}
+              <span className="font-semibold text-[var(--ink)]">Map</span> view
+              with live overlays. Use{" "}
+              <span className="font-semibold text-[var(--ink)]">Region</span> to
+              zoom into a state, or{" "}
               <span className="font-semibold text-[var(--ink)]">Satellite</span>{" "}
-              for Himawari loops, or{" "}
-              <span className="font-semibold text-[var(--ink)]">Radar</span> for
-              RainViewer. Lightning and Synoptic overlays sync to the active
-              timeline.
+              for Himawari loops. Rain radar stays available as an overlay.
             </p>
           )}
         </div>

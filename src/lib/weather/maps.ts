@@ -130,6 +130,8 @@ export const GIBS_AU_BOUNDS: [[number, number], [number, number]] = [
   [-5, 165],
 ];
 
+export type LonLatBounds = [[number, number], [number, number]];
+
 export function lonLatToWebMercator(lon: number, lat: number): [number, number] {
   const x = (lon * 20037508.34) / 180;
   let y =
@@ -154,32 +156,39 @@ export function lonLatToGibsPct(lon: number, lat: number): { x: number; y: numbe
   };
 }
 
+/** Mercator width/height ratio of a lon/lat bounds box. */
+export function boundsMercatorAspect(bounds: LonLatBounds): number {
+  const [[south, west], [north, east]] = bounds;
+  const [minx, miny] = lonLatToWebMercator(west, south);
+  const [maxx, maxy] = lonLatToWebMercator(east, north);
+  return (maxx - minx) / (maxy - miny);
+}
+
 /** Mercator width/height ratio of GIBS_AU_BOUNDS — keep WMS + map CSS in sync. */
-export const GIBS_AU_ASPECT =
-  (() => {
-    const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
-    const [minx, miny] = lonLatToWebMercator(west, south);
-    const [maxx, maxy] = lonLatToWebMercator(east, north);
-    return (maxx - minx) / (maxy - miny);
-  })();
+export const GIBS_AU_ASPECT = boundsMercatorAspect(GIBS_AU_BOUNDS);
 
 /** Display width for full satellite frames (balanced sharpness vs load time). */
 export const GIBS_DISPLAY_WIDTH = 1024;
 
+/** Tighter regional crops use a wider raster so zoomed views stay sharp. */
+export const GIBS_REGION_DISPLAY_WIDTH = 1280;
+
 export function gibsHimawariWmsUrl(
   isoTime: string,
   product: SatelliteProductId = DEFAULT_SATELLITE_PRODUCT,
-  options?: { width?: number },
+  options?: { width?: number; bounds?: LonLatBounds },
 ): string {
   const meta = getSatelliteProduct(product);
   if (!meta.gibsLayer) {
     throw new Error(`Product ${product} has no GIBS layer`);
   }
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+  const bounds = options?.bounds ?? GIBS_AU_BOUNDS;
+  const [[south, west], [north, east]] = bounds;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
+  const aspect = boundsMercatorAspect(bounds);
   const width = options?.width ?? GIBS_DISPLAY_WIDTH;
-  const height = Math.max(1, Math.round(width / GIBS_AU_ASPECT));
+  const height = Math.max(1, Math.round(width / aspect));
   const params = new URLSearchParams({
     SERVICE: "WMS",
     REQUEST: "GetMap",
@@ -201,12 +210,14 @@ export function gibsHimawariWmsUrl(
 export function realEarthImageUrl(
   realearthProduct: string,
   timeUnix: number,
-  options?: { width?: number; height?: number },
+  options?: { width?: number; height?: number; bounds?: LonLatBounds },
 ): string {
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+  const bounds = options?.bounds ?? GIBS_AU_BOUNDS;
+  const [[south, west], [north, east]] = bounds;
+  const aspect = boundsMercatorAspect(bounds);
   const width = options?.width ?? GIBS_DISPLAY_WIDTH;
   const height =
-    options?.height ?? Math.max(1, Math.round(width / GIBS_AU_ASPECT));
+    options?.height ?? Math.max(1, Math.round(width / aspect));
   const d = new Date(timeUnix * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   const time = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
@@ -240,11 +251,15 @@ export function parseRealEarthTimeToken(token: string): number {
 export function satelliteFrameProxyUrl(
   product: SatelliteProductId,
   timeUnix: number,
+  options?: { region?: string },
 ): string {
   const q = new URLSearchParams({
     product,
     time: String(timeUnix),
   });
+  if (options?.region && options.region !== "national") {
+    q.set("region", options.region);
+  }
   return `/api/weather/frame?${q.toString()}`;
 }
 

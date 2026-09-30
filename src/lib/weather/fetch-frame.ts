@@ -1,10 +1,12 @@
 import {
   GIBS_DISPLAY_WIDTH,
-  GIBS_AU_ASPECT,
+  GIBS_REGION_DISPLAY_WIDTH,
+  boundsMercatorAspect,
   gibsHimawariWmsUrl,
   getSatelliteProduct,
   realEarthImageUrl,
   toIsoZ,
+  type LonLatBounds,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
 import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
@@ -16,19 +18,27 @@ const FETCH_ATTEMPTS = 3;
 function upstreamUrlFor(
   product: SatelliteProductId,
   timeUnix: number,
+  bounds: LonLatBounds,
+  region: string,
 ): string {
   const meta = getSatelliteProduct(product);
+  const isRegional = region !== "national";
+  const width = isRegional ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH;
+  const aspect = boundsMercatorAspect(bounds);
+  const height = Math.max(1, Math.round(width / aspect));
   if (meta.provider === "realearth") {
     if (!meta.realearthProduct) {
       throw new Error(`Product ${product} missing realearthProduct`);
     }
     return realEarthImageUrl(meta.realearthProduct, timeUnix, {
-      width: GIBS_DISPLAY_WIDTH,
-      height: Math.max(1, Math.round(GIBS_DISPLAY_WIDTH / GIBS_AU_ASPECT)),
+      width,
+      height,
+      bounds,
     });
   }
   return gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
-    width: GIBS_DISPLAY_WIDTH,
+    width,
+    bounds,
   });
 }
 
@@ -64,8 +74,10 @@ async function fetchUpstreamOnce(
 async function fetchUpstreamWithRetry(
   product: SatelliteProductId,
   timeUnix: number,
+  bounds: LonLatBounds,
+  region: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
-  const upstream = upstreamUrlFor(product, timeUnix);
+  const upstream = upstreamUrlFor(product, timeUnix, bounds, region);
   for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
     const got = await fetchUpstreamOnce(upstream);
     if (got) return got;
@@ -80,13 +92,18 @@ async function fetchUpstreamWithRetry(
 export async function fetchAndCacheFrame(
   product: SatelliteProductId,
   timeUnix: number,
+  bounds: LonLatBounds = [
+    [-48, 105],
+    [-5, 165],
+  ],
+  region = "national",
 ): Promise<{ body: Buffer; contentType: string } | null> {
-  const cached = getCachedFrame(product, timeUnix);
+  const cached = getCachedFrame(product, timeUnix, region);
   if (cached) return { body: cached.body, contentType: cached.contentType };
 
-  const got = await fetchUpstreamWithRetry(product, timeUnix);
+  const got = await fetchUpstreamWithRetry(product, timeUnix, bounds, region);
   if (!got) return null;
-  setCachedFrame(product, timeUnix, got.body, got.contentType);
+  setCachedFrame(product, timeUnix, got.body, got.contentType, region);
   return got;
 }
 
@@ -97,8 +114,14 @@ export async function fetchAndCacheFrame(
 export async function fetchAndCacheFrameResilient(
   product: SatelliteProductId,
   timeUnix: number,
+  bounds?: LonLatBounds,
+  region = "national",
 ): Promise<{ body: Buffer; contentType: string; resolvedTime: number } | null> {
-  const cached = getCachedFrame(product, timeUnix);
+  const frameBounds: LonLatBounds = bounds ?? [
+    [-48, 105],
+    [-5, 165],
+  ];
+  const cached = getCachedFrame(product, timeUnix, region);
   if (cached) {
     return {
       body: cached.body,
@@ -113,12 +136,14 @@ export async function fetchAndCacheFrameResilient(
     if (t <= 0) continue;
     const got =
       off === 0
-        ? await fetchUpstreamWithRetry(product, t)
-        : await fetchAndCacheFrame(product, t);
+        ? await fetchUpstreamWithRetry(product, t, frameBounds, region)
+        : await fetchAndCacheFrame(product, t, frameBounds, region);
     if (!got) continue;
     // Store under the requested key so the loop URL keeps working.
-    setCachedFrame(product, timeUnix, got.body, got.contentType);
-    if (off !== 0) setCachedFrame(product, t, got.body, got.contentType);
+    setCachedFrame(product, timeUnix, got.body, got.contentType, region);
+    if (off !== 0) {
+      setCachedFrame(product, t, got.body, got.contentType, region);
+    }
     return { ...got, resolvedTime: t };
   }
   return null;

@@ -36,9 +36,114 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
 };
 
 /** Primary map view — not the same as overlay layers. */
-export const MAP_MODES = ["Map", "Satellite", "Radar"] as const;
+export const MAP_MODES = ["Map", "Satellite"] as const;
 
 export type MapMode = (typeof MAP_MODES)[number];
+
+/** Leaflet / GIBS crop bounds as [[south, west], [north, east]]. */
+export type RegionBounds = [[number, number], [number, number]];
+
+/**
+ * Map region focus. National = full AU frame; states zoom Map + Satellite
+ * into that area (satellite requests a tighter higher-res crop).
+ */
+export const MAP_REGIONS = [
+  {
+    id: "national",
+    label: "National",
+    short: "AU",
+    bounds: [
+      [-48, 105],
+      [-5, 165],
+    ] as RegionBounds,
+  },
+  {
+    id: "nsw",
+    label: "New South Wales",
+    short: "NSW",
+    bounds: [
+      [-37.55, 140.85],
+      [-28.05, 153.75],
+    ] as RegionBounds,
+  },
+  {
+    id: "vic",
+    label: "Victoria",
+    short: "VIC",
+    bounds: [
+      [-39.25, 140.85],
+      [-33.85, 150.15],
+    ] as RegionBounds,
+  },
+  {
+    id: "qld",
+    label: "Queensland",
+    short: "QLD",
+    bounds: [
+      [-29.25, 137.85],
+      [-9.05, 153.65],
+    ] as RegionBounds,
+  },
+  {
+    id: "wa",
+    label: "Western Australia",
+    short: "WA",
+    bounds: [
+      [-35.25, 112.85],
+      [-13.55, 129.15],
+    ] as RegionBounds,
+  },
+  {
+    id: "sa",
+    label: "South Australia",
+    short: "SA",
+    bounds: [
+      [-38.15, 128.95],
+      [-25.85, 141.15],
+    ] as RegionBounds,
+  },
+  {
+    id: "tas",
+    label: "Tasmania",
+    short: "TAS",
+    bounds: [
+      [-43.75, 144.45],
+      [-40.45, 148.55],
+    ] as RegionBounds,
+  },
+  {
+    id: "nt",
+    label: "Northern Territory",
+    short: "NT",
+    bounds: [
+      [-26.05, 128.95],
+      [-10.85, 138.15],
+    ] as RegionBounds,
+  },
+  {
+    id: "act",
+    label: "Australian Capital Territory",
+    short: "ACT",
+    bounds: [
+      [-35.95, 148.72],
+      [-35.1, 149.45],
+    ] as RegionBounds,
+  },
+] as const;
+
+export type MapRegionId = (typeof MAP_REGIONS)[number]["id"];
+
+export const DEFAULT_MAP_REGION: MapRegionId = "national";
+
+export function getMapRegion(
+  id: MapRegionId = DEFAULT_MAP_REGION,
+): (typeof MAP_REGIONS)[number] {
+  return MAP_REGIONS.find((r) => r.id === id) ?? MAP_REGIONS[0]!;
+}
+
+export function isMapRegionId(value: string): value is MapRegionId {
+  return MAP_REGIONS.some((r) => r.id === value);
+}
 
 /** Demo “now” for Sydney — shared so every panel stays consistent. */
 export const SYDNEY_NOW = {

@@ -14,18 +14,23 @@ function store(): Map<string, CacheEntry> {
   return g.__skywatchFrameCache;
 }
 
-const MAX_ENTRIES = 120;
+const MAX_ENTRIES = 160;
 const TTL_MS = 6 * 60 * 60 * 1000;
 
-export function frameCacheKey(product: string, timeUnix: number): string {
-  return `${product}:${timeUnix}`;
+export function frameCacheKey(
+  product: string,
+  timeUnix: number,
+  region = "national",
+): string {
+  return `${product}:${region}:${timeUnix}`;
 }
 
 export function getCachedFrame(
   product: string,
   timeUnix: number,
+  region = "national",
 ): CacheEntry | null {
-  const key = frameCacheKey(product, timeUnix);
+  const key = frameCacheKey(product, timeUnix, region);
   const entry = store().get(key);
   if (!entry) return null;
   if (Date.now() - entry.cachedAt > TTL_MS) {
@@ -40,6 +45,7 @@ export function setCachedFrame(
   timeUnix: number,
   body: Buffer,
   contentType: string,
+  region = "national",
 ): void {
   const cache = store();
   if (cache.size >= MAX_ENTRIES) {
@@ -54,7 +60,7 @@ export function setCachedFrame(
     }
     if (oldestKey) cache.delete(oldestKey);
   }
-  cache.set(frameCacheKey(product, timeUnix), {
+  cache.set(frameCacheKey(product, timeUnix, region), {
     body,
     contentType,
     cachedAt: Date.now(),
