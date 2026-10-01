@@ -13,6 +13,8 @@ import { fetchAndCacheFrameResilient } from "@/lib/weather/fetch-frame";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+/** Multi-panel RealEarth stitches for large states need headroom. */
+export const maxDuration = 60;
 
 /**
  * Same-origin proxy for Himawari WMS frames.
