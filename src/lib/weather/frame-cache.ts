@@ -1,4 +1,6 @@
 /** Process-local cache for proxied Himawari/GIBS frames. */
+import { FRAME_QUALITY_TAG } from "@/lib/weather/maps";
+
 type CacheEntry = {
   body: Buffer;
   contentType: string;
@@ -14,7 +16,7 @@ function store(): Map<string, CacheEntry> {
   return g.__skywatchFrameCache;
 }
 
-const MAX_ENTRIES = 160;
+const MAX_ENTRIES = 220;
 const TTL_MS = 6 * 60 * 60 * 1000;
 
 export function frameCacheKey(
@@ -22,7 +24,7 @@ export function frameCacheKey(
   timeUnix: number,
   region = "national",
 ): string {
-  return `${product}:${region}:${timeUnix}`;
+  return `${FRAME_QUALITY_TAG}:${product}:${region}:${timeUnix}`;
 }
 
 export function getCachedFrame(

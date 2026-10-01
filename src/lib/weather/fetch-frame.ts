@@ -1,4 +1,5 @@
 import {
+  FRAME_QUALITY_TAG,
   GIBS_DISPLAY_WIDTH,
   GIBS_REGION_DISPLAY_WIDTH,
   boundsMercatorAspect,
@@ -12,7 +13,7 @@ import {
 import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
 
 const MIN_FRAME_BYTES = 8_000;
-const GIBS_STEP_SEC = 10 * 60;
+const HIMAWARI_STEP_SEC = 10 * 60;
 const FETCH_ATTEMPTS = 3;
 
 function upstreamUrlFor(
@@ -108,7 +109,7 @@ export async function fetchAndCacheFrame(
 }
 
 /**
- * Exact time first, then neighbouring 10-minute slots (GIBS publish lag /
+ * Exact time first, then neighbouring 10-minute slots (publish lag /
  * daytime-only gaps). Caches under the requested key so playback stays smooth.
  */
 export async function fetchAndCacheFrameResilient(
@@ -130,7 +131,7 @@ export async function fetchAndCacheFrameResilient(
     };
   }
 
-  const offsets = [0, -GIBS_STEP_SEC, GIBS_STEP_SEC, -2 * GIBS_STEP_SEC];
+  const offsets = [0, -HIMAWARI_STEP_SEC, HIMAWARI_STEP_SEC, -2 * HIMAWARI_STEP_SEC];
   for (const off of offsets) {
     const t = timeUnix + off;
     if (t <= 0) continue;

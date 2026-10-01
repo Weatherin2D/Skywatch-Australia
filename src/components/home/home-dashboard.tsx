@@ -263,7 +263,7 @@ export function HomeDashboard() {
   const overlayRadarFrame = useMemo(() => {
     if (!showRadarOverlay || radarFrames.length === 0) return null;
     if (showSatelliteLoop && activeFrame) {
-      return pickWeatherFrame(radarFrames, activeFrame.time, 10 * 60);
+      return pickWeatherFrame(radarFrames, activeFrame.time, 15 * 60);
     }
     return radarFrames[radarFrames.length - 1] ?? null;
   }, [showRadarOverlay, showSatelliteLoop, activeFrame, radarFrames]);

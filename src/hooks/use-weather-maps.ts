@@ -57,7 +57,7 @@ export function useWeatherMaps(
     void load(ac.signal);
     const id = window.setInterval(() => {
       void load();
-    }, 5 * 60 * 1000);
+    }, 90 * 1000);
     return () => {
       ac.abort();
       window.clearInterval(id);

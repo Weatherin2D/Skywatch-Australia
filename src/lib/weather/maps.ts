@@ -43,7 +43,9 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "visible",
     label: "Visible",
     loopLabel: "Visible loop",
-    provider: "gibs",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B03",
+    /** GIBS fallback when RealEarth is briefly empty overnight */
     gibsLayer: "Himawari_AHI_Band3_Red_Visible_1km",
     daytimeOnly: true,
   },
@@ -51,14 +53,16 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "infrared",
     label: "Infrared",
     loopLabel: "Infrared loop",
-    provider: "gibs",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B13",
     gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
   },
   {
     id: "airmass",
     label: "Air Mass",
     loopLabel: "Air Mass loop",
-    provider: "gibs",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-airmass",
     gibsLayer: "Himawari_AHI_Air_Mass",
   },
   {
@@ -177,11 +181,20 @@ export function boundsMercatorAspect(bounds: LonLatBounds): number {
 /** Mercator width/height ratio of GIBS_AU_BOUNDS — keep WMS + map CSS in sync. */
 export const GIBS_AU_ASPECT = boundsMercatorAspect(GIBS_AU_BOUNDS);
 
-/** Display width for full satellite frames (balanced sharpness vs load time). */
-export const GIBS_DISPLAY_WIDTH = 1024;
+/** Display width for full satellite frames (sharp national overview). */
+export const GIBS_DISPLAY_WIDTH = 1536;
 
 /** Tighter regional crops use a wider raster so zoomed views stay sharp. */
-export const GIBS_REGION_DISPLAY_WIDTH = 1280;
+export const GIBS_REGION_DISPLAY_WIDTH = 1920;
+
+/** Bump when raster size changes so in-memory frame caches invalidate. */
+export const FRAME_QUALITY_TAG = "q1536";
+
+/** Target loop length (~4h at 10-minute Himawari cadence). */
+export const SATELLITE_FRAME_COUNT = 24;
+
+/** Himawari full-disk step used across sat / radar matching. */
+export const HIMAWARI_STEP_SEC = 10 * 60;
 
 export function gibsHimawariWmsUrl(
   isoTime: string,
@@ -373,7 +386,10 @@ export function pickWeatherFrame(
   return best;
 }
 
-/** Keep only frames that fall inside the RainViewer radar past window. */
+/**
+ * Keep frames that overlap the radar window on the old end, but allow
+ * satellite to lead radar when imagery is fresher than RainViewer's past.
+ */
 export function trimFramesToRadarWindow(
   frames: WeatherFrame[],
   radar: WeatherFrame[],
@@ -381,20 +397,20 @@ export function trimFramesToRadarWindow(
 ): WeatherFrame[] {
   if (frames.length === 0 || radar.length === 0) return frames;
   const start = radar[0]!.time - padSec;
-  const end = radar[radar.length - 1]!.time + padSec;
-  const trimmed = frames.filter((f) => f.time >= start && f.time <= end);
+  const trimmed = frames.filter((f) => f.time >= start);
   return trimmed.length >= 3 ? trimmed : frames;
 }
 
 /**
- * Build GIBS/RealEarth times on the same 10-minute spine as RainViewer radar,
- * clipped to imagery that is actually available (not newer than satLatest).
+ * Prefer satellite's native 10-minute stamps. When radar is available, keep
+ * stamps that also land on the radar spine so rain overlays line up — but
+ * never drop the newest satellite frames just because radar lags.
  */
 export function alignTimesToRadar(
   radarTimesUnix: number[],
   satLatestUnix: number,
-  stepSec = 10 * 60,
-  maxCount = 18,
+  stepSec = HIMAWARI_STEP_SEC,
+  maxCount = SATELLITE_FRAME_COUNT,
 ): number[] {
   if (radarTimesUnix.length === 0) return [];
   const latest = satLatestUnix + stepSec / 2;
@@ -404,5 +420,34 @@ export function alignTimesToRadar(
     const s = Math.round(t / stepSec) * stepSec;
     if (s > 0 && s <= latest) snapped.add(s);
   }
+  // Always include the newest satellite stamp so the loop tip stays fresh.
+  const tip = Math.round(satLatestUnix / stepSec) * stepSec;
+  if (tip > 0) snapped.add(tip);
+  return [...snapped].sort((a, b) => a - b).slice(-maxCount);
+}
+
+/**
+ * Build a shared Himawari timeline from satellite product times, optionally
+ * enriched with radar stamps that fall inside the same window.
+ */
+export function buildSatelliteTimeline(
+  satTimesUnix: number[],
+  radarTimesUnix: number[] = [],
+  stepSec = HIMAWARI_STEP_SEC,
+  maxCount = SATELLITE_FRAME_COUNT,
+): number[] {
+  if (satTimesUnix.length === 0) return [];
+  const latest = satTimesUnix[satTimesUnix.length - 1]!;
+  const earliestWanted = latest - (maxCount - 1) * stepSec;
+  const snapped = new Set<number>();
+  for (const t of satTimesUnix) {
+    if (t < earliestWanted - stepSec / 2) continue;
+    snapped.add(Math.round(t / stepSec) * stepSec);
+  }
+  for (const t of radarTimesUnix) {
+    if (t < earliestWanted - stepSec / 2 || t > latest + stepSec / 2) continue;
+    snapped.add(Math.round(t / stepSec) * stepSec);
+  }
+  snapped.add(Math.round(latest / stepSec) * stepSec);
   return [...snapped].sort((a, b) => a - b).slice(-maxCount);
 }

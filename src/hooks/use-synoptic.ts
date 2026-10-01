@@ -89,7 +89,7 @@ export function useSynoptic(enabled: boolean) {
     void load(ac.signal);
     const id = window.setInterval(() => {
       void load();
-    }, 10 * 60_000);
+    }, 5 * 60_000);
     return () => {
       ac.abort();
       window.clearInterval(id);

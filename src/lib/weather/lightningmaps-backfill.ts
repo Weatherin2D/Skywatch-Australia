@@ -6,8 +6,9 @@
  * strike-palette pixels with the official map coords + Mercator inverse so
  * placement matches the published maps, then merge into the live buffer.
  *
- * Fetch both a fine 2h map (recent timing) and a 12h map (covers the full
- * Himawari IR loop, which lags wall clock by ~45–90 min and spans ~3h).
+ * Fetch both a fine 1–2h map (recent timing for the fresher RealEarth tip)
+ * and a 12h map (covers the full Himawari IR loop, typically ~20–40 min behind
+ * wall clock and spanning ~4h).
  */
 
 import { PNG } from "pngjs";
@@ -49,8 +50,8 @@ const MAPS = [
   },
 ] as const;
 
-/** Fine recent ages + longer history to cover lagged IR frames. */
-const PERIODS_H = [2, 12] as const;
+/** Fine recent ages + longer history to cover the satellite loop tip. */
+const PERIODS_H = [1, 2, 12] as const;
 
 const USER_AGENT = "SkyWatchAustralia/1.0";
 /** Keep up to the longest fetched period. */
