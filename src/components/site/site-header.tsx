@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { SkyWatchLogo } from "@/components/site/skywatch-logo";
+import { LocationSearch } from "@/components/forecast/location-search";
+import { STATE_CAPITALS } from "@/lib/weather/location-forecast";
 
 const STATES = [
   "NSW",
@@ -31,34 +33,30 @@ export function SiteHeader() {
             aria-label="Regions"
             className="hidden items-center gap-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--brand)]/90 xl:flex"
           >
-            {STATES.map((state, i) => (
-              <span key={state} className="flex items-center">
-                {i > 0 ? (
-                  <span className="px-1.5 text-[var(--brand)]/35" aria-hidden>
-                    |
-                  </span>
-                ) : null}
-                <Link
-                  href={`/forecast?region=${state.toLowerCase()}`}
-                  className="hover:underline"
-                >
-                  {state}
-                </Link>
-              </span>
-            ))}
+            {STATES.map((state, i) => {
+              const key = state.toLowerCase();
+              const capital = STATE_CAPITALS[key];
+              const href = capital
+                ? `/forecast/${capital.geohash}`
+                : `/forecast?region=${key}`;
+              return (
+                <span key={state} className="flex items-center">
+                  {i > 0 ? (
+                    <span className="px-1.5 text-[var(--brand)]/35" aria-hidden>
+                      |
+                    </span>
+                  ) : null}
+                  <Link href={href} className="hover:underline">
+                    {state}
+                  </Link>
+                </span>
+              );
+            })}
           </nav>
-          <label className="relative block w-[min(100vw-8rem,200px)]">
-            <span className="sr-only">Search locations</span>
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/70"
-              aria-hidden
-            />
-            <input
-              type="search"
-              placeholder="Search locations…"
-              className="h-8 w-full border-0 bg-[var(--page)] pl-8 pr-2 text-sm text-white outline-none placeholder:text-white/50"
-            />
-          </label>
+          <LocationSearch
+            compact
+            className="w-[min(100vw-8rem,220px)]"
+          />
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center bg-[var(--brand)]/10 text-[var(--brand)] transition hover:bg-[var(--brand)]/15"

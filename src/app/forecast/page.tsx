@@ -1,10 +1,26 @@
-import ComingSoonPage from "@/components/site/coming-soon";
+import { Suspense } from "react";
+import { ForecastExplorer } from "@/components/forecast/forecast-explorer";
 
-export default function ForecastPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ForecastPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ region?: string; geohash?: string; q?: string }>;
+}) {
+  const params = await searchParams;
   return (
-    <ComingSoonPage
-      title="Forecast"
-      blurb="Detailed location and national forecasts are on the way."
-    />
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[var(--page)] text-white/70">
+          Loading forecast…
+        </div>
+      }
+    >
+      <ForecastExplorer
+        geohash={params.geohash || null}
+        region={params.region || null}
+      />
+    </Suspense>
   );
 }

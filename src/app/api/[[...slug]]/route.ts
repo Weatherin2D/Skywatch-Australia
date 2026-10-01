@@ -11,6 +11,8 @@ import * as weatherMaps from "@/server/api/weather-maps";
 import * as weatherSynoptic from "@/server/api/weather-synoptic";
 import * as weatherSynopticFrame from "@/server/api/weather-synoptic-frame";
 import * as weatherWarnings from "@/server/api/weather-warnings";
+import * as weatherLocations from "@/server/api/weather-locations";
+import * as weatherLocationForecast from "@/server/api/weather-location-forecast";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,6 +42,8 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/synoptic": weatherSynoptic as RouteHandlers,
   "weather/synoptic/frame": weatherSynopticFrame as RouteHandlers,
   "weather/warnings": weatherWarnings as RouteHandlers,
+  "weather/locations": weatherLocations as RouteHandlers,
+  "weather/forecast": weatherLocationForecast as RouteHandlers,
 };
 
 function resolve(
@@ -57,6 +61,15 @@ function resolve(
     parts[1] === "warnings"
   ) {
     route = ROUTES["weather/warnings"];
+  }
+  // /api/weather/forecast/:geohash
+  if (
+    !route &&
+    parts.length === 3 &&
+    parts[0] === "weather" &&
+    parts[1] === "forecast"
+  ) {
+    route = ROUTES["weather/forecast"];
   }
   if (!route) return null;
   const handler = route[method as keyof RouteHandlers];

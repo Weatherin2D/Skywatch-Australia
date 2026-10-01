@@ -9,21 +9,22 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | Route | Status |
 |-------|--------|
 | `/` | SkyWatch homepage — Himawari satellite loops, Map overlays (Lightning, Rain radar, Synoptic MSLP), region picker, live BoM warnings panel |
-| `/warnings` | Live BoM warnings list, sorted by severity; filter by state |
-| `/warnings/[id]` | Warning detail — full BoM text plus embedded maps/images |
+| `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
+| `/forecast/[geohash]` | Direct forecast for a BoM location |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
 | `/api/weather/warnings` | Live BoM warning list (category-ranked); `/api/weather/warnings/:id` for detail |
-
-**Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (moderate/minor flood warnings; major/moderate flood watches) · Minor (minor flood watches; marine wind warnings). Other BoM products map to the nearest class.
-| `/forecast` | Coming soon stub |
+| `/api/weather/locations` | BoM location search (`?q=`) |
+| `/api/weather/forecast` | BoM daily + hourly + observations (`?geohash=` / `/:geohash` / `?region=`) |
 | `/risk` | Preserved convective outlook (former AusRisk public map) |
 | `/risk/admin` | Preserved outlook admin upload |
 
 Forecast APIs under `/api/forecast` and `/api/admin/*` still power `/risk`.
+
+**Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (moderate/minor flood warnings; major/moderate flood watches) · Minor (minor flood watches; marine wind warnings).
 
 ## Run locally
 
