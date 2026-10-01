@@ -3,11 +3,8 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
-import { SiteFooter } from "@/components/site/site-footer";
-import { SiteHeader } from "@/components/site/site-header";
-import { SiteNav } from "@/components/site/site-nav";
-import { WarningsBar } from "@/components/site/warnings-bar";
+import { AlertTriangle, ChevronRight } from "lucide-react";
+import { SiteShell } from "@/components/site/site-shell";
 import {
   WarningSeverityBadge,
   warningSeverityClasses,
@@ -37,11 +34,14 @@ function WarningCard({ w }: { w: BomWarningSummary }) {
   return (
     <Link
       href={w.href}
-      className={cn("flex gap-3 border p-3 transition", tone.row)}
+      className={cn(
+        "group flex gap-3 rounded-lg border p-3 transition sm:p-3.5",
+        tone.row,
+      )}
     >
       <span
         className={cn(
-          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center",
+          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
           tone.icon,
         )}
       >
@@ -52,14 +52,14 @@ function WarningCard({ w }: { w: BomWarningSummary }) {
           <span className="text-[11px] font-bold uppercase tracking-wide text-white/70">
             {w.states.join(" · ") || w.state}
           </span>
-          <span className="text-[11px] uppercase tracking-wide text-white/45">
+          <span className="text-[11px] uppercase tracking-wide text-white/40">
             {w.phase}
           </span>
         </div>
         <p className="text-base font-bold text-white">{w.shortTitle}</p>
-        <p className="mt-0.5 text-sm text-white/75">{w.title}</p>
+        <p className="mt-0.5 line-clamp-2 text-sm text-white/70">{w.title}</p>
         {w.issueTime ? (
-          <p className="mt-1 text-xs text-white/55">
+          <p className="mt-1.5 text-xs text-white/50">
             Issued {formatWarningTime(w.issueTime)}
             {w.expiryTime
               ? ` · Expires ${formatWarningTime(w.expiryTime)}`
@@ -67,6 +67,10 @@ function WarningCard({ w }: { w: BomWarningSummary }) {
           </p>
         ) : null}
       </div>
+      <ChevronRight
+        className="mt-2 h-4 w-4 shrink-0 text-white/35 transition group-hover:text-white/70"
+        aria-hidden
+      />
     </Link>
   );
 }
@@ -119,99 +123,100 @@ export function WarningsListPage() {
   }, [warnings, stateFilter]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--page)]">
-      <SiteHeader />
-      <WarningsBar />
-      <SiteNav />
-      <main className="mx-auto w-full max-w-[1100px] flex-1 px-3 py-6 sm:px-4">
+    <SiteShell>
+      <div className="mx-auto w-full max-w-[960px] px-3 py-5 sm:px-4 sm:py-6">
         <div className="mb-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--bom-yellow)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--bom-yellow)]">
             Bureau of Meteorology
           </p>
           <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
             Current warnings
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-white/75">
-            Live Australian weather warnings grouped by category — Critical,
-            Severe, Moderate, and Minor.
+          <p className="mt-1.5 max-w-xl text-sm text-white/70">
+            Live Australian weather warnings by severity — Critical, Severe,
+            Moderate, and Minor.
           </p>
         </div>
 
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-white/55">
-            Category
-          </span>
-          <Link
-            href={categoryHref(null, stateFilter)}
-            className={cn(
-              "border px-2.5 py-1 text-xs font-semibold",
-              !categoryFilter
-                ? "border-[var(--bom-yellow)] bg-[var(--bom-yellow)] text-[var(--brand)]"
-                : "border-white/20 text-white/85 hover:bg-white/10",
-            )}
-          >
-            All ({activeCount})
-          </Link>
-          {WARNING_CATEGORIES.map((c) => {
-            const tone = warningSeverityClasses(c);
-            const count = categoryCounts[c];
-            return (
+        <div className="mb-4 space-y-3">
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+              Category
+            </p>
+            <div className="sw-chip-row">
               <Link
-                key={c}
-                href={categoryHref(c, stateFilter)}
+                href={categoryHref(null, stateFilter)}
                 className={cn(
-                  "border px-2.5 py-1 text-xs font-semibold",
-                  categoryFilter === c
-                    ? tone.badge
-                    : "border-white/20 text-white/85 hover:bg-white/10",
+                  "sw-chip",
+                  !categoryFilter ? "sw-chip-active" : "sw-chip-idle",
                 )}
               >
-                {severityLabel(c)}
-                {count ? ` (${count})` : ""}
+                All ({activeCount})
               </Link>
-            );
-          })}
-        </div>
+              {WARNING_CATEGORIES.map((c) => {
+                const tone = warningSeverityClasses(c);
+                const count = categoryCounts[c];
+                return (
+                  <Link
+                    key={c}
+                    href={categoryHref(c, stateFilter)}
+                    className={cn(
+                      "sw-chip",
+                      categoryFilter === c ? tone.badge : "sw-chip-idle",
+                    )}
+                  >
+                    {severityLabel(c)}
+                    {count ? ` (${count})` : ""}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
 
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-white/55">
-            State
-          </span>
-          <Link
-            href={categoryHref(categoryFilter, "")}
-            className={cn(
-              "border px-2.5 py-1 text-xs font-semibold",
-              !stateFilter
-                ? "border-white/40 bg-white/15 text-white"
-                : "border-white/20 text-white/85 hover:bg-white/10",
-            )}
-          >
-            National
-          </Link>
-          {states.map((s) => (
-            <Link
-              key={s}
-              href={categoryHref(categoryFilter, s)}
-              className={cn(
-                "border px-2.5 py-1 text-xs font-semibold",
-                stateFilter === s
-                  ? "border-white/40 bg-white/15 text-white"
-                  : "border-white/20 text-white/85 hover:bg-white/10",
-              )}
-            >
-              {s}
-            </Link>
-          ))}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+              State
+            </p>
+            <div className="sw-chip-row">
+              <Link
+                href={categoryHref(categoryFilter, "")}
+                className={cn(
+                  "sw-chip",
+                  !stateFilter
+                    ? "border-white/40 bg-white/15 text-white"
+                    : "sw-chip-idle",
+                )}
+              >
+                National
+              </Link>
+              {states.map((s) => (
+                <Link
+                  key={s}
+                  href={categoryHref(categoryFilter, s)}
+                  className={cn(
+                    "sw-chip",
+                    stateFilter === s
+                      ? "border-white/40 bg-white/15 text-white"
+                      : "sw-chip-idle",
+                  )}
+                >
+                  {s}
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
 
         {loading && groups.length === 0 ? (
           <p className="text-sm text-white/70">Loading warnings…</p>
         ) : null}
         {error && groups.length === 0 ? (
-          <p className="text-sm text-white/80">{error}</p>
+          <p className="rounded-lg border border-white/15 bg-[var(--bom-blue-mid)] p-4 text-sm text-white/80">
+            {error}
+          </p>
         ) : null}
         {!loading && !error && groups.length === 0 && cancelled.length === 0 ? (
-          <p className="text-sm text-white/80">
+          <p className="rounded-lg border border-white/15 bg-[var(--bom-blue-mid)] p-4 text-sm text-white/80">
             No warnings
             {categoryFilter ? ` in ${severityLabel(categoryFilter)}` : ""}
             {stateFilter ? ` for ${stateFilter}` : ""} right now.
@@ -225,7 +230,7 @@ export function WarningsListPage() {
               <section key={group.category}>
                 <div
                   className={cn(
-                    "mb-2 flex items-center justify-between gap-2 border-b pb-2",
+                    "mb-2.5 flex items-center justify-between gap-2 border-b pb-2",
                     tone.heading,
                   )}
                 >
@@ -252,7 +257,7 @@ export function WarningsListPage() {
             <section>
               <div
                 className={cn(
-                  "mb-2 flex items-center justify-between gap-2 border-b pb-2",
+                  "mb-2.5 flex items-center justify-between gap-2 border-b pb-2",
                   warningSeverityClasses("cancelled").heading,
                 )}
               >
@@ -274,8 +279,7 @@ export function WarningsListPage() {
             </section>
           ) : null}
         </div>
-      </main>
-      <SiteFooter />
-    </div>
+      </div>
+    </SiteShell>
   );
 }

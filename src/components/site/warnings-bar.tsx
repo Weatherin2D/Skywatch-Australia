@@ -1,49 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ChevronDown } from "lucide-react";
+import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useWarnings } from "@/hooks/use-warnings";
 
 export function WarningsBar() {
   const { states, activeCount, loading } = useWarnings();
 
   return (
-    <div className="bg-[var(--bom-yellow)] text-[var(--brand)]">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--brand)] text-[var(--bom-yellow)]">
-            <AlertTriangle className="h-4 w-4" aria-hidden />
-          </span>
-          <p className="text-sm font-bold">
-            {loading
-              ? "Checking warnings…"
-              : activeCount > 0
-                ? "Warnings current"
-                : "No warnings current"}
-          </p>
-          {states.length ? (
-            <nav
-              aria-label="States with current warnings"
-              className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold sm:text-sm"
-            >
-              {states.map((state) => (
-                <Link
-                  key={state}
-                  href={`/warnings?state=${state.toLowerCase()}`}
-                  className="hover:underline"
-                >
-                  {state}
-                </Link>
-              ))}
-            </nav>
-          ) : null}
+    <div className="border-b border-[var(--brand)]/15 bg-[var(--bom-yellow)] text-[var(--brand)]">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-1.5 sm:gap-3 sm:px-4 sm:py-2">
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-[var(--brand)] text-[var(--bom-yellow)] sm:h-7 sm:w-7">
+          <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <p className="text-xs font-bold sm:text-sm">
+              {loading
+                ? "Checking warnings…"
+                : activeCount > 0
+                  ? `${activeCount} warning${activeCount === 1 ? "" : "s"} current`
+                  : "No warnings current"}
+            </p>
+            {states.length ? (
+              <nav
+                aria-label="States with current warnings"
+                className="flex max-w-full items-center gap-1.5 overflow-x-auto text-[11px] font-semibold sm:text-xs"
+              >
+                {states.map((state) => (
+                  <Link
+                    key={state}
+                    href={`/warnings?state=${state.toLowerCase()}`}
+                    className="shrink-0 rounded-sm bg-[var(--brand)]/10 px-1.5 py-0.5 hover:bg-[var(--brand)]/15"
+                  >
+                    {state}
+                  </Link>
+                ))}
+              </nav>
+            ) : null}
+          </div>
         </div>
+
         <Link
           href="/warnings"
-          className="inline-flex items-center gap-1 border border-[var(--brand)]/30 bg-white/50 px-2.5 py-1 text-xs font-semibold sm:text-sm"
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-sm border border-[var(--brand)]/25 bg-white/60 px-2 py-1 text-[11px] font-semibold sm:gap-1 sm:px-2.5 sm:text-xs"
         >
-          Warning services
-          <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+          <span className="hidden xs:inline sm:inline">All warnings</span>
+          <span className="sm:hidden">View</span>
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
         </Link>
       </div>
     </div>

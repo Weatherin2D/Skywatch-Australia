@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
-import { SiteFooter } from "@/components/site/site-footer";
-import { SiteHeader } from "@/components/site/site-header";
-import { SiteNav } from "@/components/site/site-nav";
-import { WarningsBar } from "@/components/site/warnings-bar";
+import { SiteShell } from "@/components/site/site-shell";
 import {
   WarningSeverityBadge,
   warningSeverityClasses,
@@ -58,14 +55,11 @@ export function WarningDetailPage({ id }: { id: string }) {
     : warningSeverityClasses("minor");
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--page)]">
-      <SiteHeader />
-      <WarningsBar />
-      <SiteNav />
-      <main className="mx-auto w-full max-w-[900px] flex-1 px-3 py-6 sm:px-4">
+    <SiteShell>
+      <div className="mx-auto w-full max-w-[820px] px-3 py-5 sm:px-4 sm:py-6">
         <Link
           href="/warnings"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-white/80 hover:text-white"
+          className="mb-4 inline-flex items-center gap-1.5 rounded-md bg-white/5 px-2.5 py-1.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
           All warnings
@@ -76,63 +70,79 @@ export function WarningDetailPage({ id }: { id: string }) {
         ) : null}
 
         {error ? (
-          <div className="border border-white/20 bg-[var(--bom-blue-mid)] p-4">
+          <div className="sw-panel p-4">
             <p className="font-bold text-white">Warning unavailable</p>
             <p className="mt-1 text-sm text-white/75">{error}</p>
           </div>
         ) : null}
 
         {warning ? (
-          <article>
-            <header className="mb-5 border border-white/15 bg-[var(--bom-blue-mid)] p-4">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
+          <article className="space-y-4">
+            <header className="sw-panel p-4 sm:p-5">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
                 <WarningSeverityBadge
                   severity={warning.severity}
                   label={warning.severityLabel}
+                  className="rounded-md px-2 py-1 text-[11px]"
                 />
-                <span className="text-xs font-bold uppercase tracking-wide text-white/70">
+                <span className="text-xs font-bold uppercase tracking-wide text-white/65">
                   {warning.states.join(" · ") || warning.state}
                 </span>
-                <span className="text-xs uppercase tracking-wide text-white/45">
+                <span className="text-xs uppercase tracking-wide text-white/40">
                   {warning.phase} · {humanizeWarningType(warning.type)}
                 </span>
               </div>
               <div className="flex gap-3">
                 <span
                   className={cn(
-                    "mt-1 flex h-10 w-10 shrink-0 items-center justify-center",
+                    "mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-md",
                     tone.icon,
                   )}
                 >
                   <AlertTriangle className="h-5 w-5" aria-hidden />
                 </span>
-                <div>
-                  <h1 className="text-2xl font-bold text-white">
+                <div className="min-w-0">
+                  <h1 className="text-xl font-bold text-white sm:text-2xl">
                     {warning.shortTitle}
                   </h1>
-                  <p className="mt-1 text-sm text-white/80">{warning.title}</p>
-                  <p className="mt-2 text-xs text-white/55">
-                    Product {warning.id}
-                    {warning.issueTime
-                      ? ` · Issued ${formatWarningTime(warning.issueTime)}`
-                      : ""}
-                    {warning.expiryTime
-                      ? ` · Expires ${formatWarningTime(warning.expiryTime)}`
-                      : ""}
+                  <p className="mt-1.5 text-sm leading-snug text-white/75 sm:line-clamp-none line-clamp-4">
+                    {warning.title}
                   </p>
+                  <dl className="mt-3 grid gap-1.5 text-xs text-white/55 sm:grid-cols-2">
+                    <div>
+                      <dt className="inline text-white/40">Product </dt>
+                      <dd className="inline text-white/70">{warning.id}</dd>
+                    </div>
+                    {warning.issueTime ? (
+                      <div>
+                        <dt className="inline text-white/40">Issued </dt>
+                        <dd className="inline text-white/70">
+                          {formatWarningTime(warning.issueTime)}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {warning.expiryTime ? (
+                      <div>
+                        <dt className="inline text-white/40">Expires </dt>
+                        <dd className="inline text-white/70">
+                          {formatWarningTime(warning.expiryTime)}
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
                 </div>
               </div>
             </header>
 
             {warning.images.length > 0 ? (
-              <section className="mb-5 space-y-3">
+              <section className="space-y-3">
                 <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--bom-yellow)]">
                   Warning maps
                 </h2>
                 {warning.images.map((img, i) => (
                   <figure
                     key={`${warning.id}-img-${i}`}
-                    className="overflow-hidden border border-white/15 bg-black"
+                    className="overflow-hidden rounded-lg border border-white/12 bg-black"
                   >
                     {/* BoM embeds maps as data URLs or absolute URLs */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -151,17 +161,17 @@ export function WarningDetailPage({ id }: { id: string }) {
               </section>
             ) : null}
 
-            <section className="border border-white/15 bg-[var(--bom-blue-mid)] p-4 sm:p-5">
+            <section className="sw-panel p-4 sm:p-5">
               <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--bom-yellow)]">
                 Warning text
               </h2>
               <div
-                className="warning-body space-y-3 text-sm leading-relaxed text-white/90 [&_a]:text-[var(--bom-yellow)] [&_a]:underline [&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-white [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-white [&_h3]:text-sm [&_h3]:font-bold [&_h3]:text-white [&_li]:ml-4 [&_li]:list-disc [&_p]:text-white/90 [&_strong]:text-white"
+                className="warning-body"
                 dangerouslySetInnerHTML={{ __html: warning.bodyHtml }}
               />
             </section>
 
-            <p className="mt-4 text-xs text-white/50">
+            <p className="text-xs text-white/45">
               Source:{" "}
               <a
                 href={warning.sourceUrl}
@@ -175,8 +185,7 @@ export function WarningDetailPage({ id }: { id: string }) {
             </p>
           </article>
         ) : null}
-      </main>
-      <SiteFooter />
-    </div>
+      </div>
+    </SiteShell>
   );
 }

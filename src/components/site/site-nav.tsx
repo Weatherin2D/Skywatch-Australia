@@ -18,9 +18,9 @@ export function SiteNav() {
   return (
     <nav
       aria-label="Primary"
-      className="bg-[var(--navy-deep)] text-[var(--brand)]"
+      className="border-b border-[var(--brand)]/10 bg-[var(--navy-deep)] text-[var(--brand)]"
     >
-      <div className="mx-auto flex w-full max-w-[1600px] gap-0 overflow-x-auto px-1 sm:px-2">
+      <div className="mx-auto flex w-full max-w-[1600px] gap-0.5 overflow-x-auto px-2 sm:px-3">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/"
@@ -31,10 +31,10 @@ export function SiteNav() {
               key={href}
               href={href}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 border-b-[3px] px-3 py-2.5 text-sm font-semibold transition",
+                "flex shrink-0 items-center gap-1.5 rounded-t-md border-b-[3px] px-3.5 py-2.5 text-sm font-semibold transition",
                 active
-                  ? "border-[var(--bom-yellow)] bg-[var(--page)]/10 text-[var(--brand)]"
-                  : "border-transparent text-[var(--brand)]/85 hover:bg-[var(--page)]/8 hover:text-[var(--brand)]",
+                  ? "border-[var(--bom-yellow)] bg-[var(--page)]/8 text-[var(--brand)]"
+                  : "border-transparent text-[var(--brand)]/75 hover:bg-[var(--page)]/6 hover:text-[var(--brand)]",
               )}
             >
               <Icon className="h-4 w-4 opacity-90" aria-hidden />

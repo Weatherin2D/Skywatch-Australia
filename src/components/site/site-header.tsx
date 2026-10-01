@@ -20,18 +20,20 @@ const STATES = [
 
 export function SiteHeader() {
   return (
-    <header className="bg-[var(--bom-blue)] text-[var(--brand)]">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-6">
+    <header className="sticky top-0 z-40 border-b border-[var(--brand)]/10 bg-[var(--bom-blue)] text-[var(--brand)]">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 sm:gap-4 sm:px-4">
+        <div className="flex min-w-0 shrink-0 items-center gap-3">
           <SkyWatchLogo size="sm" inverted />
-          <p className="hidden text-xs text-[var(--brand)]/75 lg:block">
-            Real weather. Deeper insight. A safer Australia.
+          <p className="hidden text-xs leading-snug text-[var(--brand)]/70 xl:block">
+            Real weather. Deeper insight.
+            <br />A safer Australia.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+
+        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
           <nav
             aria-label="Regions"
-            className="hidden items-center gap-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--brand)]/90 xl:flex"
+            className="hidden items-center gap-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--brand)]/85 2xl:flex"
           >
             {STATES.map((state, i) => {
               const key = state.toLowerCase();
@@ -42,7 +44,7 @@ export function SiteHeader() {
               return (
                 <span key={state} className="flex items-center">
                   {i > 0 ? (
-                    <span className="px-1.5 text-[var(--brand)]/35" aria-hidden>
+                    <span className="px-1 text-[var(--brand)]/30" aria-hidden>
                       |
                     </span>
                   ) : null}
@@ -55,11 +57,11 @@ export function SiteHeader() {
           </nav>
           <LocationSearch
             compact
-            className="w-[min(100vw-8rem,220px)]"
+            className="w-full max-w-[min(100%,280px)] sm:max-w-[240px]"
           />
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center bg-[var(--brand)]/10 text-[var(--brand)] transition hover:bg-[var(--brand)]/15"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--brand)]/8 text-[var(--brand)] transition hover:bg-[var(--brand)]/12 sm:inline-flex"
             aria-label="Settings"
           >
             <Settings className="h-4 w-4" />

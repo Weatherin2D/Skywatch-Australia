@@ -102,19 +102,96 @@ function Panel({
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]",
-        className,
-      )}
-    >
-      {title ? (
-        <h2 className="mb-2.5 border-b border-white/15 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)]">
-          {title}
-        </h2>
-      ) : null}
+    <section className={cn("sw-panel p-3", className)}>
+      {title ? <h2 className="sw-panel-title">{title}</h2> : null}
       {children}
     </section>
+  );
+}
+
+function OverlayControls({
+  layers,
+  mapSettings,
+  regionId,
+  regionLabel,
+  setLayer,
+  setMapSetting,
+}: {
+  layers: Record<LayerId, boolean>;
+  mapSettings: MapSettingsState;
+  regionId: MapRegionId;
+  regionLabel: string;
+  setLayer: (id: LayerId, on: boolean) => void;
+  setMapSetting: (id: MapSettingId, on: boolean) => void;
+}) {
+  return (
+    <>
+      <Panel title="Map overlays">
+        <p className="mb-2 text-[11px] text-[var(--ink)]/70">
+          Live layers on Map and Satellite — rain radar and lightning sync to
+          the loop timeline when available.
+        </p>
+        <ul className="space-y-2.5">
+          {WEATHER_LAYERS.map((layer) => (
+            <li
+              key={layer.id}
+              className="flex items-center justify-between gap-2 text-sm text-[var(--ink)]/80"
+            >
+              <span
+                className={cn(layers[layer.id] && "font-semibold text-[var(--ink)]")}
+              >
+                {layer.label}
+              </span>
+              <Toggle
+                label={layer.label}
+                on={layers[layer.id]}
+                onChange={(on) => setLayer(layer.id, on)}
+              />
+            </li>
+          ))}
+        </ul>
+      </Panel>
+
+      <Panel title="Map settings">
+        <p className="mb-2 text-[11px] text-[var(--ink)]/70">
+          Cartography drawn over the national map.
+        </p>
+        <ul className="space-y-2.5">
+          {MAP_SETTINGS.map((setting) => (
+            <li
+              key={setting.id}
+              className="flex items-center justify-between gap-2 text-sm text-[var(--ink)]/80"
+            >
+              <span
+                className={cn(
+                  mapSettings[setting.id] && "font-semibold text-[var(--ink)]",
+                )}
+              >
+                {setting.label}
+              </span>
+              <Toggle
+                label={setting.label}
+                on={mapSettings[setting.id]}
+                onChange={(on) => setMapSetting(setting.id, on)}
+              />
+            </li>
+          ))}
+        </ul>
+      </Panel>
+
+      <div className="rounded-lg border border-white/15 bg-[var(--bom-blue)] px-3 py-3 text-xs text-[var(--brand)]/85">
+        <p className="font-bold text-[var(--brand)]">
+          {regionId === "national"
+            ? "Australia-wide coverage"
+            : `${regionLabel} focus`}
+        </p>
+        <p className="mt-1">
+          {regionId === "national"
+            ? "From tropical coasts to alpine peaks."
+            : "Map and satellite zoom into this region — pick National to return."}
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -353,86 +430,30 @@ export function HomeDashboard() {
 
   return (
     <HomeSydneyForecastProvider>
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-8 pt-4 sm:px-4">
-      <div className="animate-fade-up space-y-1">
-        <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--bom-blue)] sm:text-4xl">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-6 pt-3 sm:px-4 sm:pb-8 sm:pt-4">
+      <div className="animate-fade-up space-y-0.5">
+        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
           National overview
         </h1>
-        <p className="text-[var(--muted-foreground)] sm:text-lg">
-          <HomeDateHeading /> — Australian weather, observed and forecast.
+        <p className="text-sm text-white/70 sm:text-base">
+          <HomeDateHeading /> — observed and forecast across Australia.
         </p>
       </div>
 
-      <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_260px] xl:grid-cols-[240px_minmax(0,1fr)_280px]">
-        <div className="space-y-3">
-          <Panel title="Map overlays">
-            <p className="mb-2 text-[11px] text-[var(--ink)]/70">
-              Live layers on Map and Satellite — rain radar and lightning sync to
-              the loop timeline when available.
-            </p>
-            <ul className="space-y-2.5">
-              {WEATHER_LAYERS.map((layer) => (
-                <li
-                  key={layer.id}
-                  className="flex items-center justify-between gap-2 text-sm text-[var(--ink)]/80"
-                >
-                  <span
-                    className={cn(layers[layer.id] && "font-semibold text-[var(--ink)]")}
-                  >
-                    {layer.label}
-                  </span>
-                  <Toggle
-                    label={layer.label}
-                    on={layers[layer.id]}
-                    onChange={(on) => setLayer(layer.id, on)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </Panel>
-
-          <Panel title="Map Settings">
-            <p className="mb-2 text-[11px] text-[var(--ink)]/70">
-              Cartography drawn over the national map.
-            </p>
-            <ul className="space-y-2.5">
-              {MAP_SETTINGS.map((setting) => (
-                <li
-                  key={setting.id}
-                  className="flex items-center justify-between gap-2 text-sm text-[var(--ink)]/80"
-                >
-                  <span
-                    className={cn(
-                      mapSettings[setting.id] && "font-semibold text-[var(--ink)]",
-                    )}
-                  >
-                    {setting.label}
-                  </span>
-                  <Toggle
-                    label={setting.label}
-                    on={mapSettings[setting.id]}
-                    onChange={(on) => setMapSetting(setting.id, on)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </Panel>
-
-          <div className="border border-white/20 bg-[var(--bom-blue)] px-3 py-3 text-xs text-[var(--brand)]/85">
-            <p className="font-bold text-[var(--brand)]">
-              {regionId === "national"
-                ? "Australia-wide coverage"
-                : `${region.label} focus`}
-            </p>
-            <p className="mt-1">
-              {regionId === "national"
-                ? "From tropical coasts to alpine peaks."
-                : "Map and satellite zoom into this region — pick National to return."}
-            </p>
-          </div>
+      <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_280px] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+        {/* Desktop overlays sidebar */}
+        <div className="hidden space-y-3 lg:block">
+          <OverlayControls
+            layers={layers}
+            mapSettings={mapSettings}
+            regionId={regionId}
+            regionLabel={region.label}
+            setLayer={setLayer}
+            setMapSetting={setMapSetting}
+          />
         </div>
 
-        <div className="flex min-h-0 flex-col gap-2">
+        <div className="order-1 flex min-h-0 flex-col gap-2 lg:order-none">
           <div className="relative z-50 flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/80">
               View
@@ -455,7 +476,7 @@ export function HomeDashboard() {
                         }
                       }}
                       className={cn(
-                        "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                        "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
                         mode === "Satellite"
                           ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
                           : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
@@ -519,7 +540,7 @@ export function HomeDashboard() {
                     setRegionMenuOpen(false);
                   }}
                   className={cn(
-                    "inline-flex items-center gap-0.5 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                    "inline-flex items-center gap-0.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
                     mode === m
                       ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
                       : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
@@ -543,7 +564,7 @@ export function HomeDashboard() {
                   setRegionMenuOpen((open) => !open);
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
                   regionId !== "national"
                     ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
                     : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
@@ -598,10 +619,10 @@ export function HomeDashboard() {
 
           <div
             className={cn(
-              "border-2 border-white/40 bg-[var(--navy-deep)]",
+              "overflow-hidden rounded-lg border border-white/20 bg-black",
               showSatelliteLoop
-                ? "w-full overflow-hidden bg-black"
-                : "min-h-[360px] flex-1 bg-black",
+                ? "aspect-[4/3] w-full sm:aspect-[16/10] lg:aspect-auto lg:min-h-[420px]"
+                : "min-h-[280px] sm:min-h-[360px] lg:min-h-[420px] lg:flex-1",
             )}
           >
             <HomeMapDynamic
@@ -667,7 +688,7 @@ export function HomeDashboard() {
           </div>
 
           {showSatelliteLoop ? (
-            <div className="flex items-center gap-3 border border-white/25 bg-[var(--bom-blue)] px-3 py-2.5 text-[var(--brand)]">
+            <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-[var(--bom-blue)] px-2.5 py-2 text-[var(--brand)] sm:gap-3 sm:px-3 sm:py-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -686,7 +707,7 @@ export function HomeDashboard() {
                   loopFrames.length === 0 ||
                   (readyCount === 0 && preloadTotal > 0)
                 }
-                className="inline-flex h-9 w-9 items-center justify-center bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
               >
                 {playing ? (
@@ -716,7 +737,7 @@ export function HomeDashboard() {
                           type="button"
                           onClick={() => setPlaybackSpeed(speed.id)}
                           className={cn(
-                            "px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
+                            "rounded-sm px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
                             playbackSpeed === speed.id
                               ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
                               : "bg-[var(--navy-deep)] text-[var(--brand)]/80 hover:bg-[var(--page)]/10",
@@ -767,7 +788,7 @@ export function HomeDashboard() {
               </div>
             </div>
           ) : (
-            <p className="border border-white/25 bg-[var(--bom-blue-mid)] px-3 py-2 text-xs text-[var(--ink)]/80">
+            <p className="rounded-lg border border-white/15 bg-[var(--bom-blue-mid)] px-3 py-2 text-xs text-[var(--ink)]/80">
               <span className="font-semibold text-[var(--ink)]">Map</span> view
               with live overlays. Use{" "}
               <span className="font-semibold text-[var(--ink)]">Region</span> to
@@ -776,9 +797,29 @@ export function HomeDashboard() {
               for Himawari loops. Rain radar stays available as an overlay.
             </p>
           )}
+
+          {/* Mobile map layers accordion */}
+          <details className="sw-panel group lg:hidden">
+            <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center justify-between gap-2">
+                Map layers & settings
+                <ChevronDown className="h-4 w-4 opacity-70 transition group-open:rotate-180" />
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-white/10 p-3">
+              <OverlayControls
+                layers={layers}
+                mapSettings={mapSettings}
+                regionId={regionId}
+                regionLabel={region.label}
+                setLayer={setLayer}
+                setMapSetting={setMapSetting}
+              />
+            </div>
+          </details>
         </div>
 
-        <div className="space-y-3">
+        <div className="order-2 space-y-3 lg:order-none">
           <HomeNowPanel />
 
           <HomeWarningsPanel />
@@ -791,7 +832,7 @@ export function HomeDashboard() {
 
       <HomeCapitalsPanel />
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <HomeWeekPanel />
 
         <HomeModelComparisonPanel />

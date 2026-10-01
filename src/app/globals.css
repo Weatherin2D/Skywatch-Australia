@@ -93,7 +93,7 @@
   --chart-3: #ffe000;
   --chart-4: #ff6b6b;
   --chart-5: #7dcea0;
-  --radius: 0.125rem;
+  --radius: 0.375rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #003087;
   --sidebar-primary: #ffe000;
@@ -110,9 +110,63 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(ellipse 120% 80% at 50% -20%, rgba(26, 107, 181, 0.35), transparent 55%),
+      linear-gradient(180deg, #003087 0%, #00245f 100%);
+    background-attachment: fixed;
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  .sw-panel {
+    @apply rounded-lg border border-white/12 bg-[var(--bom-blue-mid)]/95 text-[var(--ink)] shadow-[0_1px_0_rgba(255,255,255,0.04)];
+  }
+  .sw-panel-title {
+    @apply mb-2.5 border-b border-white/12 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)];
+  }
+  .sw-chip {
+    @apply inline-flex shrink-0 items-center rounded-md border px-2.5 py-1.5 text-xs font-semibold transition;
+  }
+  .sw-chip-active {
+    @apply border-[var(--bom-yellow)] bg-[var(--bom-yellow)] text-[var(--brand)];
+  }
+  .sw-chip-idle {
+    @apply border-white/15 text-white/85 hover:bg-white/10;
+  }
+  .sw-chip-row {
+    @apply -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+  }
+  .warning-body {
+    @apply space-y-3 text-sm leading-relaxed text-white/90;
+  }
+  .warning-body a {
+    @apply text-[var(--bom-yellow)] underline;
+  }
+  .warning-body h1,
+  .warning-body h2,
+  .warning-body h3 {
+    @apply font-bold text-white;
+  }
+  .warning-body h1 {
+    @apply text-lg;
+  }
+  .warning-body h2 {
+    @apply text-base;
+  }
+  .warning-body h3 {
+    @apply text-sm;
+  }
+  .warning-body li {
+    @apply ml-4 list-disc;
+  }
+  .warning-body p {
+    @apply text-white/90;
+  }
+  .warning-body strong {
+    @apply text-white;
   }
 }
 

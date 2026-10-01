@@ -56,7 +56,7 @@ export function PublicOutlook() {
   }, [data, selectedDay]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-[#fafafa]">
+    <div className="relative min-h-[70vh] overflow-hidden bg-[#050505] text-[#fafafa]">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -77,12 +77,12 @@ export function PublicOutlook() {
         }}
       />
 
-      <header className="relative z-10 mx-auto flex w-full max-w-7xl items-end justify-between gap-6 px-5 pb-5 pt-8 sm:px-8 sm:pt-10">
+      <header className="relative z-10 mx-auto flex w-full max-w-7xl items-end justify-between gap-6 px-4 pb-4 pt-6 sm:px-8 sm:pt-8">
         <div className="animate-fade-up">
-          <p className="font-[family-name:var(--font-display)] text-5xl font-bold leading-none tracking-tight text-white sm:text-7xl">
+          <p className="font-[family-name:var(--font-display)] text-4xl font-bold leading-none tracking-tight text-white sm:text-6xl">
             AusRisk
           </p>
-          <p className="mt-3 max-w-xl text-sm text-neutral-400 sm:text-base">
+          <p className="mt-2 max-w-xl text-sm text-neutral-400 sm:mt-3 sm:text-base">
             Public severe convective outlooks for Australia. Zoom and pan the
             map to explore risk areas.
           </p>
@@ -95,15 +95,15 @@ export function PublicOutlook() {
         </a>
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-12 sm:px-8">
+      <main className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-8 sm:px-8 sm:pb-12">
         {loading && (
-          <div className="flex h-[62vh] items-center justify-center border border-neutral-800 bg-neutral-950 text-neutral-400">
+          <div className="flex h-[50vh] items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 text-neutral-400 sm:h-[62vh]">
             Loading outlook…
           </div>
         )}
 
         {!loading && error && (
-          <div className="flex h-[40vh] flex-col items-center justify-center gap-2 border border-neutral-700 bg-neutral-950 text-center">
+          <div className="flex h-[40vh] flex-col items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-950 text-center">
             <p className="font-[family-name:var(--font-display)] text-2xl text-white">
               Outlook unavailable
             </p>
@@ -112,8 +112,8 @@ export function PublicOutlook() {
         )}
 
         {!loading && !error && data?.status === "empty" && (
-          <div className="flex h-[50vh] flex-col items-center justify-center gap-3 border border-neutral-800 bg-neutral-950 text-center">
-            <p className="font-[family-name:var(--font-display)] text-3xl text-white">
+          <div className="flex h-[42vh] flex-col items-center justify-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 text-center sm:h-[50vh]">
+            <p className="font-[family-name:var(--font-display)] text-2xl text-white sm:text-3xl">
               No active outlook
             </p>
             <p className="max-w-md text-sm text-neutral-400">
@@ -135,7 +135,7 @@ export function PublicOutlook() {
                       type="button"
                       onClick={() => setSelectedDay(day.effectiveDay)}
                       className={cn(
-                        "border px-3 py-2 text-left transition",
+                        "rounded-md border px-3 py-2 text-left transition",
                         selected
                           ? "border-white bg-white text-black"
                           : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-600 hover:text-white",
@@ -152,7 +152,7 @@ export function PublicOutlook() {
                 })}
               </div>
 
-              <div className="h-[58vh] min-h-[360px] overflow-hidden border border-neutral-800 sm:h-[64vh]">
+              <div className="h-[50vh] min-h-[300px] overflow-hidden rounded-lg border border-neutral-800 sm:h-[64vh] sm:min-h-[360px]">
                 <OutlookMapDynamic
                   mapView={data.mapView}
                   features={active.features}
@@ -170,7 +170,7 @@ export function PublicOutlook() {
               </p>
             </section>
 
-            <aside className="border border-neutral-800 bg-neutral-950 p-4 lg:self-start">
+            <aside className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:self-start">
               <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight text-white">
                 Key
               </h2>

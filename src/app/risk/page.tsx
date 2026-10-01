@@ -1,5 +1,10 @@
 import { PublicOutlook } from "@/components/forecast/public-outlook";
+import { SiteShell } from "@/components/site/site-shell";
 
 export default function RiskOutlookPage() {
-  return <PublicOutlook />;
+  return (
+    <SiteShell>
+      <PublicOutlook />
+    </SiteShell>
+  );
 }

@@ -74,23 +74,23 @@ export function HomeNowPanel() {
   const condition = today?.shortText || (loading ? "Loading…" : "—");
 
   return (
-    <section className="border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]">
+    <section className="sw-panel p-3.5 text-[var(--ink)]">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <Link
             href={`/forecast/${SYDNEY.geohash}`}
-            className="text-lg font-bold text-[var(--ink)] hover:underline"
+            className="block truncate text-base font-bold text-[var(--ink)] hover:underline sm:text-lg"
           >
             {place}
           </Link>
-          <p className="text-xs text-[var(--ink)]/70">
+          <p className="text-xs text-[var(--ink)]/65">
             {loading && !forecast ? "Updating…" : clock}
           </p>
         </div>
         <WeatherIcon
           icon={today?.icon || "mostly_sunny"}
           night={today?.isNight}
-          className="h-10 w-10"
+          className="h-9 w-9 shrink-0 sm:h-10 sm:w-10"
         />
       </div>
 
@@ -98,16 +98,18 @@ export function HomeNowPanel() {
         <p className="mt-2 text-sm text-white/75">{error}</p>
       ) : (
         <>
-          <p className="mt-1 text-4xl font-bold text-[var(--ink)]">
-            {temp != null ? `${temp}°C` : "—"}
-          </p>
-          <p className="text-sm text-[var(--ink)]/80">{condition}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          <div className="mt-2 flex items-end gap-2">
+            <p className="text-4xl font-bold leading-none text-[var(--ink)]">
+              {temp != null ? `${temp}°` : "—"}
+            </p>
+            <p className="pb-1 text-sm text-[var(--ink)]/80">{condition}</p>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-1.5 text-xs">
             {[
               [
                 "Feels like",
                 obs?.tempFeelsLike != null
-                  ? `${Math.round(obs.tempFeelsLike)}°C`
+                  ? `${Math.round(obs.tempFeelsLike)}°`
                   : "—",
               ],
               [
@@ -125,13 +127,18 @@ export function HomeNowPanel() {
                 obs?.rainSince9am != null ? `${obs.rainSince9am} mm` : "—",
               ],
             ].map(([k, v]) => (
-              <div key={k} className="bg-[var(--ink)]/8 px-2 py-1.5">
-                <p className="text-[var(--ink)]/70">{k}</p>
+              <div
+                key={k}
+                className="rounded-md bg-[var(--ink)]/8 px-2 py-1.5"
+              >
+                <p className="text-[10px] uppercase tracking-wide text-[var(--ink)]/60">
+                  {k}
+                </p>
                 <p className="font-bold text-[var(--ink)]">{v}</p>
               </div>
             ))}
           </div>
-          <div className="mt-3 flex flex-wrap gap-3 border-t border-[var(--ink)]/15 pt-2 text-xs text-[var(--ink)]/85">
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-[var(--ink)]/12 pt-2 text-xs text-[var(--ink)]/85">
             <span>
               Min{" "}
               <strong className="text-[var(--ink)]">
@@ -145,7 +152,7 @@ export function HomeNowPanel() {
               </strong>
             </span>
             <span>
-              Rain chance{" "}
+              Rain{" "}
               <strong className="text-[var(--ink)]">
                 {rainLabel(
                   today?.rainChance ?? null,
@@ -166,7 +173,7 @@ export function HomeNowPanel() {
           </div>
           <Link
             href={`/forecast/${SYDNEY.geohash}`}
-            className="mt-2 inline-block text-xs font-semibold text-[var(--ink)] hover:underline"
+            className="mt-2 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
           >
             Full Sydney forecast →
           </Link>
@@ -181,10 +188,8 @@ export function HomeCapitalsPanel() {
   const heading = formatDateHeading("Australia/Sydney");
 
   return (
-    <section className="border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]">
-      <h2 className="mb-2.5 border-b border-white/15 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)]">
-        Capital cities — {heading}
-      </h2>
+    <section className="sw-panel p-3 text-[var(--ink)] sm:p-3.5">
+      <h2 className="sw-panel-title">Capital cities — {heading}</h2>
       {loading && capitals.length === 0 ? (
         <p className="text-sm text-white/70">Loading capital weather…</p>
       ) : null}
@@ -192,12 +197,12 @@ export function HomeCapitalsPanel() {
         <p className="text-sm text-white/80">{error}</p>
       ) : null}
       {capitals.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="sw-chip-row sm:mx-0 sm:grid sm:grid-cols-4 sm:gap-2 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-8 [&::-webkit-scrollbar]:hidden">
           {capitals.map((c) => (
             <Link
               key={c.geohash}
               href={c.href}
-              className="bg-[var(--ink)]/8 px-2 py-2 text-center transition hover:bg-[var(--ink)]/15"
+              className="w-[7.5rem] shrink-0 rounded-md bg-[var(--ink)]/8 px-2.5 py-2.5 text-center transition hover:bg-[var(--ink)]/15 sm:w-auto"
             >
               <p className="text-xs font-bold text-[var(--ink)]">{c.city}</p>
               <div className="my-1 flex justify-center">
@@ -209,10 +214,10 @@ export function HomeCapitalsPanel() {
               <p className="text-xl font-bold text-[var(--ink)]">
                 {c.tempC != null ? `${c.tempC}°` : "—"}
               </p>
-              <p className="text-[10px] text-[var(--ink)]/75">
+              <p className="text-[10px] text-[var(--ink)]/70">
                 {c.wind ? `${c.wind} km/h` : "—"}
               </p>
-              <p className="line-clamp-2 text-[10px] text-[var(--ink)]/70">
+              <p className="line-clamp-2 text-[10px] text-[var(--ink)]/65">
                 {c.condition || "—"}
               </p>
             </Link>
@@ -229,10 +234,8 @@ export function HomeWeekPanel() {
   const tz = forecast?.location.timezone || "Australia/Sydney";
 
   return (
-    <section className="border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]">
-      <h2 className="mb-2.5 border-b border-white/15 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)]">
-        7 Day Forecast — Sydney
-      </h2>
+    <section className="sw-panel p-3 text-[var(--ink)] sm:p-3.5">
+      <h2 className="sw-panel-title">7-day forecast — Sydney</h2>
       {loading && days.length === 0 ? (
         <p className="text-sm text-white/70">Loading…</p>
       ) : null}
@@ -252,9 +255,9 @@ export function HomeWeekPanel() {
             return (
               <div
                 key={d.date}
-                className="flex min-w-[2.6rem] flex-col items-center gap-1 text-center text-xs"
+                className="flex min-w-[2.75rem] flex-col items-center gap-1 text-center text-xs"
               >
-                <span className="text-[var(--ink)]/70">{label}</span>
+                <span className="text-[var(--ink)]/65">{label}</span>
                 <WeatherIcon
                   icon={d.icon}
                   night={d.isNight}
@@ -263,7 +266,7 @@ export function HomeWeekPanel() {
                 <span className="font-bold text-[var(--bom-yellow)]">
                   {d.tempMax != null ? `${d.tempMax}°` : "—"}
                 </span>
-                <span className="text-[var(--ink)]/80">
+                <span className="text-[var(--ink)]/75">
                   {d.tempMin != null ? `${d.tempMin}°` : "—"}
                 </span>
               </div>
@@ -273,7 +276,7 @@ export function HomeWeekPanel() {
       ) : null}
       <Link
         href={`/forecast/${SYDNEY.geohash}`}
-        className="mt-2 inline-block text-xs font-semibold text-[var(--ink)] hover:underline"
+        className="mt-2.5 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
       >
         Open full forecast →
       </Link>
@@ -296,10 +299,8 @@ export function HomeBriefingPanel() {
   }
 
   return (
-    <section className="border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]">
-      <h2 className="mb-2.5 border-b border-white/15 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)]">
-        Briefing notes
-      </h2>
+    <section className="sw-panel p-3.5 text-[var(--ink)]">
+      <h2 className="sw-panel-title">Briefing notes</h2>
       {loading && notes.length === 0 ? (
         <p className="text-sm text-white/70">Loading briefing…</p>
       ) : null}
@@ -308,9 +309,9 @@ export function HomeBriefingPanel() {
       ) : (
         <ul className="space-y-2">
           {notes.map((item) => (
-            <li key={item} className="flex gap-2 text-sm text-[var(--ink)]/85">
+            <li key={item} className="flex gap-2 text-sm leading-snug text-[var(--ink)]/85">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--bom-yellow)]" />
-              <span>{item}</span>
+              <span className="line-clamp-4 sm:line-clamp-none">{item}</span>
             </li>
           ))}
         </ul>

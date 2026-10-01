@@ -16,10 +16,8 @@ function PanelShell({
   children: React.ReactNode;
 }) {
   return (
-    <section className="border border-white/15 bg-[var(--bom-blue-mid)] p-3 text-[var(--ink)]">
-      <h2 className="mb-2.5 border-b border-white/15 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)]">
-        {title}
-      </h2>
+    <section className="sw-panel p-3 text-[var(--ink)] sm:p-3.5">
+      <h2 className="sw-panel-title">{title}</h2>
       {children}
     </section>
   );
@@ -37,7 +35,7 @@ function StormDensityMap({
   const max = Math.max(1, ...cells);
   return (
     <div
-      className="grid h-24 w-full gap-px bg-[#001a3a]"
+      className="grid h-20 w-full gap-px rounded-md bg-[#001a3a] sm:h-24"
       style={{
         gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
         gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
@@ -67,7 +65,7 @@ export function HomeStormTrackerPanel() {
   const top = data?.hotspots[0] ?? null;
 
   return (
-    <PanelShell title="Storm Tracker">
+    <PanelShell title="Storm tracker">
       {loading && !data ? (
         <p className="text-sm text-white/70">Scanning lightning network…</p>
       ) : null}
@@ -75,36 +73,62 @@ export function HomeStormTrackerPanel() {
         <p className="text-sm text-white/80">{error}</p>
       ) : null}
       {data ? (
-        <div className="overflow-hidden border border-[var(--ink)]/20">
+        <div className="overflow-hidden rounded-md border border-[var(--ink)]/15">
           <StormDensityMap
             cells={data.grid.cells}
             cols={data.grid.cols}
             rows={data.grid.rows}
           />
-          <div className="space-y-1 bg-[var(--ink)]/10 p-2 text-xs">
+          <div className="space-y-2 bg-[var(--ink)]/8 p-2.5 text-xs">
             {top ? (
               <>
                 <p className="flex items-center gap-1.5 font-bold text-[var(--ink)]">
                   <CloudLightning className="h-3.5 w-3.5 text-[var(--bom-yellow)]" />
                   Active · {top.label}
                 </p>
-                <p className="text-[var(--ink)]/75">
-                  {top.ratePerMin} /min · {top.strikes15m} strikes (15 min)
-                </p>
-                <p className="text-[var(--ink)]/75">
-                  {top.strikes60m} in the last hour · peak {top.maxIntensity} kA
-                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="rounded-md bg-black/20 px-2 py-1.5">
+                    <p className="text-[10px] uppercase tracking-wide text-white/50">
+                      Rate
+                    </p>
+                    <p className="font-semibold text-white">
+                      {top.ratePerMin}/min
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-black/20 px-2 py-1.5">
+                    <p className="text-[10px] uppercase tracking-wide text-white/50">
+                      15 min
+                    </p>
+                    <p className="font-semibold text-white">
+                      {top.strikes15m} strikes
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-black/20 px-2 py-1.5">
+                    <p className="text-[10px] uppercase tracking-wide text-white/50">
+                      Last hour
+                    </p>
+                    <p className="font-semibold text-white">{top.strikes60m}</p>
+                  </div>
+                  <div className="rounded-md bg-black/20 px-2 py-1.5">
+                    <p className="text-[10px] uppercase tracking-wide text-white/50">
+                      Peak
+                    </p>
+                    <p className="font-semibold text-white">
+                      {top.maxIntensity} kA
+                    </p>
+                  </div>
+                </div>
               </>
             ) : (
               <p className="font-bold text-[var(--ink)]">
                 No strong lightning clusters in the last hour
               </p>
             )}
-            <p className="text-[var(--ink)]/60">
-              National {data.total15m} strikes / 15 min · {data.total60m} / hour
+            <p className="text-[var(--ink)]/55">
+              National {data.total15m} / 15 min · {data.total60m} / hour
             </p>
             {data.hotspots.length > 1 ? (
-              <p className="text-[var(--ink)]/65">
+              <p className="line-clamp-2 text-[var(--ink)]/60">
                 Also:{" "}
                 {data.hotspots
                   .slice(1)
@@ -123,7 +147,7 @@ export function HomeModelComparisonPanel() {
   const { data, loading, error } = useModelComparison();
 
   return (
-    <PanelShell title="Model Comparison — Sydney">
+    <PanelShell title="Model comparison — Sydney">
       {loading && !data ? (
         <p className="text-sm text-white/70">Loading model guidance…</p>
       ) : null}
@@ -134,7 +158,7 @@ export function HomeModelComparisonPanel() {
         <>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[240px] text-left text-xs">
-              <thead className="text-[var(--ink)]/70">
+              <thead className="text-[var(--ink)]/65">
                 <tr>
                   <th className="pb-2 font-semibold">Metric</th>
                   <th className="pb-2 font-semibold">ECMWF</th>
@@ -146,9 +170,9 @@ export function HomeModelComparisonPanel() {
                 {data.rows.map((row) => (
                   <tr
                     key={row.metric}
-                    className="border-t border-[var(--ink)]/15"
+                    className="border-t border-[var(--ink)]/12"
                   >
-                    <td className="py-1.5 text-[var(--ink)]/75">{row.metric}</td>
+                    <td className="py-1.5 text-[var(--ink)]/70">{row.metric}</td>
                     <td className="py-1.5 font-semibold text-[var(--ink)]">
                       {row.ecmwf}
                     </td>
@@ -163,7 +187,7 @@ export function HomeModelComparisonPanel() {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[10px] text-white/50">{data.attribution}</p>
+          <p className="mt-2 text-[10px] text-white/45">{data.attribution}</p>
         </>
       ) : null}
     </PanelShell>
@@ -203,7 +227,7 @@ export function HomeUpperAirPanel() {
       ) : null}
       {data ? (
         <>
-          <div className="relative h-36 overflow-hidden border border-[var(--ink)]/20 bg-[var(--navy-deep)]">
+          <div className="relative h-36 overflow-hidden rounded-md border border-[var(--ink)]/15 bg-[#001a3a]">
             <svg viewBox="0 0 200 120" className="h-full w-full opacity-90">
               <rect width="200" height="120" fill="#001a3a" />
               {[20, 40, 60, 80, 100].map((y) => (
@@ -251,7 +275,7 @@ export function HomeUpperAirPanel() {
               </span>
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-white/75">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-white/70">
             <span>
               500 hPa{" "}
               <strong className="text-white">
@@ -279,7 +303,7 @@ export function HomeUpperAirPanel() {
               </strong>
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-white/50">{data.attribution}</p>
+          <p className="mt-1 text-[10px] text-white/45">{data.attribution}</p>
         </>
       ) : null}
     </PanelShell>
