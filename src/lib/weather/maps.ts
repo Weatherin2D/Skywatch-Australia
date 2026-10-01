@@ -169,7 +169,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1020-re-panels-v8";
+export const FRAME_QUALITY_TAG = "q1020-re-panels-v9";
 
 /**
  * Target long-edge for stitched regional RealEarth mosaics. Built from several

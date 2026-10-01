@@ -323,15 +323,25 @@ function panelBounds(
   rows: number,
   col: number,
   row: number,
+  options?: { overlapFrac?: number },
 ): LonLatBounds {
   const [[south, west], [north, east]] = bounds;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
+  const overlap = options?.overlapFrac ?? 0;
+  const xSpan = (maxx - minx) / cols;
+  const ySpan = (maxy - miny) / rows;
+  const ox = xSpan * overlap;
+  const oy = ySpan * overlap;
   // row 0 = northernmost (image top)
-  const x0 = minx + ((maxx - minx) * col) / cols;
-  const x1 = minx + ((maxx - minx) * (col + 1)) / cols;
-  const y1 = maxy - ((maxy - miny) * row) / rows;
-  const y0 = maxy - ((maxy - miny) * (row + 1)) / rows;
+  let x0 = minx + xSpan * col - (col > 0 ? ox : 0);
+  let x1 = minx + xSpan * (col + 1) + (col < cols - 1 ? ox : 0);
+  let y1 = maxy - ySpan * row + (row > 0 ? oy : 0);
+  let y0 = maxy - ySpan * (row + 1) - (row < rows - 1 ? oy : 0);
+  x0 = Math.max(minx, x0);
+  x1 = Math.min(maxx, x1);
+  y0 = Math.max(miny, y0);
+  y1 = Math.min(maxy, y1);
   const [lon0, lat0] = webMercatorToLonLat(x0, y0);
   const [lon1, lat1] = webMercatorToLonLat(x1, y1);
   return [
@@ -437,12 +447,27 @@ function blitPng(
   destY: number,
   destW: number,
   destH: number,
+  options?: {
+    /** Drop this fraction from the src bottom (cuts SSEC badges at band seams). */
+    trimBottomFrac?: number;
+    /** Drop this fraction from the src left. */
+    trimLeftFrac?: number;
+  },
 ): void {
-  // Nearest-neighbor scale src → dest rect (panels are already near-native size).
+  const trimBottom = Math.min(0.2, Math.max(0, options?.trimBottomFrac ?? 0));
+  const trimLeft = Math.min(0.2, Math.max(0, options?.trimLeftFrac ?? 0));
+  const srcX0 = Math.floor(src.width * trimLeft);
+  const srcY0 = 0;
+  const srcX1 = src.width;
+  const srcY1 = Math.max(srcX0 + 1, Math.floor(src.height * (1 - trimBottom)));
+  const srcW = Math.max(1, srcX1 - srcX0);
+  const srcH = Math.max(1, srcY1 - srcY0);
+
+  // Nearest-neighbor scale trimmed src → dest rect.
   for (let y = 0; y < destH; y++) {
-    const sy = Math.min(src.height - 1, Math.floor((y * src.height) / destH));
+    const sy = srcY0 + Math.min(srcH - 1, Math.floor((y * srcH) / destH));
     for (let x = 0; x < destW; x++) {
-      const sx = Math.min(src.width - 1, Math.floor((x * src.width) / destW));
+      const sx = srcX0 + Math.min(srcW - 1, Math.floor((x * srcW) / destW));
       const di = ((destY + y) * dest.width + (destX + x)) * 4;
       const si = (sy * src.width + sx) * 4;
       dest.data[di] = src.data[si]!;
@@ -471,7 +496,10 @@ async function fetchRealEarthStitched(
   }
 
   const panels = await mapPool(cells, PANEL_CONCURRENCY, async ({ col, row }) => {
-    const b = panelBounds(bounds, plan.cols, plan.rows, col, row);
+    // Overlap so we can trim each panel's badge strip without gaps.
+    const b = panelBounds(bounds, plan.cols, plan.rows, col, row, {
+      overlapFrac: 0.08,
+    });
     const preferW = Math.ceil(plan.outWidth / plan.cols);
     const png = await fetchRealEarthPanel(product, timeUnix, b, preferW);
     return { col, row, png };
@@ -495,7 +523,18 @@ async function fetchRealEarthStitched(
     const x1 = Math.round((plan.outWidth * (col + 1)) / plan.cols);
     const y0 = Math.round((plan.outHeight * row) / plan.rows);
     const y1 = Math.round((plan.outHeight * (row + 1)) / plan.rows);
-    blitPng(mosaic, png, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0));
+    // Trim badge edges on every panel except the mosaic's outer bottom/left.
+    const trimBottom = row < plan.rows - 1 ? 0.1 : 0.02;
+    const trimLeft = col > 0 ? 0.08 : 0.02;
+    blitPng(
+      mosaic,
+      png,
+      x0,
+      y0,
+      Math.max(1, x1 - x0),
+      Math.max(1, y1 - y0),
+      { trimBottomFrac: trimBottom, trimLeftFrac: trimLeft },
+    );
   }
 
   let body: Buffer;
