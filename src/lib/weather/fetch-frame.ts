@@ -448,7 +448,26 @@ async function fetchRealEarthStitched(
     return { col, row, png };
   });
 
-  if (panels.some((p) => p.png == null)) {
+  const ok = panels.filter((p) => p.png != null);
+  if (ok.length === 0) {
+    return null;
+  }
+  // Fill holes from the nearest successful panel so one missing tile does not
+  // abandon a large-state mosaic.
+  const filled = panels.map((p) => {
+    if (p.png) return p;
+    let best: (typeof panels)[number] | null = null;
+    let bestDist = Infinity;
+    for (const q of ok) {
+      const dist = Math.abs(q.col - p.col) + Math.abs(q.row - p.row);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = q;
+      }
+    }
+    return { col: p.col, row: p.row, png: best?.png ?? null };
+  });
+  if (filled.some((p) => p.png == null)) {
     return null;
   }
 
@@ -458,7 +477,7 @@ async function fetchRealEarthStitched(
     fill: true,
   });
 
-  for (const { col, row, png } of panels) {
+  for (const { col, row, png } of filled) {
     if (!png) continue;
     const x0 = Math.round((plan.outWidth * col) / plan.cols);
     const x1 = Math.round((plan.outWidth * (col + 1)) / plan.cols);
@@ -474,9 +493,8 @@ async function fetchRealEarthStitched(
     return null;
   }
   body = stripCornerBadge(body);
-  if (hasRealEarthSizeLimitOverlay(body)) {
-    return null;
-  }
+  // Panels were already screened; a mosaic-level false positive (bright cloud)
+  // must not discard a good stitch.
   return { body, contentType: "image/png" };
 }
 
@@ -490,9 +508,10 @@ async function fetchRealEarthClean(
   bounds: LonLatBounds,
   region: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
+  // Large state zooms: panel-stitch only. A single big RealEarth export is what
+  // burns the "Size limit exceeded" banner — never fall back to that path.
   if (region !== "national" && shouldStitchRealEarth(bounds)) {
-    const stitched = await fetchRealEarthStitched(product, timeUnix, bounds);
-    if (stitched) return stitched;
+    return fetchRealEarthStitched(product, timeUnix, bounds);
   }
 
   for (const width of realEarthWidthLadder(bounds)) {
