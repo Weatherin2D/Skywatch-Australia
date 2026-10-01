@@ -227,7 +227,6 @@ export function HomeDashboard() {
     radarFrames,
     loading: mapsLoading,
     error: mapsError,
-    products: satelliteProducts,
     lastTipAt,
     tipSeenAtMs,
   } = useWeatherMaps(satProduct);
@@ -250,31 +249,14 @@ export function HomeDashboard() {
 
   const loopFrames = useMemo(() => {
     if (!showSatelliteLoop) return [];
-    // National overview uses the GIBS spine when available so every frame is
-    // the same watermark-free source (no RealEarth tip → GIBS near-miss hop).
-    const nationalFrames =
-      regionId === "national"
-        ? satelliteProducts?.[satProduct]?.nationalFrames
-        : undefined;
-    const sourceFrames =
-      nationalFrames && nationalFrames.length > 0
-        ? nationalFrames
-        : satelliteFrames;
-    return sourceFrames.map((frame) => ({
+    return satelliteFrames.map((frame) => ({
       ...frame,
       imageUrl: satelliteFrameProxyUrl(satProduct, frame.time, {
         region: regionId,
       }),
       imageBounds: region.bounds,
     }));
-  }, [
-    showSatelliteLoop,
-    satelliteFrames,
-    satelliteProducts,
-    satProduct,
-    regionId,
-    region.bounds,
-  ]);
+  }, [showSatelliteLoop, satelliteFrames, satProduct, regionId, region.bounds]);
 
   const activeFrame = loopFrames[frameIndex] ?? null;
   const scrub =

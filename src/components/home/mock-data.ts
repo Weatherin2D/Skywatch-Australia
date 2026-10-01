@@ -61,75 +61,80 @@ export const MAP_REGIONS = [
     id: "nsw",
     label: "New South Wales",
     short: "NSW",
+    // Full state + coastal pad (geojson ~141–153.6E, 37.5–28.2S)
     bounds: [
-      [-37.55, 140.85],
-      [-28.05, 153.75],
+      [-37.86, 140.55],
+      [-27.81, 154.06],
     ] as RegionBounds,
   },
   {
     id: "vic",
     label: "Victoria",
     short: "VIC",
+    // Full state + Bass Strait pad (geojson ~141–150E, 39.1–34.0S)
     bounds: [
-      [-39.25, 140.85],
-      [-33.85, 150.15],
+      [-39.48, 140.51],
+      [-33.63, 150.43],
     ] as RegionBounds,
   },
   {
     id: "qld",
     label: "Queensland",
     short: "QLD",
-    // Full mainland + Torres approaches + Coral Sea pad (geojson ~138–153.5E, 29.2–10.7S)
+    // Full mainland + Torres approaches + Coral Sea pad
     bounds: [
-      [-29.55, 137.55],
-      [-9.05, 154.55],
+      [-29.53, 137.55],
+      [-9.05, 154.05],
     ] as RegionBounds,
   },
   {
     id: "wa",
     label: "Western Australia",
     short: "WA",
-    // Full mainland + ocean pad so Kimberley, Albany & Steep Point aren't edge-clipped
-    // (geojson ~113.4–129E, 35.1–13.7S)
+    // Full mainland + Indian Ocean / Timor Sea pad (Steep Point → Kimberley)
     bounds: [
-      [-36.15, 111.95],
-      [-12.85, 129.55],
+      [-35.55, 112.75],
+      [-12.95, 129.45],
     ] as RegionBounds,
   },
   {
     id: "sa",
     label: "South Australia",
     short: "SA",
+    // Full state + Bight pad (geojson ~129–141E, 38.1–26.0S)
     bounds: [
-      [-38.15, 128.95],
-      [-25.85, 141.15],
+      [-38.41, 128.55],
+      [-25.65, 141.45],
     ] as RegionBounds,
   },
   {
     id: "tas",
     label: "Tasmania",
     short: "TAS",
+    // Full island + surrounding waters (geojson ~143.8–148.3E, 43.6–39.6S)
     bounds: [
-      [-43.75, 144.45],
-      [-40.45, 148.55],
+      [-43.98, 143.38],
+      [-39.23, 148.78],
     ] as RegionBounds,
   },
   {
     id: "nt",
     label: "Northern Territory",
     short: "NT",
+    // Full territory + Top End waters (geojson ~129–138E, 26.0–11.1S)
     bounds: [
-      [-26.05, 128.95],
-      [-10.85, 138.15],
+      [-26.35, 128.55],
+      [-10.79, 138.45],
     ] as RegionBounds,
   },
   {
     id: "act",
     label: "Australian Capital Territory",
     short: "ACT",
+    // Full ACT with framing pad so the territory isn't edge-clipped
     bounds: [
-      [-35.95, 148.72],
-      [-35.1, 149.45],
+      [-36.05, 148.55],
+      [-34.95, 149.60],
     ] as RegionBounds,
   },
 ] as const;

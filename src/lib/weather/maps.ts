@@ -14,14 +14,7 @@ export type WeatherFrame = {
   imageBounds?: [[number, number], [number, number]];
 };
 
-export type SatelliteProductId =
-  | "visible"
-  | "infrared"
-  | "airmass"
-  | "watervapor"
-  | "shortwave"
-  | "dust"
-  | "ash";
+export type SatelliteProductId = "visible" | "infrared" | "airmass";
 
 export type SatelliteProvider = "gibs" | "realearth";
 
@@ -43,9 +36,7 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "visible",
     label: "Visible",
     loopLabel: "Visible loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-B03",
-    /** GIBS fallback when RealEarth is briefly empty overnight */
+    provider: "gibs",
     gibsLayer: "Himawari_AHI_Band3_Red_Visible_1km",
     daytimeOnly: true,
   },
@@ -53,45 +44,15 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "infrared",
     label: "Infrared",
     loopLabel: "Infrared loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-B13",
+    provider: "gibs",
     gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
   },
   {
     id: "airmass",
     label: "Air Mass",
     loopLabel: "Air Mass loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-airmass",
+    provider: "gibs",
     gibsLayer: "Himawari_AHI_Air_Mass",
-  },
-  {
-    id: "watervapor",
-    label: "Water Vapor",
-    loopLabel: "Water Vapor loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-B08",
-  },
-  {
-    id: "shortwave",
-    label: "Shortwave IR",
-    loopLabel: "Shortwave IR loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-B07",
-  },
-  {
-    id: "dust",
-    label: "Dust",
-    loopLabel: "Dust loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-dust",
-  },
-  {
-    id: "ash",
-    label: "Volcanic Ash",
-    loopLabel: "Volcanic Ash loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-ash",
   },
 ] as const;
 
@@ -116,18 +77,9 @@ export type WeatherMapsPayload = {
   satellite: {
     product: SatelliteProductId;
     source: "rainviewer" | "gibs-himawari" | "realearth-himawari" | "mixed";
-    /** National overview source (GIBS when available — watermark-free). */
-    nationalSource: "gibs-himawari" | "realearth-himawari";
     /** Active product frames (also mirrored under products[product]) */
     frames: WeatherFrame[];
-    /**
-     * Per product: `frames` = RealEarth spine (state crops);
-     * `nationalFrames` = GIBS spine for national overview when available.
-     */
-    products: Record<
-      SatelliteProductId,
-      { frames: WeatherFrame[]; nationalFrames?: WeatherFrame[] }
-    >;
+    products: Record<SatelliteProductId, { frames: WeatherFrame[] }>;
   };
   radar: {
     past: WeatherFrame[];
@@ -205,7 +157,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1536-nat-gibs-stable";
+export const FRAME_QUALITY_TAG = "q1536-gibs-only";
 
 /** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
 export function realEarthRasterSize(

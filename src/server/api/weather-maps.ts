@@ -6,11 +6,9 @@ import {
   SATELLITE_FRAME_COUNT,
   SATELLITE_PRODUCTS,
   alignTimesToRadar,
-  buildSatelliteTimeline,
   gibsHimawariWmsUrl,
   getSatelliteProduct,
   isSatelliteProductId,
-  parseRealEarthTimeToken,
   rainviewerTileUrl,
   satelliteFrameProxyUrl,
   toIsoZ,
@@ -134,35 +132,6 @@ function buildFramesAtLatest(
   return buildFramesFromTimes(product, times);
 }
 
-async function fetchRealEarthTimes(
-  realearthProduct: string,
-  count = FRAME_COUNT,
-): Promise<number[]> {
-  try {
-    const res = await fetch(
-      `https://realearth.ssec.wisc.edu/api/products?products=${encodeURIComponent(realearthProduct)}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "SkyWatchAustralia/1.0",
-        },
-        cache: "no-store",
-        signal: AbortSignal.timeout(12000),
-      },
-    );
-    if (!res.ok) return [];
-    const data = (await res.json()) as Array<{ times?: string[] }>;
-    const tokens = data[0]?.times ?? [];
-    const parsed = tokens
-      .map(parseRealEarthTimeToken)
-      .filter((t) => Number.isFinite(t) && t > 0);
-    if (parsed.length === 0) return [];
-    return parsed.slice(-count);
-  } catch {
-    return [];
-  }
-}
-
 function normalizeRainviewerFrames(
   host: string,
   frames: Array<{ time: number; path: string }> | undefined,
@@ -182,28 +151,6 @@ async function buildProductFrames(
   gibsLatestMs: number | null,
   radarTimesUnix: number[] = [],
 ): Promise<WeatherFrame[]> {
-  if (meta.provider === "realearth" && meta.realearthProduct) {
-    const native = await fetchRealEarthTimes(meta.realearthProduct, FRAME_COUNT);
-    if (native.length === 0) {
-      // Fall back to GIBS layer when RealEarth is empty for this product.
-      if (meta.gibsLayer && gibsLatestMs != null) {
-        return buildFramesAtLatest(meta.id, gibsLatestMs);
-      }
-      return [];
-    }
-
-    // Prefer the shared IR spine when available so every product + radar match.
-    if (sharedTimelineUnix && sharedTimelineUnix.length >= 3) {
-      return buildFramesFromTimes(meta.id, sharedTimelineUnix);
-    }
-
-    const timeline = buildSatelliteTimeline(native, radarTimesUnix);
-    return buildFramesFromTimes(
-      meta.id,
-      timeline.length >= 3 ? timeline : native,
-    );
-  }
-
   if (gibsLatestMs == null) return [];
   if (sharedTimelineUnix && sharedTimelineUnix.length >= 3) {
     return buildFramesFromTimes(meta.id, sharedTimelineUnix);
@@ -224,94 +171,59 @@ async function buildProductFrames(
 }
 
 /**
- * Build every catalog product on a shared RealEarth Himawari timeline (state
- * crops) plus a GIBS national timeline so the national overview never mixes
- * RealEarth tip stamps with lagged GIBS rasters.
+ * Build every catalog product on a shared NASA GIBS Himawari timeline so
+ * national and state crops stay on one watermark-free source.
  */
 async function buildAllSatelliteProducts(
   radarTimesUnix: number[] = [],
 ): Promise<{
   products: WeatherMapsPayload["satellite"]["products"];
   source: WeatherMapsPayload["satellite"]["source"];
-  nationalSource: WeatherMapsPayload["satellite"]["nationalSource"];
 }> {
   const products = emptyProductFrames();
 
-  // Prefer RealEarth IR as the freshness leader (~15–35 min lag vs GIBS ~40–90).
-  const infraredMeta = getSatelliteProduct("infrared");
-  const infraredTimes =
-    infraredMeta.realearthProduct != null
-      ? await fetchRealEarthTimes(infraredMeta.realearthProduct, FRAME_COUNT)
-      : [];
-
-  const sharedTimeline =
-    infraredTimes.length >= 3
-      ? buildSatelliteTimeline(infraredTimes, radarTimesUnix)
-      : null;
-
-  // Always probe GIBS so national can stay on a stable watermark-free spine.
   const gibsLatestMs =
     (await findLatestGibsTime("infrared")) ??
     (await findLatestGibsTime("airmass")) ??
     (await findLatestGibsTime("visible")) ??
     fallbackGibsLatestMs();
 
+  const latestUnix = Math.floor(gibsLatestMs / 1000);
+  const sharedTimeline =
+    radarTimesUnix.length >= 3
+      ? alignTimesToRadar(
+          radarTimesUnix,
+          latestUnix,
+          HIMAWARI_STEP_SEC,
+          FRAME_COUNT,
+        )
+      : null;
+
   const built = await Promise.all(
     SATELLITE_PRODUCTS.map(async (meta) => {
       const frames = await buildProductFrames(
         meta,
-        sharedTimeline,
-        // Only used when RealEarth is empty for this product.
-        meta.gibsLayer ? gibsLatestMs : null,
+        sharedTimeline && sharedTimeline.length >= 3 ? sharedTimeline : null,
+        gibsLatestMs,
         radarTimesUnix,
       );
-      const nationalFrames =
-        meta.gibsLayer && gibsLatestMs != null
-          ? buildFramesAtLatest(meta.id, gibsLatestMs)
-          : undefined;
-      return [meta.id, frames, nationalFrames] as const;
+      return [meta.id, frames] as const;
     }),
   );
 
-  for (const [id, frames, nationalFrames] of built) {
-    products[id] = nationalFrames
-      ? { frames, nationalFrames }
-      : { frames };
+  for (const [id, frames] of built) {
+    products[id] = { frames };
   }
 
-  // Warm state (RE) tip + national (GIBS) tip into the frame cache.
   if (products.infrared.frames.length) {
     warmFramesInBackground(
       "infrared",
       products.infrared.frames.map((f) => f.time),
-      3,
-    );
-  }
-  const nationalInfrared = products.infrared.nationalFrames;
-  if (nationalInfrared?.length) {
-    warmFramesInBackground(
-      "infrared",
-      nationalInfrared.map((f) => f.time),
-      3,
+      4,
     );
   }
 
-  const hasGibs = SATELLITE_PRODUCTS.some(
-    (p) => p.gibsLayer && (products[p.id].nationalFrames?.length ?? 0) > 0,
-  );
-  const hasRealEarth = SATELLITE_PRODUCTS.some(
-    (p) => p.provider === "realearth" && products[p.id].frames.length > 0,
-  );
-  const source: WeatherMapsPayload["satellite"]["source"] =
-    hasGibs && hasRealEarth
-      ? "mixed"
-      : hasRealEarth
-        ? "realearth-himawari"
-        : "gibs-himawari";
-  const nationalSource: WeatherMapsPayload["satellite"]["nationalSource"] =
-    hasGibs ? "gibs-himawari" : "realearth-himawari";
-
-  return { products, source, nationalSource };
+  return { products, source: "gibs-himawari" };
 }
 
 export async function GET(request: NextRequest) {
@@ -358,42 +270,21 @@ export async function GET(request: NextRequest) {
       : await (async () => {
           const products = emptyProductFrames();
           const meta = getSatelliteProduct(product);
-          const nativeTimes =
-            meta.provider === "realearth" && meta.realearthProduct
-              ? await fetchRealEarthTimes(meta.realearthProduct, FRAME_COUNT)
-              : [];
-          const shared =
-            nativeTimes.length >= 3
-              ? buildSatelliteTimeline(nativeTimes, radarTimesUnix)
-              : null;
           const gibsLatestMs =
-            meta.gibsLayer != null
-              ? ((await findLatestGibsTime(
-                  meta.id === "visible" ? "infrared" : meta.id,
-                )) ?? fallbackGibsLatestMs())
-              : null;
-          const frames = await buildProductFrames(
-            meta,
-            shared,
-            gibsLatestMs,
-            radarTimesUnix,
-          );
-          const nationalFrames =
-            meta.gibsLayer && gibsLatestMs != null
-              ? buildFramesAtLatest(meta.id, gibsLatestMs)
-              : undefined;
-          products[product] = nationalFrames
-            ? { frames, nationalFrames }
-            : { frames };
+            (await findLatestGibsTime(
+              meta.id === "visible" ? "infrared" : meta.id,
+            )) ?? fallbackGibsLatestMs();
+          products[product] = {
+            frames: await buildProductFrames(
+              meta,
+              null,
+              gibsLatestMs,
+              radarTimesUnix,
+            ),
+          };
           return {
             products,
-            source:
-              meta.provider === "realearth"
-                ? ("realearth-himawari" as const)
-                : ("gibs-himawari" as const),
-            nationalSource: nationalFrames?.length
-              ? ("gibs-himawari" as const)
-              : ("realearth-himawari" as const),
+            source: "gibs-himawari" as const,
           };
         })();
 
@@ -412,7 +303,6 @@ export async function GET(request: NextRequest) {
       satellite: {
         product: activeProduct,
         source: satellite.source,
-        nationalSource: satellite.nationalSource,
         frames,
         products: satellite.products,
       },
@@ -426,10 +316,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Cache-Control": "public, s-maxage=20, stale-while-revalidate=10",
         "X-Satellite-Product": wantAll ? "all" : product,
-        "X-Satellite-Layer":
-          activeMeta.realearthProduct ??
-          activeMeta.gibsLayer ??
-          activeProduct,
+        "X-Satellite-Layer": activeMeta.gibsLayer ?? activeProduct,
         "X-Satellite-Latest": frames.length
           ? String(frames[frames.length - 1]!.time)
           : "",

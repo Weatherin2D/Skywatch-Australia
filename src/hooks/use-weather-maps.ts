@@ -138,7 +138,6 @@ export function useWeatherMaps(
     satelliteFrames,
     radarFrames,
     satelliteSource: state.data?.satellite.source ?? null,
-    nationalSource: state.data?.satellite.nationalSource ?? null,
     products: state.data?.satellite.products ?? null,
     refetch: () => load(),
   };
