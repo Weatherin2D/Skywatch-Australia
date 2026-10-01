@@ -12,7 +12,7 @@ import {
 } from "@/lib/weather/maps";
 import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
 
-const MIN_FRAME_BYTES = 8_000;
+const MIN_FRAME_BYTES = 12_000;
 const HIMAWARI_STEP_SEC = 10 * 60;
 const FETCH_ATTEMPTS = 3;
 
@@ -101,6 +101,52 @@ export function stripRealEarthWatermark(pngBuffer: Buffer): Buffer {
   }
 }
 
+/**
+ * Reject GIBS "empty" placeholders that still return HTTP 200 for unpublished
+ * times (tiny nearly-black PNGs). Real Himawari crops are much richer.
+ */
+function frameHasRealContent(body: Buffer): boolean {
+  if (body.length < MIN_FRAME_BYTES) return false;
+
+  // Fast path: substantial payloads are almost always real imagery.
+  if (body.length >= 80_000) {
+    let bright = 0;
+    for (let i = 64; i < Math.min(body.length, 6000); i += 13) {
+      if (body[i]! > 18) bright += 1;
+    }
+    return bright >= 8;
+  }
+
+  // Decode smaller candidates and require meaningful luminance spread.
+  try {
+    const png = PNG.sync.read(body);
+    const { width, height, data } = png;
+    if (width < 32 || height < 32) return false;
+    let sum = 0;
+    let sum2 = 0;
+    let lit = 0;
+    let n = 0;
+    const step = Math.max(1, Math.floor((width * height) / 2500));
+    for (let i = 0; i < width * height; i += step) {
+      const o = i * 4;
+      const g = (data[o]! + data[o + 1]! + data[o + 2]!) / 3;
+      sum += g;
+      sum2 += g * g;
+      if (g > 22) lit += 1;
+      n += 1;
+    }
+    if (n < 50) return false;
+    const mean = sum / n;
+    const variance = sum2 / n - mean * mean;
+    const litRatio = lit / n;
+    // Empty GIBS stubs are dark + low variance; real IR has cloud structure.
+    return litRatio >= 0.04 && variance >= 180;
+  } catch {
+    // If we can't decode, fall back to a stricter compressed-size gate.
+    return body.length >= 40_000;
+  }
+}
+
 async function fetchUpstreamOnce(
   upstream: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
@@ -111,19 +157,13 @@ async function fetchUpstreamOnce(
         Accept: "image/png,image/*;q=0.9,*/*;q=0.1",
       },
       cache: "no-store",
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(45_000),
     });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "image/png";
     if (!contentType.includes("image")) return null;
     const body = Buffer.from(await res.arrayBuffer());
-    if (body.length < MIN_FRAME_BYTES) return null;
-    // Reject near-empty / error tiles (almost all black PNG).
-    let bright = 0;
-    for (let i = 64; i < Math.min(body.length, 4000); i += 17) {
-      if (body[i]! > 20) bright += 1;
-    }
-    if (bright < 4) return null;
+    if (!frameHasRealContent(body)) return null;
     return { body, contentType };
   } catch {
     return null;
@@ -131,8 +171,9 @@ async function fetchUpstreamOnce(
 }
 
 /**
- * Prefer watermark-free NASA GIBS when that stamp exists; otherwise RealEarth
- * (fresher tip) with the SSEC logo stripped.
+ * RealEarth-primary products (IR/visible/airmass/etc.): fetch RealEarth first
+ * so national AND state crops stay on the fresher timeline. Fall back to GIBS
+ * only when RealEarth misses. Pure GIBS products keep GIBS-only.
  */
 async function fetchUpstreamWithRetry(
   product: SatelliteProductId,
@@ -145,13 +186,18 @@ async function fetchUpstreamWithRetry(
   const reUrl = realEarthUrlFor(product, timeUnix, bounds, region);
 
   const tryUrls: Array<{ url: string; strip: boolean }> = [];
-  // GIBS first whenever we have a layer mapping — no watermark.
-  if (gibsUrl) tryUrls.push({ url: gibsUrl, strip: false });
-  if (reUrl) tryUrls.push({ url: reUrl, strip: true });
-  // Pure GIBS products (if any remain).
-  if (!gibsUrl && !reUrl && meta.provider === "gibs") {
+  if (meta.provider === "realearth") {
+    if (reUrl) tryUrls.push({ url: reUrl, strip: true });
+    if (gibsUrl) tryUrls.push({ url: gibsUrl, strip: false });
+  } else {
+    if (gibsUrl) tryUrls.push({ url: gibsUrl, strip: false });
+    if (reUrl) tryUrls.push({ url: reUrl, strip: true });
+  }
+
+  if (tryUrls.length === 0 && meta.provider === "gibs") {
     const fallback = gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
-      width: region !== "national" ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH,
+      width:
+        region !== "national" ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH,
       bounds,
     });
     tryUrls.push({ url: fallback, strip: false });
@@ -218,7 +264,12 @@ export async function fetchAndCacheFrameResilient(
     };
   }
 
-  const offsets = [0, -HIMAWARI_STEP_SEC, HIMAWARI_STEP_SEC, -2 * HIMAWARI_STEP_SEC];
+  const offsets = [
+    0,
+    -HIMAWARI_STEP_SEC,
+    HIMAWARI_STEP_SEC,
+    -2 * HIMAWARI_STEP_SEC,
+  ];
   for (const off of offsets) {
     const t = timeUnix + off;
     if (t <= 0) continue;

@@ -187,8 +187,8 @@ export const GIBS_DISPLAY_WIDTH = 1536;
 /** Tighter regional crops use a wider raster so zoomed views stay sharp. */
 export const GIBS_REGION_DISPLAY_WIDTH = 1920;
 
-/** Bump when raster size / watermark handling changes so caches invalidate. */
-export const FRAME_QUALITY_TAG = "q1536-nowm";
+/** Bump when raster size / watermark / regional source order changes. */
+export const FRAME_QUALITY_TAG = "q1536-re-regions";
 
 /** Target loop length (~4h at 10-minute Himawari cadence). */
 export const SATELLITE_FRAME_COUNT = 24;
