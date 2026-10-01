@@ -1,5 +1,5 @@
+import { PNG } from "pngjs";
 import {
-  FRAME_QUALITY_TAG,
   GIBS_DISPLAY_WIDTH,
   GIBS_REGION_DISPLAY_WIDTH,
   boundsMercatorAspect,
@@ -16,31 +16,89 @@ const MIN_FRAME_BYTES = 8_000;
 const HIMAWARI_STEP_SEC = 10 * 60;
 const FETCH_ATTEMPTS = 3;
 
-function upstreamUrlFor(
+function gibsUrlFor(
   product: SatelliteProductId,
   timeUnix: number,
   bounds: LonLatBounds,
   region: string,
-): string {
+): string | null {
   const meta = getSatelliteProduct(product);
+  if (!meta.gibsLayer) return null;
   const isRegional = region !== "national";
   const width = isRegional ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH;
-  const aspect = boundsMercatorAspect(bounds);
-  const height = Math.max(1, Math.round(width / aspect));
-  if (meta.provider === "realearth") {
-    if (!meta.realearthProduct) {
-      throw new Error(`Product ${product} missing realearthProduct`);
-    }
-    return realEarthImageUrl(meta.realearthProduct, timeUnix, {
-      width,
-      height,
-      bounds,
-    });
-  }
   return gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
     width,
     bounds,
   });
+}
+
+function realEarthUrlFor(
+  product: SatelliteProductId,
+  timeUnix: number,
+  bounds: LonLatBounds,
+  region: string,
+): string | null {
+  const meta = getSatelliteProduct(product);
+  if (meta.provider !== "realearth" || !meta.realearthProduct) return null;
+  const isRegional = region !== "national";
+  const width = isRegional ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH;
+  const aspect = boundsMercatorAspect(bounds);
+  const height = Math.max(1, Math.round(width / aspect));
+  return realEarthImageUrl(meta.realearthProduct, timeUnix, {
+    width,
+    height,
+    bounds,
+  });
+}
+
+/**
+ * RealEarth /api/image burns a semi-transparent SSEC logo into the
+ * bottom-left corner. Replace that corner from neighbouring imagery so
+ * georefencing stays intact and the mark disappears.
+ */
+export function stripRealEarthWatermark(pngBuffer: Buffer): Buffer {
+  let png: PNG;
+  try {
+    png = PNG.sync.read(pngBuffer);
+  } catch {
+    return pngBuffer;
+  }
+  const { width, height, data } = png;
+  if (width < 64 || height < 64) return pngBuffer;
+
+  // Logo is a small circular SSEC mark in the extreme bottom-left.
+  const logoW = Math.max(56, Math.round(width * 0.11));
+  const logoH = Math.max(56, Math.round(height * 0.13));
+  const x0 = 0;
+  const y0 = height - logoH;
+  const srcX0 = Math.min(
+    width - logoW,
+    logoW + Math.max(6, Math.round(width * 0.02)),
+  );
+
+  for (let y = y0; y < height; y++) {
+    const ty = (y - y0) / Math.max(1, logoH - 1); // 0 top of patch → 1 bottom
+    for (let x = x0; x < logoW; x++) {
+      const tx = x / Math.max(1, logoW - 1); // 0 left → 1 right of patch
+      // Full replace in the outer corner; feather only toward clean imagery.
+      const corner = (1 - tx) * (0.35 + 0.65 * ty);
+      const w = corner > 0.22 ? 1 : corner / 0.22;
+      if (w <= 0.01) continue;
+      const di = (y * width + x) * 4;
+      const si = (y * width + (srcX0 + x)) * 4;
+      for (let c = 0; c < 3; c++) {
+        const dst = data[di + c]!;
+        const src = data[si + c]!;
+        data[di + c] = Math.round(dst * (1 - w) + src * w);
+      }
+    }
+  }
+
+  try {
+    return PNG.sync.write(png);
+  } catch {
+    return pngBuffer;
+  }
 }
 
 async function fetchUpstreamOnce(
@@ -72,18 +130,47 @@ async function fetchUpstreamOnce(
   }
 }
 
+/**
+ * Prefer watermark-free NASA GIBS when that stamp exists; otherwise RealEarth
+ * (fresher tip) with the SSEC logo stripped.
+ */
 async function fetchUpstreamWithRetry(
   product: SatelliteProductId,
   timeUnix: number,
   bounds: LonLatBounds,
   region: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
-  const upstream = upstreamUrlFor(product, timeUnix, bounds, region);
-  for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
-    const got = await fetchUpstreamOnce(upstream);
-    if (got) return got;
-    if (attempt < FETCH_ATTEMPTS - 1) {
-      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+  const meta = getSatelliteProduct(product);
+  const gibsUrl = gibsUrlFor(product, timeUnix, bounds, region);
+  const reUrl = realEarthUrlFor(product, timeUnix, bounds, region);
+
+  const tryUrls: Array<{ url: string; strip: boolean }> = [];
+  // GIBS first whenever we have a layer mapping — no watermark.
+  if (gibsUrl) tryUrls.push({ url: gibsUrl, strip: false });
+  if (reUrl) tryUrls.push({ url: reUrl, strip: true });
+  // Pure GIBS products (if any remain).
+  if (!gibsUrl && !reUrl && meta.provider === "gibs") {
+    const fallback = gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
+      width: region !== "national" ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH,
+      bounds,
+    });
+    tryUrls.push({ url: fallback, strip: false });
+  }
+
+  for (const { url, strip } of tryUrls) {
+    for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+      const got = await fetchUpstreamOnce(url);
+      if (!got) {
+        if (attempt < FETCH_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+        }
+        continue;
+      }
+      if (!strip) return got;
+      return {
+        body: stripRealEarthWatermark(got.body),
+        contentType: got.contentType,
+      };
     }
   }
   return null;
