@@ -23,8 +23,8 @@ import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
 const MIN_FRAME_BYTES = 8_000;
 const HIMAWARI_STEP_SEC = 10 * 60;
 const FETCH_ATTEMPTS = 3;
-const PANEL_FETCH_ATTEMPTS = 5;
-const PANEL_CONCURRENCY = 2;
+const PANEL_FETCH_ATTEMPTS = 2;
+const PANEL_CONCURRENCY = 4;
 
 function gibsUrlFor(
   product: SatelliteProductId,
@@ -232,7 +232,7 @@ function frameHasRealContent(body: Buffer): boolean {
 
 async function fetchUpstreamOnce(
   upstream: string,
-  options?: { rejectSizeLimitOverlay?: boolean },
+  options?: { rejectSizeLimitOverlay?: boolean; timeoutMs?: number },
 ): Promise<{ body: Buffer; contentType: string } | null> {
   try {
     const res = await fetch(upstream, {
@@ -241,7 +241,7 @@ async function fetchUpstreamOnce(
         Accept: "image/png,image/*;q=0.9,*/*;q=0.1",
       },
       cache: "no-store",
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(options?.timeoutMs ?? 45_000),
     });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "image/png";
@@ -366,12 +366,13 @@ async function fetchRealEarthPanel(
   const aspect = boundsMercatorAspect(bounds);
   let { width, height } = clampPanelSize(preferWidth, aspect);
 
-  for (let shrink = 0; shrink < 4; shrink++) {
+  for (let shrink = 0; shrink < 2; shrink++) {
     const url = realEarthUrlAtSize(product, timeUnix, bounds, width, height);
     if (!url) break;
     for (let attempt = 0; attempt < PANEL_FETCH_ATTEMPTS; attempt++) {
       const got = await fetchUpstreamOnce(url, {
         rejectSizeLimitOverlay: true,
+        timeoutMs: 12_000,
       });
       if (got) {
         try {
@@ -380,30 +381,24 @@ async function fetchRealEarthPanel(
           break;
         }
       }
-      await new Promise((r) => setTimeout(r, 180 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
     }
-    width = Math.max(140, Math.floor(width * 0.72));
+    width = Math.max(140, Math.floor(width * 0.7));
     height = Math.max(1, Math.round(width / aspect));
   }
 
   // Panel-level GIBS fallback keeps the mosaic complete and watermark-free.
   const gibsUrl = gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
-    width: Math.min(512, Math.max(160, preferWidth)),
+    width: Math.min(480, Math.max(160, preferWidth)),
     bounds,
   });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const got = await fetchUpstreamOnce(gibsUrl);
-    if (!got) {
-      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
-      continue;
-    }
-    try {
-      return PNG.sync.read(stripCornerBadge(got.body));
-    } catch {
-      return null;
-    }
+  const got = await fetchUpstreamOnce(gibsUrl, { timeoutMs: 12_000 });
+  if (!got) return null;
+  try {
+    return PNG.sync.read(stripCornerBadge(got.body));
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function blitPng(
