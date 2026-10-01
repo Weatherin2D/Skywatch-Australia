@@ -223,6 +223,7 @@ export const WEEK_FORECAST = [
   { day: "Tue", high: 24, low: 17, icon: "sun" },
 ] as const;
 
+/** @deprecated Home model panel uses live Open-Meteo comparison. */
 export const MODEL_ROWS = [
   { metric: "Max Temp", ecmwf: "22°", access: "23°", gfs: "21°" },
   { metric: "Rain", ecmwf: "1 mm", access: "0 mm", gfs: "2 mm" },

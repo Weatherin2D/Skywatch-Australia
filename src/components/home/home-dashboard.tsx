@@ -3,11 +3,9 @@
 import {
   ChevronDown,
   ChevronRight,
-  Gauge,
   Pause,
   Play,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
@@ -20,13 +18,17 @@ import {
   HomeWeekPanel,
 } from "@/components/home/home-live-panels";
 import {
+  HomeModelComparisonPanel,
+  HomeStormTrackerPanel,
+  HomeUpperAirPanel,
+} from "@/components/home/home-insight-panels";
+import {
   DEFAULT_MAP_REGION,
   DEFAULT_MAP_SETTINGS,
   DEFAULT_WEATHER_LAYERS,
   MAP_MODES,
   MAP_REGIONS,
   MAP_SETTINGS,
-  MODEL_ROWS,
   WEATHER_LAYERS,
   getMapRegion,
   type LayerId,
@@ -781,22 +783,7 @@ export function HomeDashboard() {
 
           <HomeWarningsPanel />
 
-          <Panel title="Storm Tracker">
-            <div className="overflow-hidden border border-[var(--ink)]/20">
-              <div
-                className="flex h-24 items-end justify-center bg-[linear-gradient(135deg,#001a3a,#003087)] p-2"
-                aria-hidden
-              >
-                <div className="h-16 w-28 rounded-full bg-[radial-gradient(circle_at_40%_40%,#ef4444_0%,#eab308_35%,#22c55e_65%,transparent_70%)] opacity-90" />
-              </div>
-              <div className="space-y-1 bg-[var(--ink)]/10 p-2 text-xs">
-                <p className="font-bold text-[var(--ink)]">Storm 1427 · eastern NSW</p>
-                <p className="text-[var(--ink)]/75">Moving SE · 28 km/h</p>
-                <p className="text-[var(--ink)]/75">Lightning 12/min · Hail: Large</p>
-                <p className="text-[var(--ink)]/75">Max wind 95 km/h · Rain 42 mm/h</p>
-              </div>
-            </div>
-          </Panel>
+          <HomeStormTrackerPanel />
 
           <HomeBriefingPanel />
         </div>
@@ -807,72 +794,9 @@ export function HomeDashboard() {
       <div className="grid gap-3 md:grid-cols-3">
         <HomeWeekPanel />
 
-        <Panel title="Model Comparison — Sydney">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[240px] text-left text-xs">
-              <thead className="text-[var(--ink)]/70">
-                <tr>
-                  <th className="pb-2 font-semibold">Metric</th>
-                  <th className="pb-2 font-semibold">ECMWF</th>
-                  <th className="pb-2 font-semibold">ACCESS</th>
-                  <th className="pb-2 font-semibold">GFS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MODEL_ROWS.map((row) => (
-                  <tr key={row.metric} className="border-t border-[var(--ink)]/15">
-                    <td className="py-1.5 text-[var(--ink)]/75">{row.metric}</td>
-                    <td className="py-1.5 font-semibold text-[var(--ink)]">
-                      {row.ecmwf}
-                    </td>
-                    <td className="py-1.5 font-semibold text-[var(--ink)]">
-                      {row.access}
-                    </td>
-                    <td className="py-1.5 font-semibold text-[var(--ink)]">{row.gfs}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
+        <HomeModelComparisonPanel />
 
-        <Panel title="Upper air — Sydney (demo)">
-          <div className="relative h-36 overflow-hidden border border-[var(--ink)]/20 bg-[var(--navy-deep)]">
-            <svg viewBox="0 0 200 120" className="h-full w-full opacity-90">
-              <rect width="200" height="120" fill="#001a3a" />
-              {[20, 40, 60, 80, 100].map((y) => (
-                <line
-                  key={y}
-                  x1="30"
-                  x2="180"
-                  y1={y}
-                  y2={y}
-                  stroke="#1a4a8c"
-                  strokeWidth="1"
-                />
-              ))}
-              <path
-                d="M40 100 C70 90, 90 40, 120 35 S160 50, 175 20"
-                fill="none"
-                stroke="#1a6bb5"
-                strokeWidth="2"
-              />
-              <path
-                d="M40 105 C80 95, 100 70, 130 55 S165 45, 175 40"
-                fill="none"
-                stroke="#ffe000"
-                strokeWidth="2"
-              />
-            </svg>
-            <div className="absolute bottom-2 left-2 flex gap-3 text-[10px] text-[var(--ink)]/80">
-              <span className="inline-flex items-center gap-1">
-                <Gauge className="h-3 w-3 text-[var(--bom-yellow)]" /> LI −2
-              </span>
-              <span>CIN 45</span>
-              <span>Shear 35 kt</span>
-            </div>
-          </div>
-        </Panel>
+        <HomeUpperAirPanel />
       </div>
     </div>
     </HomeSydneyForecastProvider>

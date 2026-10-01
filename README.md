@@ -8,17 +8,21 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — Himawari satellite loops, Map overlays (Lightning, Rain radar, Synoptic MSLP), region picker, live BoM warnings panel |
+| `/` | SkyWatch homepage — live BoM forecasts/warnings, Himawari loops, overlays, storm activity, model comparison, upper air |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
 | `/forecast/[geohash]` | Direct forecast for a BoM location |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
+| `/api/weather/storm-activity` | Lightning hotspot summary for Storm Tracker |
+| `/api/weather/models` | Multi-model day comparison (ECMWF / ICON / GFS via Open-Meteo) |
+| `/api/weather/upper-air` | CAPE/CIN/shear + temp profile (Open-Meteo pressure levels) |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
 | `/api/weather/warnings` | Live BoM warning list (category-ranked); `/api/weather/warnings/:id` for detail |
 | `/api/weather/locations` | BoM location search (`?q=`) |
 | `/api/weather/forecast` | BoM daily + hourly + observations (`?geohash=` / `/:geohash` / `?region=`) |
+| `/api/weather/capitals` | Capital-city observation/forecast snapshots |
 | `/risk` | Preserved convective outlook (former AusRisk public map) |
 | `/risk/admin` | Preserved outlook admin upload |
 
