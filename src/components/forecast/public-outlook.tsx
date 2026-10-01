@@ -95,7 +95,7 @@ export function PublicOutlook() {
         </a>
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-8 sm:px-8 sm:pb-12">
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-8 sm:px-8 sm:pb-12">
         {loading && (
           <div className="flex h-[50vh] items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 text-neutral-400 sm:h-[62vh]">
             Loading outlook…
@@ -178,7 +178,7 @@ export function PublicOutlook() {
             </aside>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
