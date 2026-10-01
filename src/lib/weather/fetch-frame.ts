@@ -83,8 +83,8 @@ export function stripRealEarthWatermark(pngBuffer: Buffer): Buffer {
   const { width, height, data } = png;
   if (width < 64 || height < 64) return pngBuffer;
 
-  const logoW = Math.max(72, Math.round(width * 0.13));
-  const logoH = Math.max(72, Math.round(Math.min(height * 0.16, width * 0.15)));
+  const logoW = Math.max(72, Math.round(width * 0.14));
+  const logoH = Math.max(80, Math.round(Math.min(height * 0.18, width * 0.16)));
   const y0 = height - logoH;
   const srcX0 = Math.min(
     width - 1,
@@ -285,7 +285,13 @@ async function fetchUpstreamWithRetry(
   if (isNational && gibsUrl) {
     for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
       const got = await fetchUpstreamOnce(gibsUrl);
-      if (got) return got;
+      if (got) {
+        // GIBS burns a small NASA meatball into the bottom-left — strip it.
+        return {
+          body: stripRealEarthWatermark(got.body),
+          contentType: got.contentType,
+        };
+      }
       if (attempt < FETCH_ATTEMPTS - 1) {
         await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
       }

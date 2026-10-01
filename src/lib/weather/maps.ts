@@ -196,7 +196,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1024-nat-gibs";
+export const FRAME_QUALITY_TAG = "q1536-nat-gibs-nowm";
 
 /** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
 export function realEarthRasterSize(
