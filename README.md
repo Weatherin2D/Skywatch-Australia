@@ -4,6 +4,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
+**Production:** [https://skywatchaustralia.vercel.app](https://skywatchaustralia.vercel.app) (also [ausrisk.vercel.app](https://ausrisk.vercel.app)). `skywatch.vercel.app` is already taken on another Vercel account and cannot be assigned to this project until that owner removes it.
+
 ## Current product surface
 
 | Route | Status |
