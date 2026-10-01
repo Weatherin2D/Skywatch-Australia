@@ -3,20 +3,28 @@ import {
   GIBS_DISPLAY_WIDTH,
   GIBS_REGION_DISPLAY_WIDTH,
   RE_MAX_WIDTH,
+  RE_PANEL_MAX_EDGE,
+  RE_PANEL_MAX_PIXELS,
+  RE_STITCH_LONG_EDGE,
   boundsMercatorAspect,
   gibsHimawariWmsUrl,
   getSatelliteProduct,
+  lonLatToWebMercator,
   realEarthImageUrl,
   realEarthRasterSize,
+  shouldStitchRealEarth,
   toIsoZ,
+  webMercatorToLonLat,
   type LonLatBounds,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
 import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
 
-const MIN_FRAME_BYTES = 12_000;
+const MIN_FRAME_BYTES = 8_000;
 const HIMAWARI_STEP_SEC = 10 * 60;
 const FETCH_ATTEMPTS = 3;
+const PANEL_FETCH_ATTEMPTS = 4;
+const PANEL_CONCURRENCY = 3;
 
 function gibsUrlFor(
   product: SatelliteProductId,
@@ -45,6 +53,7 @@ function realEarthWidthLadder(bounds: LonLatBounds): number[] {
     720,
     640,
     512,
+    400,
   ];
   return [...new Set(ladder.map((w) => Math.max(320, Math.round(w))))].sort(
     (a, b) => b - a,
@@ -56,14 +65,15 @@ function realEarthUrlAtSize(
   timeUnix: number,
   bounds: LonLatBounds,
   width: number,
+  height?: number,
 ): string | null {
   const meta = getSatelliteProduct(product);
   if (!meta.realearthProduct) return null;
   const aspect = boundsMercatorAspect(bounds);
-  const height = Math.max(1, Math.round(width / aspect));
+  const h = height ?? Math.max(1, Math.round(width / aspect));
   return realEarthImageUrl(meta.realearthProduct, timeUnix, {
     width: Math.min(width, RE_MAX_WIDTH),
-    height,
+    height: h,
     bounds,
   });
 }
@@ -131,6 +141,7 @@ export const stripRealEarthWatermark = stripCornerBadge;
 
 /**
  * Detect RealEarth's burned-in "Size limit exceeded" / attribution banner.
+ * SSEC responses are intermittent — same URL can flip between clean and marked.
  */
 export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
   let png: PNG;
@@ -144,20 +155,38 @@ export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
 
   let maxRow = 0;
   let brightSum = 0;
+  let maxWhite = 0;
+  let whiteRows = 0;
   const y0 = Math.floor(height * 0.45);
+  const stepX = Math.max(1, Math.floor(width / 250));
   for (let y = y0; y < height; y++) {
     let bright = 0;
-    for (let x = 0; x < width; x++) {
+    let white = 0;
+    let n = 0;
+    for (let x = 0; x < width; x += stepX) {
       const i = (y * width + x) * 4;
-      const g = (data[i]! + data[i + 1]! + data[i + 2]!) / 3;
-      if (g > 175) bright += 1;
+      const r = data[i]!;
+      const g = data[i + 1]!;
+      const b = data[i + 2]!;
+      const gray = (r + g + b) / 3;
+      if (gray > 175) bright += 1;
+      if (r > 200 && g > 200 && b > 200) white += 1;
+      n += 1;
     }
-    const ratio = bright / width;
-    maxRow = Math.max(maxRow, ratio);
-    brightSum += ratio;
+    const brightRatio = bright / n;
+    const whiteRatio = white / n;
+    maxRow = Math.max(maxRow, brightRatio);
+    brightSum += brightRatio;
+    maxWhite = Math.max(maxWhite, whiteRatio);
+    if (whiteRatio > 0.05) whiteRows += 1;
   }
 
-  return maxRow >= 0.08 || brightSum >= 2.5;
+  return (
+    maxRow >= 0.08 ||
+    brightSum >= 2.5 ||
+    maxWhite >= 0.04 ||
+    whiteRows >= 8
+  );
 }
 
 /**
@@ -228,15 +257,230 @@ async function fetchUpstreamOnce(
   }
 }
 
+type PanelPlan = {
+  cols: number;
+  rows: number;
+  outWidth: number;
+  outHeight: number;
+};
+
+function planPanelGrid(bounds: LonLatBounds): PanelPlan {
+  const aspect = boundsMercatorAspect(bounds);
+  const longEdge = RE_STITCH_LONG_EDGE;
+  const outWidth =
+    aspect >= 1 ? longEdge : Math.max(1, Math.round(longEdge * aspect));
+  const outHeight =
+    aspect >= 1 ? Math.max(1, Math.round(longEdge / aspect)) : longEdge;
+
+  for (let rows = 1; rows <= 5; rows++) {
+    for (let cols = 1; cols <= 4; cols++) {
+      const pw = Math.ceil(outWidth / cols);
+      const ph = Math.ceil(outHeight / rows);
+      if (
+        pw <= RE_PANEL_MAX_EDGE &&
+        ph <= RE_PANEL_MAX_EDGE &&
+        pw * ph <= RE_PANEL_MAX_PIXELS
+      ) {
+        return { cols, rows, outWidth, outHeight };
+      }
+    }
+  }
+  // Fallback densest grid.
+  return {
+    cols: 3,
+    rows: 4,
+    outWidth,
+    outHeight,
+  };
+}
+
+function panelBounds(
+  bounds: LonLatBounds,
+  cols: number,
+  rows: number,
+  col: number,
+  row: number,
+): LonLatBounds {
+  const [[south, west], [north, east]] = bounds;
+  const [minx, miny] = lonLatToWebMercator(west, south);
+  const [maxx, maxy] = lonLatToWebMercator(east, north);
+  // row 0 = northernmost (image top)
+  const x0 = minx + ((maxx - minx) * col) / cols;
+  const x1 = minx + ((maxx - minx) * (col + 1)) / cols;
+  const y1 = maxy - ((maxy - miny) * row) / rows;
+  const y0 = maxy - ((maxy - miny) * (row + 1)) / rows;
+  const [lon0, lat0] = webMercatorToLonLat(x0, y0);
+  const [lon1, lat1] = webMercatorToLonLat(x1, y1);
+  return [
+    [lat0, lon0],
+    [lat1, lon1],
+  ];
+}
+
+function clampPanelSize(width: number, aspect: number): {
+  width: number;
+  height: number;
+} {
+  let w = Math.max(32, Math.round(width));
+  let h = Math.max(1, Math.round(w / aspect));
+  while (
+    (w > RE_PANEL_MAX_EDGE || h > RE_PANEL_MAX_EDGE || w * h > RE_PANEL_MAX_PIXELS) &&
+    w > 160
+  ) {
+    w = Math.max(160, Math.floor(w * 0.88));
+    h = Math.max(1, Math.round(w / aspect));
+  }
+  return { width: w, height: h };
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const run = async () => {
+    while (cursor < items.length) {
+      const i = cursor;
+      cursor += 1;
+      results[i] = await worker(items[i]!, i);
+    }
+  };
+  const n = Math.min(concurrency, Math.max(1, items.length));
+  await Promise.all(Array.from({ length: n }, () => run()));
+  return results;
+}
+
+/**
+ * Fetch one RealEarth panel with retries. Size-limit banners are intermittent,
+ * so retry the same size before stepping down.
+ */
+async function fetchRealEarthPanel(
+  product: SatelliteProductId,
+  timeUnix: number,
+  bounds: LonLatBounds,
+  preferWidth: number,
+): Promise<PNG | null> {
+  const aspect = boundsMercatorAspect(bounds);
+  let { width, height } = clampPanelSize(preferWidth, aspect);
+
+  for (let shrink = 0; shrink < 3; shrink++) {
+    const url = realEarthUrlAtSize(product, timeUnix, bounds, width, height);
+    if (!url) return null;
+    for (let attempt = 0; attempt < PANEL_FETCH_ATTEMPTS; attempt++) {
+      const got = await fetchUpstreamOnce(url, {
+        rejectSizeLimitOverlay: true,
+      });
+      if (got) {
+        try {
+          return PNG.sync.read(stripCornerBadge(got.body));
+        } catch {
+          return null;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+    }
+    width = Math.max(160, Math.floor(width * 0.75));
+    height = Math.max(1, Math.round(width / aspect));
+  }
+  return null;
+}
+
+function blitPng(
+  dest: PNG,
+  src: PNG,
+  destX: number,
+  destY: number,
+  destW: number,
+  destH: number,
+): void {
+  // Nearest-neighbor scale src → dest rect (panels are already near-native size).
+  for (let y = 0; y < destH; y++) {
+    const sy = Math.min(src.height - 1, Math.floor((y * src.height) / destH));
+    for (let x = 0; x < destW; x++) {
+      const sx = Math.min(src.width - 1, Math.floor((x * src.width) / destW));
+      const di = ((destY + y) * dest.width + (destX + x)) * 4;
+      const si = (sy * src.width + sx) * 4;
+      dest.data[di] = src.data[si]!;
+      dest.data[di + 1] = src.data[si + 1]!;
+      dest.data[di + 2] = src.data[si + 2]!;
+      dest.data[di + 3] = 255;
+    }
+  }
+}
+
+/**
+ * Large state crops: request a grid of small RealEarth panels and stitch them
+ * into one watermark-free mosaic.
+ */
+async function fetchRealEarthStitched(
+  product: SatelliteProductId,
+  timeUnix: number,
+  bounds: LonLatBounds,
+): Promise<{ body: Buffer; contentType: string } | null> {
+  const plan = planPanelGrid(bounds);
+  const cells: Array<{ col: number; row: number }> = [];
+  for (let row = 0; row < plan.rows; row++) {
+    for (let col = 0; col < plan.cols; col++) {
+      cells.push({ col, row });
+    }
+  }
+
+  const panels = await mapPool(cells, PANEL_CONCURRENCY, async ({ col, row }) => {
+    const b = panelBounds(bounds, plan.cols, plan.rows, col, row);
+    const preferW = Math.ceil(plan.outWidth / plan.cols);
+    const png = await fetchRealEarthPanel(product, timeUnix, b, preferW);
+    return { col, row, png };
+  });
+
+  if (panels.some((p) => p.png == null)) {
+    return null;
+  }
+
+  const mosaic = new PNG({
+    width: plan.outWidth,
+    height: plan.outHeight,
+    fill: true,
+  });
+
+  for (const { col, row, png } of panels) {
+    if (!png) continue;
+    const x0 = Math.round((plan.outWidth * col) / plan.cols);
+    const x1 = Math.round((plan.outWidth * (col + 1)) / plan.cols);
+    const y0 = Math.round((plan.outHeight * row) / plan.rows);
+    const y1 = Math.round((plan.outHeight * (row + 1)) / plan.rows);
+    blitPng(mosaic, png, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0));
+  }
+
+  let body: Buffer;
+  try {
+    body = PNG.sync.write(mosaic);
+  } catch {
+    return null;
+  }
+  body = stripCornerBadge(body);
+  if (hasRealEarthSizeLimitOverlay(body)) {
+    return null;
+  }
+  return { body, contentType: "image/png" };
+}
+
 /**
  * Fetch RealEarth at a size that avoids the "Size limit exceeded" overlay,
- * then strip the SSEC corner badge.
+ * then strip the SSEC corner badge. Large regions use multi-panel stitch.
  */
 async function fetchRealEarthClean(
   product: SatelliteProductId,
   timeUnix: number,
   bounds: LonLatBounds,
+  region: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
+  if (region !== "national" && shouldStitchRealEarth(bounds)) {
+    const stitched = await fetchRealEarthStitched(product, timeUnix, bounds);
+    if (stitched) return stitched;
+  }
+
   for (const width of realEarthWidthLadder(bounds)) {
     const url = realEarthUrlAtSize(product, timeUnix, bounds, width);
     if (!url) return null;
@@ -292,8 +536,8 @@ async function fetchGibsClean(
 }
 
 /**
- * Prefer RealEarth (fresher ~15–30 min tip, contiguous 10-minute stamps).
- * Fall back to GIBS when RealEarth misses. Strip corner badges either way.
+ * Prefer RealEarth (fresher ~15–30 min tip). Large state zooms are stitched
+ * from multiple panel requests. Fall back to GIBS when RealEarth misses.
  */
 async function fetchUpstreamWithRetry(
   product: SatelliteProductId,
@@ -304,7 +548,7 @@ async function fetchUpstreamWithRetry(
   const meta = getSatelliteProduct(product);
 
   if (meta.realearthProduct) {
-    const re = await fetchRealEarthClean(product, timeUnix, bounds);
+    const re = await fetchRealEarthClean(product, timeUnix, bounds, region);
     if (re) return re;
   }
 
@@ -369,8 +613,6 @@ export async function fetchAndCacheFrameResilient(
         ? await fetchUpstreamWithRetry(product, t, frameBounds, region)
         : await fetchAndCacheFrame(product, t, frameBounds, region);
     if (!got) continue;
-    // Only bind near-miss imagery to the requested key for ±1 step so a
-    // brief publish race does not freeze the loop on a 20–80 minute old frame.
     if (off === 0 || Math.abs(off) === HIMAWARI_STEP_SEC) {
       setCachedFrame(product, timeUnix, got.body, got.contentType, region);
     }

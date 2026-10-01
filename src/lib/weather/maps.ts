@@ -108,6 +108,15 @@ export function lonLatToWebMercator(lon: number, lat: number): [number, number] 
   return [x, y];
 }
 
+/** Inverse of {@link lonLatToWebMercator}. */
+export function webMercatorToLonLat(x: number, y: number): [number, number] {
+  const lon = (x / 20037508.34) * 180;
+  const latRad =
+    2 * Math.atan(Math.exp(((y / 20037508.34) * 180 * Math.PI) / 180)) -
+    Math.PI / 2;
+  return [lon, (latRad * 180) / Math.PI];
+}
+
 /**
  * Project lon/lat into a lon/lat image frame as CSS percentages (Web Mercator).
  */
@@ -160,7 +169,16 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1024-re-contig-v1";
+export const FRAME_QUALITY_TAG = "q1440-re-panels-v1";
+
+/**
+ * Target long-edge for stitched regional RealEarth mosaics. Built from several
+ * smaller panel requests so SSEC's "Size limit exceeded" banner never burns in.
+ */
+export const RE_STITCH_LONG_EDGE = 1440;
+/** Per-panel caps — larger single exports intermittently watermark. */
+export const RE_PANEL_MAX_EDGE = 480;
+export const RE_PANEL_MAX_PIXELS = 220_000;
 
 /** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
 export function realEarthRasterSize(
@@ -177,6 +195,15 @@ export function realEarthRasterSize(
     height = Math.max(1, Math.round(width / aspect));
   }
   return { width, height };
+}
+
+/** Whether a region crop should be fetched as multiple RealEarth panels. */
+export function shouldStitchRealEarth(bounds: LonLatBounds): boolean {
+  const aspect = boundsMercatorAspect(bounds);
+  const longEdge = RE_STITCH_LONG_EDGE;
+  const width = aspect >= 1 ? longEdge : Math.max(1, Math.round(longEdge * aspect));
+  const height = aspect >= 1 ? Math.max(1, Math.round(longEdge / aspect)) : longEdge;
+  return width * height > RE_SAFE_MAX_PIXELS * 0.85;
 }
 /** Target loop length (~4h at 10-minute Himawari cadence). */
 export const SATELLITE_FRAME_COUNT = 24;
