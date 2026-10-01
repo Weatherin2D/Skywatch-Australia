@@ -169,7 +169,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1080-re-panels-v7";
+export const FRAME_QUALITY_TAG = "q1020-re-panels-v8";
 
 /**
  * Target long-edge for stitched regional RealEarth mosaics. Built from several
@@ -200,11 +200,21 @@ export function realEarthRasterSize(
 
 /** Whether a region crop should be fetched as multiple RealEarth panels. */
 export function shouldStitchRealEarth(bounds: LonLatBounds): boolean {
+  const [[south, west], [north, east]] = bounds;
+  const latSpan = Math.abs(north - south);
+  const lonSpan = Math.abs(east - west);
+  // Large geographic state zooms hit SSEC's size-limit banner as one export —
+  // stitch whenever the crop is bigger than a compact metro/state window.
+  if (latSpan >= 8 || lonSpan >= 8 || latSpan * lonSpan >= 40) {
+    return true;
+  }
   const aspect = boundsMercatorAspect(bounds);
   const longEdge = RE_STITCH_LONG_EDGE;
-  const width = aspect >= 1 ? longEdge : Math.max(1, Math.round(longEdge * aspect));
-  const height = aspect >= 1 ? Math.max(1, Math.round(longEdge / aspect)) : longEdge;
-  return width * height > RE_SAFE_MAX_PIXELS * 0.85;
+  const width =
+    aspect >= 1 ? longEdge : Math.max(1, Math.round(longEdge * aspect));
+  const height =
+    aspect >= 1 ? Math.max(1, Math.round(longEdge / aspect)) : longEdge;
+  return width * height > RE_SAFE_MAX_PIXELS * 0.7;
 }
 /** Target loop length (~4h at 10-minute Himawari cadence). */
 export const SATELLITE_FRAME_COUNT = 24;
