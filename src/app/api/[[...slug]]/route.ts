@@ -13,6 +13,7 @@ import * as weatherSynopticFrame from "@/server/api/weather-synoptic-frame";
 import * as weatherWarnings from "@/server/api/weather-warnings";
 import * as weatherLocations from "@/server/api/weather-locations";
 import * as weatherLocationForecast from "@/server/api/weather-location-forecast";
+import * as weatherCapitals from "@/server/api/weather-capitals";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,6 +45,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/warnings": weatherWarnings as RouteHandlers,
   "weather/locations": weatherLocations as RouteHandlers,
   "weather/forecast": weatherLocationForecast as RouteHandlers,
+  "weather/capitals": weatherCapitals as RouteHandlers,
 };
 
 function resolve(

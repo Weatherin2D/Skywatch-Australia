@@ -101,6 +101,37 @@ export const STATE_CAPITALS: Record<
   australia: { name: "Sydney", geohash: "r3gx2sp", state: "NSW" },
 };
 
+/** Ordered capital cities for the national home strip. */
+export const CAPITAL_CITIES = [
+  STATE_CAPITALS.nsw,
+  STATE_CAPITALS.vic,
+  STATE_CAPITALS.qld,
+  STATE_CAPITALS.wa,
+  STATE_CAPITALS.sa,
+  STATE_CAPITALS.tas,
+  STATE_CAPITALS.act,
+  STATE_CAPITALS.nt,
+] as const;
+
+export type CapitalSnapshot = {
+  city: string;
+  state: string;
+  geohash: string;
+  href: string;
+  tempC: number | null;
+  wind: string | null;
+  condition: string | null;
+  icon: string | null;
+};
+
+export type LocationSnapshot = {
+  location: BomLocationMeta;
+  observation: BomObservation | null;
+  today: BomDailyForecast | null;
+  daily: BomDailyForecast[];
+  issueTime: string | null;
+};
+
 async function bomGet<T>(url: string): Promise<T> {
   const res = await fetch(url, {
     headers: {
@@ -330,6 +361,135 @@ export async function fetchLocationForecast(
     issueTime: str(dailyPayload?.metadata?.issue_time),
     attribution: "Bureau of Meteorology",
   };
+}
+
+/** Lighter fetch for home panels — daily + obs, no hourly. */
+export async function fetchLocationSnapshot(
+  geohash: string,
+): Promise<LocationSnapshot | null> {
+  if (!isValidGeohash(geohash)) return null;
+  const gh = geohash.trim().toLowerCase();
+  const grid = gridGeohash(gh);
+
+  const location =
+    (await fetchBomLocationMeta(gh)) ||
+    (await fetchBomLocationMeta(grid));
+  if (!location) return null;
+
+  const [dailyRes, obsRes] = await Promise.allSettled([
+    bomGet<{ data?: Record<string, unknown>[]; metadata?: { issue_time?: string } }>(
+      `${BOM_API}/locations/${encodeURIComponent(location.geohash)}/forecasts/daily`,
+    ),
+    bomGet<{
+      data?: Record<string, unknown>;
+      metadata?: { observation_time?: string; issue_time?: string };
+    }>(`${BOM_API}/locations/${encodeURIComponent(grid)}/observations`),
+  ]);
+
+  const dailyPayload =
+    dailyRes.status === "fulfilled" ? dailyRes.value : null;
+  const obsPayload = obsRes.status === "fulfilled" ? obsRes.value : null;
+  const daily = (dailyPayload?.data || []).map(mapDaily);
+  const observation = mapObservation(
+    obsPayload?.data,
+    str(obsPayload?.metadata?.observation_time) ||
+      str(obsPayload?.metadata?.issue_time),
+  );
+
+  if (daily.length === 0 && !observation) return null;
+
+  return {
+    location,
+    observation,
+    today: daily[0] ?? null,
+    daily,
+    issueTime: str(dailyPayload?.metadata?.issue_time),
+  };
+}
+
+export async function fetchCapitalSnapshots(): Promise<CapitalSnapshot[]> {
+  const rows = await Promise.all(
+    CAPITAL_CITIES.map(async (cap) => {
+      try {
+        const snap = await fetchLocationSnapshot(cap.geohash);
+        const today = snap?.today;
+        const obs = snap?.observation;
+        const wind =
+          obs?.windKmh != null
+            ? `${obs.windDir || ""} ${Math.round(obs.windKmh)}`.trim()
+            : null;
+        return {
+          city: cap.name,
+          state: cap.state,
+          geohash: cap.geohash,
+          href: `/forecast/${cap.geohash}`,
+          tempC:
+            obs?.temp != null
+              ? Math.round(obs.temp)
+              : today?.tempNow != null
+                ? Math.round(today.tempNow)
+                : today?.tempMax ?? null,
+          wind,
+          condition: today?.shortText?.replace(/\.$/, "") || null,
+          icon: today?.icon || null,
+        } satisfies CapitalSnapshot;
+      } catch {
+        return {
+          city: cap.name,
+          state: cap.state,
+          geohash: cap.geohash,
+          href: `/forecast/${cap.geohash}`,
+          tempC: null,
+          wind: null,
+          condition: null,
+          icon: null,
+        } satisfies CapitalSnapshot;
+      }
+    }),
+  );
+  return rows;
+}
+
+export function formatDateHeading(
+  timeZone = "Australia/Sydney",
+  when: Date = new Date(),
+): string {
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(when);
+}
+
+export function formatClockLabel(
+  iso: string | null,
+  timeZone = "Australia/Sydney",
+): string {
+  if (!iso) {
+    return new Intl.DateTimeFormat("en-AU", {
+      timeZone,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZoneName: "short",
+    }).format(new Date());
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(d);
 }
 
 export function formatForecastDay(

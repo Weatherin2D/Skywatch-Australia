@@ -3,31 +3,30 @@
 import {
   ChevronDown,
   ChevronRight,
-  Cloud,
-  CloudLightning,
-  CloudRain,
-  CloudSun,
   Gauge,
   Pause,
   Play,
-  Sun,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
 import {
-  CAPITAL_NOW,
+  HomeBriefingPanel,
+  HomeCapitalsPanel,
+  HomeDateHeading,
+  HomeNowPanel,
+  HomeSydneyForecastProvider,
+  HomeWeekPanel,
+} from "@/components/home/home-live-panels";
+import {
   DEFAULT_MAP_REGION,
   DEFAULT_MAP_SETTINGS,
   DEFAULT_WEATHER_LAYERS,
-  HIGHLIGHTS,
   MAP_MODES,
   MAP_REGIONS,
   MAP_SETTINGS,
   MODEL_ROWS,
-  SYDNEY_NOW,
-  WEEK_FORECAST,
   WEATHER_LAYERS,
   getMapRegion,
   type LayerId,
@@ -115,15 +114,6 @@ function Panel({
       {children}
     </section>
   );
-}
-
-function DayIcon({ kind }: { kind: string }) {
-  const cls = "h-5 w-5 text-[var(--bom-yellow)]";
-  if (kind === "sun") return <Sun className={cls} />;
-  if (kind === "rain") return <CloudRain className={cls} />;
-  if (kind === "storm") return <CloudLightning className={cls} />;
-  if (kind === "cloud") return <Cloud className={cls} />;
-  return <CloudSun className={cls} />;
 }
 
 export function HomeDashboard() {
@@ -360,13 +350,14 @@ export function HomeDashboard() {
   }
 
   return (
+    <HomeSydneyForecastProvider>
     <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-8 pt-4 sm:px-4">
       <div className="animate-fade-up space-y-1">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--bom-blue)] sm:text-4xl">
           National overview
         </h1>
         <p className="text-[var(--muted-foreground)] sm:text-lg">
-          {SYDNEY_NOW.dateHeading} — Australian weather, observed and forecast.
+          <HomeDateHeading /> — Australian weather, observed and forecast.
         </p>
       </div>
 
@@ -786,53 +777,7 @@ export function HomeDashboard() {
         </div>
 
         <div className="space-y-3">
-          <Panel>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-lg font-bold text-[var(--ink)]">{SYDNEY_NOW.place}</p>
-                <p className="text-xs text-[var(--ink)]/70">{SYDNEY_NOW.clockLabel}</p>
-              </div>
-              <CloudSun className="h-10 w-10 text-[var(--bom-yellow)]" />
-            </div>
-            <p className="mt-1 text-4xl font-bold text-[var(--ink)]">
-              {SYDNEY_NOW.tempC}°C
-            </p>
-            <p className="text-sm text-[var(--ink)]/80">{SYDNEY_NOW.condition}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              {[
-                ["Feels like", `${SYDNEY_NOW.feelsLikeC}°C`],
-                ["Humidity", `${SYDNEY_NOW.humidityPct}%`],
-                ["Wind", SYDNEY_NOW.wind],
-                ["Gusts", SYDNEY_NOW.gusts],
-                ["Rain (today)", `${SYDNEY_NOW.rainTodayMm} mm`],
-                ["Pressure", `${SYDNEY_NOW.pressureHpa} hPa`],
-              ].map(([k, v]) => (
-                <div key={k} className="bg-[var(--ink)]/8 px-2 py-1.5">
-                  <p className="text-[var(--ink)]/70">{k}</p>
-                  <p className="font-bold text-[var(--ink)]">{v}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-3 border-t border-[var(--ink)]/15 pt-2 text-xs text-[var(--ink)]/85">
-              <span>
-                Min{" "}
-                <strong className="text-[var(--ink)]">{SYDNEY_NOW.minC}°</strong>
-              </span>
-              <span>
-                Max{" "}
-                <strong className="text-[var(--bom-yellow)]">
-                  {SYDNEY_NOW.maxC}°
-                </strong>
-              </span>
-              <span>
-                Rain chance{" "}
-                <strong className="text-[var(--ink)]">{SYDNEY_NOW.rainChancePct}%</strong>
-              </span>
-              <span>
-                UV <strong className="text-[var(--ink)]">{SYDNEY_NOW.uv}</strong>
-              </span>
-            </div>
-          </Panel>
+          <HomeNowPanel />
 
           <HomeWarningsPanel />
 
@@ -853,55 +798,14 @@ export function HomeDashboard() {
             </div>
           </Panel>
 
-          <Panel title="Briefing notes">
-            <ul className="space-y-2">
-              {HIGHLIGHTS.map((item) => (
-                <li key={item} className="flex gap-2 text-sm text-[var(--ink)]/85">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--bom-yellow)]" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
+          <HomeBriefingPanel />
         </div>
       </div>
 
-      <Panel title={`Capital cities — ${SYDNEY_NOW.dateHeading}`}>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-          {CAPITAL_NOW.map((c) => (
-            <div
-              key={c.city}
-              className="bg-[var(--ink)]/8 px-2 py-2 text-center"
-            >
-              <p className="text-xs font-bold text-[var(--ink)]">{c.city}</p>
-              <p className="text-xl font-bold text-[var(--ink)]">
-                {c.tempC}°
-              </p>
-              <p className="text-[10px] text-[var(--ink)]/75">{c.wind}</p>
-              <p className="text-[10px] text-[var(--ink)]/70">{c.condition}</p>
-            </div>
-          ))}
-        </div>
-      </Panel>
+      <HomeCapitalsPanel />
 
       <div className="grid gap-3 md:grid-cols-3">
-        <Panel title="7 Day Forecast — Sydney">
-          <div className="flex justify-between gap-1 overflow-x-auto">
-            {WEEK_FORECAST.map((d) => (
-              <div
-                key={d.day}
-                className="flex min-w-[2.6rem] flex-col items-center gap-1 text-center text-xs"
-              >
-                <span className="text-[var(--ink)]/70">{d.day}</span>
-                <DayIcon kind={d.icon} />
-                <span className="font-bold text-[var(--bom-yellow)]">
-                  {d.high}°
-                </span>
-                <span className="text-[var(--ink)]/80">{d.low}°</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
+        <HomeWeekPanel />
 
         <Panel title="Model Comparison — Sydney">
           <div className="overflow-x-auto">
@@ -971,5 +875,6 @@ export function HomeDashboard() {
         </Panel>
       </div>
     </div>
+    </HomeSydneyForecastProvider>
   );
 }
