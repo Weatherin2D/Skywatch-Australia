@@ -10,6 +10,7 @@ import * as weatherLightning from "@/server/api/weather-lightning";
 import * as weatherMaps from "@/server/api/weather-maps";
 import * as weatherSynoptic from "@/server/api/weather-synoptic";
 import * as weatherSynopticFrame from "@/server/api/weather-synoptic-frame";
+import * as weatherWarnings from "@/server/api/weather-warnings";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -38,14 +39,25 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/maps": weatherMaps as RouteHandlers,
   "weather/synoptic": weatherSynoptic as RouteHandlers,
   "weather/synoptic/frame": weatherSynopticFrame as RouteHandlers,
+  "weather/warnings": weatherWarnings as RouteHandlers,
 };
 
 function resolve(
   slug: string[] | undefined,
   method: string,
 ): Handler | null {
-  const key = (slug ?? []).join("/");
-  const route = ROUTES[key];
+  const parts = slug ?? [];
+  const key = parts.join("/");
+  let route = ROUTES[key];
+  // /api/weather/warnings/:id → same handler (reads id from path)
+  if (
+    !route &&
+    parts.length === 3 &&
+    parts[0] === "weather" &&
+    parts[1] === "warnings"
+  ) {
+    route = ROUTES["weather/warnings"];
+  }
   if (!route) return null;
   const handler = route[method as keyof RouteHandlers];
   return handler ?? null;

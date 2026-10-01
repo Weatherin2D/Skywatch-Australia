@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, CloudSun, Home } from "lucide-react";
+import { AlertTriangle, CloudSun, Home, Siren } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/warnings", label: "Warnings", icon: Siren },
   { href: "/forecast", label: "Forecast", icon: CloudSun },
   { href: "/risk", label: "Risk", icon: AlertTriangle },
 ] as const;

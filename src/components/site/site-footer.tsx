@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SkyWatchLogo } from "@/components/site/skywatch-logo";
 
 const FOOTER_LINKS = [
+  { href: "/warnings", label: "Warnings" },
   { href: "/forecast", label: "Forecast" },
   { href: "/risk", label: "Risk outlook" },
 ] as const;

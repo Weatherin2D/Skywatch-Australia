@@ -196,6 +196,7 @@ export const WARNINGS = [
   },
 ] as const;
 
+/** @deprecated Prefer live `/api/weather/warnings` states. */
 export function warningStates(): string[] {
   const set = new Set<string>();
   for (const w of WARNINGS) {

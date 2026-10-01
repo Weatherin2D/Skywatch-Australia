@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -16,6 +15,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
+import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
 import {
   CAPITAL_NOW,
   DEFAULT_MAP_REGION,
@@ -27,7 +27,6 @@ import {
   MAP_SETTINGS,
   MODEL_ROWS,
   SYDNEY_NOW,
-  WARNINGS,
   WEEK_FORECAST,
   WEATHER_LAYERS,
   getMapRegion,
@@ -125,13 +124,6 @@ function DayIcon({ kind }: { kind: string }) {
   if (kind === "storm") return <CloudLightning className={cls} />;
   if (kind === "cloud") return <Cloud className={cls} />;
   return <CloudSun className={cls} />;
-}
-
-function warningTone(tone: string) {
-  if (tone === "amber") return "bg-[var(--bom-yellow)] text-[var(--brand)]";
-  if (tone === "violet") return "bg-violet-300 text-violet-950";
-  if (tone === "cyan") return "bg-cyan-200 text-cyan-950";
-  return "bg-sky-200 text-sky-950";
 }
 
 export function HomeDashboard() {
@@ -842,35 +834,7 @@ export function HomeDashboard() {
             </div>
           </Panel>
 
-          <Panel title="Severe Weather Warnings">
-            <ul className="space-y-2">
-              {WARNINGS.map((w) => (
-                <li
-                  key={w.id}
-                  className="flex gap-2 bg-[var(--ink)]/8 p-2"
-                >
-                  <span
-                    className={cn(
-                      "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center",
-                      warningTone(w.tone),
-                    )}
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-bold text-[var(--ink)]">{w.title}</p>
-                    <p className="text-xs text-[var(--ink)]/75">{w.detail}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/risk"
-              className="mt-2 inline-block text-xs font-semibold text-[var(--ink)] font-semibold hover:underline"
-            >
-              All warnings →
-            </Link>
-          </Panel>
+          <HomeWarningsPanel />
 
           <Panel title="Storm Tracker">
             <div className="overflow-hidden border border-[var(--ink)]/20">

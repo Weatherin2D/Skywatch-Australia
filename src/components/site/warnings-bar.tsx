@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { AlertTriangle, ChevronDown } from "lucide-react";
-import { warningStates } from "@/components/home/mock-data";
+import { useWarnings } from "@/hooks/use-warnings";
 
 export function WarningsBar() {
-  const states = warningStates();
+  const { states, activeCount, loading } = useWarnings();
 
   return (
     <div className="bg-[var(--bom-yellow)] text-[var(--brand)]">
@@ -14,7 +14,13 @@ export function WarningsBar() {
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--brand)] text-[var(--bom-yellow)]">
             <AlertTriangle className="h-4 w-4" aria-hidden />
           </span>
-          <p className="text-sm font-bold">Warnings current</p>
+          <p className="text-sm font-bold">
+            {loading
+              ? "Checking warnings…"
+              : activeCount > 0
+                ? "Warnings current"
+                : "No warnings current"}
+          </p>
           {states.length ? (
             <nav
               aria-label="States with current warnings"
@@ -23,19 +29,17 @@ export function WarningsBar() {
               {states.map((state) => (
                 <Link
                   key={state}
-                  href={`/risk?state=${state.toLowerCase()}`}
+                  href={`/warnings?state=${state.toLowerCase()}`}
                   className="hover:underline"
                 >
                   {state}
                 </Link>
               ))}
             </nav>
-          ) : (
-            <span className="text-sm">None</span>
-          )}
+          ) : null}
         </div>
         <Link
-          href="/risk"
+          href="/warnings"
           className="inline-flex items-center gap-1 border border-[var(--brand)]/30 bg-white/50 px-2.5 py-1 text-xs font-semibold sm:text-sm"
         >
           Warning services
