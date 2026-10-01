@@ -261,7 +261,7 @@ export function SatelliteLightningOverlay({
   return (
     <div
       ref={wrapRef}
-      className="pointer-events-none absolute inset-0 z-[50] overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
       {/* Hidden count bridge for legend via custom event would be overkill —

@@ -177,6 +177,11 @@
   height: 100%;
 }
 
+/* Keep map overlays (lightning, Leaflet panes) below page chrome / dropdowns. */
+.skywatch-map {
+  isolation: isolate;
+}
+
 .skywatch-map .leaflet-control-zoom {
   border: none !important;
   box-shadow: none !important;

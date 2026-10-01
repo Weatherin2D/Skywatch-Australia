@@ -116,9 +116,18 @@ export type WeatherMapsPayload = {
   satellite: {
     product: SatelliteProductId;
     source: "rainviewer" | "gibs-himawari" | "realearth-himawari" | "mixed";
+    /** National overview source (GIBS when available — watermark-free). */
+    nationalSource: "gibs-himawari" | "realearth-himawari";
     /** Active product frames (also mirrored under products[product]) */
     frames: WeatherFrame[];
-    products: Record<SatelliteProductId, { frames: WeatherFrame[] }>;
+    /**
+     * Per product: `frames` = RealEarth spine (state crops);
+     * `nationalFrames` = GIBS spine for national overview when available.
+     */
+    products: Record<
+      SatelliteProductId,
+      { frames: WeatherFrame[]; nationalFrames?: WeatherFrame[] }
+    >;
   };
   radar: {
     past: WeatherFrame[];
@@ -196,7 +205,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1536-nat-gibs-nowm";
+export const FRAME_QUALITY_TAG = "q1536-nat-gibs-stable";
 
 /** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
 export function realEarthRasterSize(

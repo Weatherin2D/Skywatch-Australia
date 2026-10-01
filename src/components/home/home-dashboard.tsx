@@ -227,7 +227,7 @@ export function HomeDashboard() {
     radarFrames,
     loading: mapsLoading,
     error: mapsError,
-    satelliteSource,
+    products: satelliteProducts,
     lastTipAt,
     tipSeenAtMs,
   } = useWeatherMaps(satProduct);
@@ -250,14 +250,31 @@ export function HomeDashboard() {
 
   const loopFrames = useMemo(() => {
     if (!showSatelliteLoop) return [];
-    return satelliteFrames.map((frame) => ({
+    // National overview uses the GIBS spine when available so every frame is
+    // the same watermark-free source (no RealEarth tip → GIBS near-miss hop).
+    const nationalFrames =
+      regionId === "national"
+        ? satelliteProducts?.[satProduct]?.nationalFrames
+        : undefined;
+    const sourceFrames =
+      nationalFrames && nationalFrames.length > 0
+        ? nationalFrames
+        : satelliteFrames;
+    return sourceFrames.map((frame) => ({
       ...frame,
       imageUrl: satelliteFrameProxyUrl(satProduct, frame.time, {
         region: regionId,
       }),
       imageBounds: region.bounds,
     }));
-  }, [showSatelliteLoop, satelliteFrames, satProduct, regionId, region.bounds]);
+  }, [
+    showSatelliteLoop,
+    satelliteFrames,
+    satelliteProducts,
+    satProduct,
+    regionId,
+    region.bounds,
+  ]);
 
   const activeFrame = loopFrames[frameIndex] ?? null;
   const scrub =
@@ -509,7 +526,7 @@ export function HomeDashboard() {
         </div>
 
         <div className="order-1 flex min-h-0 flex-col gap-2 lg:order-none">
-          <div className="relative z-50 flex flex-wrap items-center gap-1">
+          <div className="relative z-[60] flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/80">
               View
             </span>
@@ -557,7 +574,7 @@ export function HomeDashboard() {
                       <ul
                         role="listbox"
                         aria-label="Satellite product"
-                        className="absolute left-0 top-full z-30 mt-1 max-h-72 min-w-[13rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                        className="absolute left-0 top-full z-[70] mt-1 max-h-72 min-w-[13rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
                       >
                         {SATELLITE_PRODUCTS.map((p) => (
                           <li key={p.id} role="option" aria-selected={satProduct === p.id}>
@@ -607,7 +624,7 @@ export function HomeDashboard() {
               );
             })}
 
-            <div className="relative z-40" ref={regionMenuRef}>
+            <div className="relative z-[70]" ref={regionMenuRef}>
               <button
                 type="button"
                 aria-haspopup="listbox"
@@ -642,7 +659,7 @@ export function HomeDashboard() {
                 <ul
                   role="listbox"
                   aria-label="Map region"
-                  className="absolute left-0 top-full z-50 mt-1 max-h-80 min-w-[14rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                  className="absolute left-0 top-full z-[80] mt-1 max-h-80 min-w-[14rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   {MAP_REGIONS.map((r) => (
@@ -674,7 +691,7 @@ export function HomeDashboard() {
 
           <div
             className={cn(
-              "overflow-hidden rounded-lg border border-white/20 bg-black",
+              "relative z-0 overflow-hidden rounded-lg border border-white/20 bg-black",
               showSatelliteLoop
                 ? "aspect-[4/3] w-full sm:aspect-[16/10] lg:aspect-auto lg:min-h-[420px]"
                 : "min-h-[280px] sm:min-h-[360px] lg:min-h-[420px] lg:flex-1",
@@ -697,7 +714,7 @@ export function HomeDashboard() {
               }
               frameKey={
                 showSatelliteLoop && activeFrame
-                  ? `${satProduct}-${regionId}-${activeFrame.time}-${satelliteSource ?? "wx"}`
+                  ? `${satProduct}-${regionId}-${activeFrame.time}`
                   : showRadarOverlay && overlayRadarFrame
                     ? `radar-overlay-${overlayRadarFrame.time}`
                     : undefined

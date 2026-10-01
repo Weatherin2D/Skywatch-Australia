@@ -282,7 +282,7 @@ export function HomeMap({
   if (satelliteLoop) {
     return (
       <div
-        className="skywatch-map relative w-full overflow-hidden bg-black"
+        className="skywatch-map relative z-0 w-full overflow-hidden bg-black"
         style={{ aspectRatio: String(satAspect) }}
         data-map-mode="Satellite"
         data-region={regionId}
