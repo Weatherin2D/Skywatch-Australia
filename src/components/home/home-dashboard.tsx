@@ -236,16 +236,15 @@ export function HomeDashboard() {
   }, [showSynoptic, showSatelliteLoop, loopFrames, synopticFrames]);
 
   // Reset to start when the loop catalog identity changes (product / region / frames).
+  // Pause until the preloader has warmed enough frames — otherwise autoplay
+  // advances every 500ms and cancels in-flight region crops forever.
   useEffect(() => {
     if (!showSatelliteLoop) return;
-    if (loopFrames.length === 0) {
-      setFrameIndex(0);
-      return;
-    }
-    setFrameIndex(0);
+    setPlaying(false);
     autoPlayKeyRef.current = "";
     userPausedRef.current = false;
-  }, [loopIdentity, showSatelliteLoop, loopFrames.length]);
+    setFrameIndex(0);
+  }, [loopIdentity, showSatelliteLoop]);
 
   // Auto-start once a usable buffer is warm (or the whole loop is ready).
   useEffect(() => {
@@ -289,23 +288,28 @@ export function HomeDashboard() {
     if (!satMenuOpen && !regionMenuOpen) return;
     function onPointerDown(e: MouseEvent) {
       const t = e.target as Node;
-      if (satMenuRef.current && !satMenuRef.current.contains(t)) {
+      if (satMenuOpen && satMenuRef.current && !satMenuRef.current.contains(t)) {
         setSatMenuOpen(false);
       }
-      if (regionMenuRef.current && !regionMenuRef.current.contains(t)) {
+      if (
+        regionMenuOpen &&
+        regionMenuRef.current &&
+        !regionMenuRef.current.contains(t)
+      ) {
         setRegionMenuOpen(false);
       }
     }
+    // Use bubble-phase click so button onClick runs first.
+    document.addEventListener("click", onPointerDown);
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setSatMenuOpen(false);
         setRegionMenuOpen(false);
       }
     }
-    document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("click", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [satMenuOpen, regionMenuOpen]);
@@ -444,7 +448,7 @@ export function HomeDashboard() {
         </div>
 
         <div className="flex min-h-0 flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="relative z-50 flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/80">
               View
             </span>

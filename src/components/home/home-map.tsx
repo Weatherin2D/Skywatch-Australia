@@ -166,25 +166,29 @@ function SatelliteFrameView({
   const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const displayRef = useRef<string | null>(null);
+  const loadingRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!url) {
       displayRef.current = null;
+      loadingRef.current = null;
       setDisplayUrl(null);
       setFailed(false);
       return;
     }
-    if (url === displayRef.current) {
+    if (url === displayRef.current || url === loadingRef.current) {
       setFailed(false);
       return;
     }
 
     let cancelled = false;
     let attempts = 0;
+    loadingRef.current = url;
 
     const commit = () => {
       if (cancelled) return;
       displayRef.current = url;
+      loadingRef.current = null;
       setDisplayUrl(url);
       setFailed(false);
     };
@@ -200,6 +204,7 @@ function SatelliteFrameView({
           window.setTimeout(load, 400);
           return;
         }
+        loadingRef.current = null;
         if (!displayRef.current) setFailed(true);
       };
       img.src = src;
@@ -211,6 +216,7 @@ function SatelliteFrameView({
     load();
     return () => {
       cancelled = true;
+      if (loadingRef.current === url) loadingRef.current = null;
     };
   }, [url]);
 
@@ -282,6 +288,7 @@ export function HomeMap({
         data-region={regionId}
       >
         <SatelliteFrameView
+          key={regionId}
           url={frameImageUrl}
           alt={frameAlt}
           opacity={frameOpacity}
@@ -318,9 +325,8 @@ export function HomeMap({
   }
 
   return (
-    <div className="skywatch-map relative h-full min-h-[360px] w-full overflow-hidden">
+    <div className="skywatch-map relative z-0 h-full min-h-[360px] w-full overflow-hidden">
       <MapContainer
-        key={`map-${regionId}`}
         center={[-25.5, 134.5]}
         zoom={4}
         minZoom={3}
