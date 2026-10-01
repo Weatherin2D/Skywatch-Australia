@@ -169,7 +169,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1080-re-panels-v4";
+export const FRAME_QUALITY_TAG = "q1080-re-panels-v5";
 
 /**
  * Target long-edge for stitched regional RealEarth mosaics. Built from several
@@ -295,6 +295,8 @@ export function satelliteFrameProxyUrl(
   const q = new URLSearchParams({
     product,
     time: String(timeUnix),
+    // Bust CDN/browser caches when panel stitch / raster quality changes.
+    q: FRAME_QUALITY_TAG,
   });
   if (options?.region && options.region !== "national") {
     q.set("region", options.region);

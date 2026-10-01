@@ -376,7 +376,9 @@ async function fetchRealEarthPanel(
       });
       if (got) {
         try {
-          return PNG.sync.read(stripCornerBadge(got.body));
+          // Strip once on the final mosaic — per-panel badge repair leaves
+          // visible blotches on small tiles.
+          return PNG.sync.read(got.body);
         } catch {
           break;
         }
@@ -395,7 +397,7 @@ async function fetchRealEarthPanel(
   const got = await fetchUpstreamOnce(gibsUrl, { timeoutMs: 12_000 });
   if (!got) return null;
   try {
-    return PNG.sync.read(stripCornerBadge(got.body));
+    return PNG.sync.read(got.body);
   } catch {
     return null;
   }
