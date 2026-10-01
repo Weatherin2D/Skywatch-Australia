@@ -89,15 +89,29 @@ export function stripCornerBadge(pngBuffer: Buffer): Buffer {
   } catch {
     return pngBuffer;
   }
-  const { width, height, data } = png;
-  if (width < 64 || height < 64) return pngBuffer;
+  stripCornerBadgeInPlace(png);
+  try {
+    return PNG.sync.write(png);
+  } catch {
+    return pngBuffer;
+  }
+}
 
-  const logoW = Math.max(72, Math.round(width * 0.14));
-  const logoH = Math.max(80, Math.round(Math.min(height * 0.18, width * 0.16)));
+/** In-place SSEC/NASA corner repair; scales with raster size. */
+function stripCornerBadgeInPlace(png: PNG): void {
+  const { width, height, data } = png;
+  if (width < 48 || height < 48) return;
+
+  // Keep the patch proportional — a fixed 72px floor wrecked small panels.
+  const logoW = Math.max(28, Math.round(width * (width < 500 ? 0.16 : 0.12)));
+  const logoH = Math.max(
+    28,
+    Math.round(Math.min(height * (height < 500 ? 0.18 : 0.14), width * 0.16)),
+  );
   const y0 = height - logoH;
   const srcX0 = Math.min(
     width - 1,
-    logoW + Math.max(10, Math.round(width * 0.03)),
+    logoW + Math.max(6, Math.round(width * 0.03)),
   );
 
   for (let y = y0; y < height; y++) {
@@ -117,7 +131,7 @@ export function stripCornerBadge(pngBuffer: Buffer): Buffer {
               : 0;
       if (w <= 0.02) continue;
 
-      const srcY = Math.max(0, y0 - 8 - Math.floor((1 - ty) * 22));
+      const srcY = Math.max(0, y0 - 6 - Math.floor((1 - ty) * 18));
       const srcX = Math.min(width - 1, srcX0 + Math.floor(x * 0.35));
       const di = (y * width + x) * 4;
       const siUp = (srcY * width + Math.min(width - 1, x)) * 4;
@@ -127,12 +141,6 @@ export function stripCornerBadge(pngBuffer: Buffer): Buffer {
         data[di + c] = Math.round(data[di + c]! * (1 - w) + src * w);
       }
     }
-  }
-
-  try {
-    return PNG.sync.write(png);
-  } catch {
-    return pngBuffer;
   }
 }
 
@@ -378,7 +386,9 @@ async function fetchRealEarthPanel(
         try {
           // Strip once on the final mosaic — per-panel badge repair leaves
           // visible blotches on small tiles.
-          return PNG.sync.read(got.body);
+          const png = PNG.sync.read(got.body);
+          stripCornerBadgeInPlace(png);
+          return png;
         } catch {
           break;
         }
@@ -397,7 +407,9 @@ async function fetchRealEarthPanel(
   const got = await fetchUpstreamOnce(gibsUrl, { timeoutMs: 12_000 });
   if (!got) return null;
   try {
-    return PNG.sync.read(got.body);
+    const png = PNG.sync.read(got.body);
+    stripCornerBadgeInPlace(png);
+    return png;
   } catch {
     return null;
   }
