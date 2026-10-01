@@ -82,47 +82,37 @@ const BOM_WARNINGS_URL = "https://api.weather.bom.gov.au/v1/warnings";
 const FETCH_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-/** Higher = more urgent. Unknown types default mid-minor. */
-const TYPE_PRIORITY: Record<string, number> = {
-  tsunami_warning: 100,
-  tsunami_watch: 92,
-  tropical_cyclone_warning: 98,
-  tropical_cyclone_watch: 90,
-  emergency_warning: 97,
-  fire_weather_warning: 88,
-  total_fire_ban: 84,
-  severe_thunderstorm_warning: 82,
-  severe_weather_warning: 78,
-  flood_warning: 74,
-  flood_watch: 58,
-  coastal_hazard_warning: 62,
-  coastal_warning: 55,
-  gale_warning: 52,
-  storm_force_wind_warning: 70,
-  hurricane_force_wind_warning: 80,
-  marine_wind_warning: 42,
-  sheep_graziers_warning: 28,
-  frost_warning: 24,
-  freeze_warning: 24,
-  road_weather_alert: 30,
+/**
+ * Category key (user-defined):
+ * - Critical — very dangerous severe thunderstorm / severe weather warnings
+ * - Severe — severe thunderstorm / severe weather warnings; major flood warnings
+ * - Moderate — flood warnings (moderate, minor); flood watches (major, moderate)
+ * - Minor — flood watches (minor); marine wind warnings
+ * Other BoM products are allocated to the nearest matching class below.
+ */
+const SEVERITY_BASE_PRIORITY: Record<WarningSeverity, number> = {
+  critical: 400,
+  severe: 300,
+  moderate: 200,
+  minor: 100,
+  cancelled: -1000,
 };
+
+/** Types that need product text to classify accurately. */
+const NEEDS_TEXT_TYPES = new Set([
+  "severe_thunderstorm_warning",
+  "severe_weather_warning",
+  "flood_warning",
+  "flood_watch",
+]);
+
+export type FloodLevel = "major" | "moderate" | "minor";
 
 const LIST_CACHE_MS = 45_000;
 let listCache: { at: number; items: BomWarningSummary[] } | null = null;
 
 export function warningHref(id: string): string {
   return `/warnings/${encodeURIComponent(id)}`;
-}
-
-export function severityFromPriority(
-  priority: number,
-  phase: WarningPhase,
-): WarningSeverity {
-  if (isCancelledPhase(phase) || priority < 0) return "cancelled";
-  if (priority >= 90) return "critical";
-  if (priority >= 70) return "severe";
-  if (priority >= 50) return "moderate";
-  return "minor";
 }
 
 export function severityLabel(severity: WarningSeverity): string {
@@ -159,23 +149,161 @@ export function isCancelledPhase(phase: WarningPhase): boolean {
   return p === "cancelled" || p === "cancellation" || p === "final";
 }
 
+export function isVeryDangerousText(text: string): boolean {
+  return /\bvery\s+dangerous\b/i.test(text);
+}
+
+/**
+ * Detect the highest flood magnitude mentioned in product text.
+ * Ranges like "minor to moderate" resolve to the higher end.
+ */
+export function detectFloodLevel(text: string): FloodLevel | null {
+  if (!text) return null;
+  const t = text.toLowerCase().replace(/\s+/g, " ");
+  if (!/\bflood/.test(t)) return null;
+
+  let best: FloodLevel | null = null;
+  const raise = (level: FloodLevel) => {
+    const rank = { minor: 1, moderate: 2, major: 3 };
+    if (!best || rank[level] > rank[best]) best = level;
+  };
+
+  // Explicit ranges first
+  if (/minor\s+to\s+major/.test(t) || /moderate\s+to\s+major/.test(t)) {
+    raise("major");
+  }
+  if (/minor\s+to\s+moderate/.test(t) || /moderate\s+to\s+minor/.test(t)) {
+    raise("moderate");
+  }
+  if (/major\s+to\s+moderate/.test(t)) raise("major");
+
+  if (/\bmajor\s+flood|\bflood(?:ing)?\b[^.]{0,40}\bmajor\b|\bmajor\b[^.]{0,40}\bflood/.test(t)) {
+    raise("major");
+  }
+  if (
+    /\bmoderate\s+flood|\bflood(?:ing)?\b[^.]{0,40}\bmoderate\b|\bmoderate\b[^.]{0,40}\bflood/.test(
+      t,
+    )
+  ) {
+    raise("moderate");
+  }
+  if (/\bminor\s+flood|\bflood(?:ing)?\b[^.]{0,40}\bminor\b|\bminor\b[^.]{0,40}\bflood/.test(t)) {
+    raise("minor");
+  }
+
+  return best;
+}
+
+function classificationText(
+  raw: {
+    title?: string | null;
+    short_title?: string | null;
+  },
+  messageHtml?: string,
+): string {
+  const parts = [
+    raw.short_title || "",
+    raw.title || "",
+    messageHtml ? stripTags(messageHtml) : "",
+  ];
+  return parts.join(" \n ");
+}
+
+/**
+ * Map a BoM warning into Critical / Severe / Moderate / Minor.
+ */
+export function classifyWarningSeverity(
+  raw: {
+    type?: string | null;
+    warning_group_type?: string | null;
+    phase?: string | null;
+    title?: string | null;
+    short_title?: string | null;
+  },
+  messageHtml?: string,
+): WarningSeverity {
+  if (isCancelledPhase(raw.phase || "")) return "cancelled";
+
+  const type = String(raw.type || "").toLowerCase();
+  const group = String(raw.warning_group_type || "").toLowerCase();
+  const text = classificationText(raw, messageHtml);
+
+  // --- User key: severe thunderstorm / severe weather ---
+  if (
+    type === "severe_thunderstorm_warning" ||
+    type === "severe_weather_warning"
+  ) {
+    return isVeryDangerousText(text) ? "critical" : "severe";
+  }
+
+  // --- User key: flood warnings ---
+  if (type === "flood_warning") {
+    const level =
+      detectFloodLevel(text) ?? (group === "major" ? "major" : "minor");
+    // Major flood warning → Severe; moderate/minor flood warning → Moderate
+    return level === "major" ? "severe" : "moderate";
+  }
+
+  // --- User key: flood watches ---
+  if (type === "flood_watch") {
+    const level =
+      detectFloodLevel(text) ??
+      (group === "major" ? "major" : group === "minor" ? "minor" : null);
+    // Major/moderate flood watch → Moderate; minor flood watch → Minor
+    if (level === "minor") return "minor";
+    if (level === "major" || level === "moderate") return "moderate";
+    return group === "major" ? "moderate" : "minor";
+  }
+
+  // --- User key: marine wind ---
+  if (type === "marine_wind_warning" || type.startsWith("marine_")) {
+    return "minor";
+  }
+
+  // --- Other products allocated to the nearest class ---
+  if (
+    type === "tsunami_warning" ||
+    type === "tropical_cyclone_warning" ||
+    type === "emergency_warning" ||
+    type === "hurricane_force_wind_warning"
+  ) {
+    return "critical";
+  }
+
+  if (
+    type === "tsunami_watch" ||
+    type === "tropical_cyclone_watch" ||
+    type === "fire_weather_warning" ||
+    type === "storm_force_wind_warning" ||
+    type === "coastal_hazard_warning"
+  ) {
+    return "severe";
+  }
+
+  if (
+    type === "total_fire_ban" ||
+    type === "gale_warning" ||
+    type === "coastal_warning"
+  ) {
+    return "moderate";
+  }
+
+  // Sheep graziers, frost, freeze, road alerts, unknowns → Minor
+  return "minor";
+}
+
 export function computePriority(raw: {
   type?: string | null;
   warning_group_type?: string | null;
   phase?: string | null;
   issue_time?: string | null;
-}): number {
-  const type = (raw.type || "").toLowerCase();
-  let score = TYPE_PRIORITY[type] ?? 35;
-  const group = (raw.warning_group_type || "").toLowerCase();
-  if (group === "major") score += 18;
-  else if (group === "minor") score += 0;
+  title?: string | null;
+  short_title?: string | null;
+}, messageHtml?: string): number {
+  const severity = classifyWarningSeverity(raw, messageHtml);
+  let score = SEVERITY_BASE_PRIORITY[severity];
 
-  if (isCancelledPhase(raw.phase || "")) {
-    score -= 1000;
-  }
-
-  // Prefer fresher products when priority ties.
+  // Stable within-band ordering: prefer fresher products.
   if (raw.issue_time) {
     const t = Date.parse(raw.issue_time);
     if (Number.isFinite(t)) {
@@ -185,12 +313,15 @@ export function computePriority(raw: {
   return Math.round(score * 100) / 100;
 }
 
-function normalizeSummary(raw: RawSummary): BomWarningSummary | null {
+function normalizeSummary(
+  raw: RawSummary,
+  messageHtml?: string,
+): BomWarningSummary | null {
   const id = (raw.id || "").trim();
   if (!id) return null;
   const phase = (raw.phase || "unknown") as WarningPhase;
-  const priority = computePriority(raw);
-  const severity = severityFromPriority(priority, phase);
+  const severity = classifyWarningSeverity(raw, messageHtml);
+  const priority = computePriority(raw, messageHtml);
   const states =
     Array.isArray(raw.states) && raw.states.length
       ? raw.states.map(String)
@@ -379,9 +510,32 @@ export async function fetchBomWarningList(options?: {
   }
 
   const payload = await bomGet<{ data?: RawSummary[] }>(BOM_WARNINGS_URL);
+  const rawItems = payload.data || [];
+
+  // Pull product text for flood / severe weather so levels & "very dangerous" classify correctly.
+  const messages = new Map<string, string>();
+  await Promise.all(
+    rawItems.map(async (raw) => {
+      const id = (raw.id || "").trim();
+      const type = String(raw.type || "").toLowerCase();
+      if (!id || !NEEDS_TEXT_TYPES.has(type)) return;
+      if (isCancelledPhase(raw.phase || "")) return;
+      try {
+        const detail = await bomGet<{ data?: RawDetail | null }>(
+          `${BOM_WARNINGS_URL}/${encodeURIComponent(id)}`,
+        );
+        if (detail.data?.message) messages.set(id, detail.data.message);
+      } catch {
+        // Fall back to title/group-only classification.
+      }
+    }),
+  );
+
   const items = sortWarningsByPriority(
-    (payload.data || [])
-      .map(normalizeSummary)
+    rawItems
+      .map((raw) =>
+        normalizeSummary(raw, messages.get((raw.id || "").trim())),
+      )
       .filter((x): x is BomWarningSummary => x != null),
   );
   listCache = { at: now, items };
@@ -400,7 +554,7 @@ export async function fetchBomWarningDetail(
   const raw = payload.data;
   if (!raw?.id) return null;
 
-  const summary = normalizeSummary(raw);
+  const summary = normalizeSummary(raw, raw.message || "");
   if (!summary) return null;
   const parsed = parseWarningMessage(raw.message || "");
 

@@ -16,7 +16,9 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
-| `/api/weather/warnings` | Live BoM warning list (severity-ranked); `/api/weather/warnings/:id` for detail |
+| `/api/weather/warnings` | Live BoM warning list (category-ranked); `/api/weather/warnings/:id` for detail |
+
+**Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (moderate/minor flood warnings; major/moderate flood watches) · Minor (minor flood watches; marine wind warnings). Other BoM products map to the nearest class.
 | `/forecast` | Coming soon stub |
 | `/risk` | Preserved convective outlook (former AusRisk public map) |
 | `/risk/admin` | Preserved outlook admin upload |
