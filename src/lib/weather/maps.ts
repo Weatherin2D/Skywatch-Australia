@@ -187,9 +187,33 @@ export const GIBS_DISPLAY_WIDTH = 1536;
 /** Tighter regional crops use a wider raster so zoomed views stay sharp. */
 export const GIBS_REGION_DISPLAY_WIDTH = 1920;
 
-/** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1536-re-regions";
+/**
+ * RealEarth /api/image burns a repeating "Size limit exceeded" overlay when a
+ * single export is too large (typically past ~1024px on the long edge / ~0.85MP).
+ * Keep RealEarth requests under these caps so we get clean Himawari imagery.
+ */
+export const RE_MAX_WIDTH = 1024;
+export const RE_SAFE_MAX_PIXELS = 850_000;
 
+/** Bump when raster size / watermark / regional source order changes. */
+export const FRAME_QUALITY_TAG = "q1024-re-nowm";
+
+/** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
+export function realEarthRasterSize(
+  bounds: LonLatBounds,
+  options?: { preferWidth?: number },
+): { width: number; height: number } {
+  const aspect = boundsMercatorAspect(bounds);
+  let width = Math.min(options?.preferWidth ?? RE_MAX_WIDTH, RE_MAX_WIDTH);
+  let height = Math.max(1, Math.round(width / aspect));
+  const pixels = width * height;
+  if (pixels > RE_SAFE_MAX_PIXELS) {
+    const scale = Math.sqrt(RE_SAFE_MAX_PIXELS / pixels);
+    width = Math.max(320, Math.floor(width * scale));
+    height = Math.max(1, Math.round(width / aspect));
+  }
+  return { width, height };
+}
 /** Target loop length (~4h at 10-minute Himawari cadence). */
 export const SATELLITE_FRAME_COUNT = 24;
 
