@@ -13,11 +13,21 @@ export type WarningGroupType = "major" | "minor" | string | null;
 
 /** Visual / sort band used across the UI. */
 export type WarningSeverity =
-  | "extreme"
+  | "critical"
   | "severe"
   | "moderate"
   | "minor"
   | "cancelled";
+
+/** Display order for category sections (highest first). */
+export const WARNING_CATEGORIES = [
+  "critical",
+  "severe",
+  "moderate",
+  "minor",
+] as const satisfies readonly WarningSeverity[];
+
+export type WarningCategory = (typeof WARNING_CATEGORIES)[number];
 
 export type BomWarningSummary = {
   id: string;
@@ -109,7 +119,7 @@ export function severityFromPriority(
   phase: WarningPhase,
 ): WarningSeverity {
   if (isCancelledPhase(phase) || priority < 0) return "cancelled";
-  if (priority >= 90) return "extreme";
+  if (priority >= 90) return "critical";
   if (priority >= 70) return "severe";
   if (priority >= 50) return "moderate";
   return "minor";
@@ -117,8 +127,8 @@ export function severityFromPriority(
 
 export function severityLabel(severity: WarningSeverity): string {
   switch (severity) {
-    case "extreme":
-      return "Extreme";
+    case "critical":
+      return "Critical";
     case "severe":
       return "Severe";
     case "moderate":
@@ -128,6 +138,20 @@ export function severityLabel(severity: WarningSeverity): string {
     case "cancelled":
       return "Cancelled";
   }
+}
+
+export function isWarningCategory(value: string): value is WarningCategory {
+  return (WARNING_CATEGORIES as readonly string[]).includes(value);
+}
+
+export function groupWarningsByCategory<T extends { severity: WarningSeverity }>(
+  items: T[],
+): { category: WarningCategory; label: string; items: T[] }[] {
+  return WARNING_CATEGORIES.map((category) => ({
+    category,
+    label: severityLabel(category),
+    items: items.filter((w) => w.severity === category),
+  })).filter((group) => group.items.length > 0);
 }
 
 export function isCancelledPhase(phase: WarningPhase): boolean {
