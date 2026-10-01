@@ -2,8 +2,12 @@ import { PNG } from "pngjs";
 import {
   GIBS_DISPLAY_WIDTH,
   GIBS_REGION_DISPLAY_WIDTH,
+  RE_MAX_WIDTH,
+  boundsMercatorAspect,
   gibsHimawariWmsUrl,
   getSatelliteProduct,
+  realEarthImageUrl,
+  realEarthRasterSize,
   toIsoZ,
   type LonLatBounds,
   type SatelliteProductId,
@@ -30,9 +34,43 @@ function gibsUrlFor(
   });
 }
 
+/** Descending RealEarth widths to try until the export is clean. */
+function realEarthWidthLadder(bounds: LonLatBounds): number[] {
+  const preferred = realEarthRasterSize(bounds).width;
+  const ladder = [
+    preferred,
+    Math.min(preferred, 960),
+    880,
+    800,
+    720,
+    640,
+    512,
+  ];
+  return [...new Set(ladder.map((w) => Math.max(320, Math.round(w))))].sort(
+    (a, b) => b - a,
+  );
+}
+
+function realEarthUrlAtSize(
+  product: SatelliteProductId,
+  timeUnix: number,
+  bounds: LonLatBounds,
+  width: number,
+): string | null {
+  const meta = getSatelliteProduct(product);
+  if (!meta.realearthProduct) return null;
+  const aspect = boundsMercatorAspect(bounds);
+  const height = Math.max(1, Math.round(width / aspect));
+  return realEarthImageUrl(meta.realearthProduct, timeUnix, {
+    width: Math.min(width, RE_MAX_WIDTH),
+    height,
+    bounds,
+  });
+}
+
 /**
- * NASA GIBS burns a small meatball logo into the bottom-left corner.
- * Rebuild that corner from neighbouring imagery so georefencing stays intact.
+ * Rebuild the bottom-left corner badge (SSEC or NASA meatball) from
+ * neighbouring imagery so georefencing stays intact.
  */
 export function stripCornerBadge(pngBuffer: Buffer): Buffer {
   let png: PNG;
@@ -88,12 +126,42 @@ export function stripCornerBadge(pngBuffer: Buffer): Buffer {
   }
 }
 
-/** @deprecated Use stripCornerBadge — kept for any older imports. */
+/** @deprecated Use stripCornerBadge. */
 export const stripRealEarthWatermark = stripCornerBadge;
 
 /**
- * Reject GIBS "empty" placeholders that still return HTTP 200 for unpublished
- * times (tiny nearly-black PNGs). Real Himawari crops are much richer.
+ * Detect RealEarth's burned-in "Size limit exceeded" / attribution banner.
+ */
+export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
+  let png: PNG;
+  try {
+    png = PNG.sync.read(pngBuffer);
+  } catch {
+    return false;
+  }
+  const { width, height, data } = png;
+  if (width < 64 || height < 64) return false;
+
+  let maxRow = 0;
+  let brightSum = 0;
+  const y0 = Math.floor(height * 0.45);
+  for (let y = y0; y < height; y++) {
+    let bright = 0;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const g = (data[i]! + data[i + 1]! + data[i + 2]!) / 3;
+      if (g > 175) bright += 1;
+    }
+    const ratio = bright / width;
+    maxRow = Math.max(maxRow, ratio);
+    brightSum += ratio;
+  }
+
+  return maxRow >= 0.08 || brightSum >= 2.5;
+}
+
+/**
+ * Reject empty placeholders that still return HTTP 200 for unpublished times.
  */
 function frameHasRealContent(body: Buffer): boolean {
   if (body.length < MIN_FRAME_BYTES) return false;
@@ -135,6 +203,7 @@ function frameHasRealContent(body: Buffer): boolean {
 
 async function fetchUpstreamOnce(
   upstream: string,
+  options?: { rejectSizeLimitOverlay?: boolean },
 ): Promise<{ body: Buffer; contentType: string } | null> {
   try {
     const res = await fetch(upstream, {
@@ -150,6 +219,9 @@ async function fetchUpstreamOnce(
     if (!contentType.includes("image")) return null;
     const body = Buffer.from(await res.arrayBuffer());
     if (!frameHasRealContent(body)) return null;
+    if (options?.rejectSizeLimitOverlay && hasRealEarthSizeLimitOverlay(body)) {
+      return null;
+    }
     return { body, contentType };
   } catch {
     return null;
@@ -157,19 +229,45 @@ async function fetchUpstreamOnce(
 }
 
 /**
- * Fetch NASA GIBS Himawari for national and state crops. Strip the NASA
- * corner badge. No RealEarth — keeps every region on one watermark-free source.
+ * Fetch RealEarth at a size that avoids the "Size limit exceeded" overlay,
+ * then strip the SSEC corner badge.
  */
-async function fetchUpstreamWithRetry(
+async function fetchRealEarthClean(
+  product: SatelliteProductId,
+  timeUnix: number,
+  bounds: LonLatBounds,
+): Promise<{ body: Buffer; contentType: string } | null> {
+  for (const width of realEarthWidthLadder(bounds)) {
+    const url = realEarthUrlAtSize(product, timeUnix, bounds, width);
+    if (!url) return null;
+    for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+      const got = await fetchUpstreamOnce(url, {
+        rejectSizeLimitOverlay: true,
+      });
+      if (!got) {
+        if (attempt < FETCH_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+        }
+        continue;
+      }
+      return {
+        body: stripCornerBadge(got.body),
+        contentType: got.contentType,
+      };
+    }
+  }
+  return null;
+}
+
+async function fetchGibsClean(
   product: SatelliteProductId,
   timeUnix: number,
   bounds: LonLatBounds,
   region: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
-  const meta = getSatelliteProduct(product);
   let gibsUrl = gibsUrlFor(product, timeUnix, bounds, region);
-
-  if (!gibsUrl && meta.provider === "gibs") {
+  const meta = getSatelliteProduct(product);
+  if (!gibsUrl && meta.gibsLayer) {
     gibsUrl = gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
       width:
         region !== "national" ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH,
@@ -193,7 +291,27 @@ async function fetchUpstreamWithRetry(
   return null;
 }
 
-/** Fetch a Himawari frame from GIBS (or memory cache) and store it. */
+/**
+ * Prefer RealEarth (fresher ~15–30 min tip, contiguous 10-minute stamps).
+ * Fall back to GIBS when RealEarth misses. Strip corner badges either way.
+ */
+async function fetchUpstreamWithRetry(
+  product: SatelliteProductId,
+  timeUnix: number,
+  bounds: LonLatBounds,
+  region: string,
+): Promise<{ body: Buffer; contentType: string } | null> {
+  const meta = getSatelliteProduct(product);
+
+  if (meta.realearthProduct) {
+    const re = await fetchRealEarthClean(product, timeUnix, bounds);
+    if (re) return re;
+  }
+
+  return fetchGibsClean(product, timeUnix, bounds, region);
+}
+
+/** Fetch a Himawari frame (or memory cache) and store it. */
 export async function fetchAndCacheFrame(
   product: SatelliteProductId,
   timeUnix: number,
@@ -213,8 +331,9 @@ export async function fetchAndCacheFrame(
 }
 
 /**
- * Exact time first, then neighbouring 10-minute slots (GIBS publish lag).
- * Walk further back so unpublished tip stubs don't blank the loop.
+ * Exact time first, then at most ±1 / ±2 neighbouring slots.
+ * Distant lookbacks were caching the wrong image under the requested stamp,
+ * which made the animation appear to skip frames.
  */
 export async function fetchAndCacheFrameResilient(
   product: SatelliteProductId,
@@ -238,14 +357,9 @@ export async function fetchAndCacheFrameResilient(
   const offsets = [
     0,
     -HIMAWARI_STEP_SEC,
-    -2 * HIMAWARI_STEP_SEC,
-    -3 * HIMAWARI_STEP_SEC,
-    -4 * HIMAWARI_STEP_SEC,
-    -5 * HIMAWARI_STEP_SEC,
-    -6 * HIMAWARI_STEP_SEC,
-    -7 * HIMAWARI_STEP_SEC,
-    -8 * HIMAWARI_STEP_SEC,
     HIMAWARI_STEP_SEC,
+    -2 * HIMAWARI_STEP_SEC,
+    2 * HIMAWARI_STEP_SEC,
   ];
   for (const off of offsets) {
     const t = timeUnix + off;
@@ -255,7 +369,11 @@ export async function fetchAndCacheFrameResilient(
         ? await fetchUpstreamWithRetry(product, t, frameBounds, region)
         : await fetchAndCacheFrame(product, t, frameBounds, region);
     if (!got) continue;
-    setCachedFrame(product, timeUnix, got.body, got.contentType, region);
+    // Only bind near-miss imagery to the requested key for ±1 step so a
+    // brief publish race does not freeze the loop on a 20–80 minute old frame.
+    if (off === 0 || Math.abs(off) === HIMAWARI_STEP_SEC) {
+      setCachedFrame(product, timeUnix, got.body, got.contentType, region);
+    }
     if (off !== 0) {
       setCachedFrame(product, t, got.body, got.contentType, region);
     }

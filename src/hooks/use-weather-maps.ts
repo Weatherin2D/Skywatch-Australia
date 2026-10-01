@@ -20,9 +20,12 @@ type State = {
 };
 
 /** Poll often enough to catch each new 10-minute Himawari publish promptly. */
-const LIVE_POLL_MS = 60_000;
-/** Also nudge a poll shortly after each 10-minute clock boundary. */
-const BOUNDARY_OFFSET_MS = 45_000;
+const LIVE_POLL_MS = 45_000;
+/**
+ * RealEarth tips land ~15–30 min after the wall-clock slot. Also nudge shortly
+ * after each 10-minute boundary so we don't wait a full poll interval.
+ */
+const BOUNDARY_OFFSET_MS = 30_000;
 
 function msUntilNextTenMinuteBoundary(now = Date.now()): number {
   const stepMs = HIMAWARI_STEP_SEC * 1000;

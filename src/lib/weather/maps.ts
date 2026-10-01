@@ -36,7 +36,8 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "visible",
     label: "Visible",
     loopLabel: "Visible loop",
-    provider: "gibs",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B03",
     gibsLayer: "Himawari_AHI_Band3_Red_Visible_1km",
     daytimeOnly: true,
   },
@@ -44,14 +45,16 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     id: "infrared",
     label: "Infrared",
     loopLabel: "Infrared loop",
-    provider: "gibs",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B13",
     gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
   },
   {
     id: "airmass",
     label: "Air Mass",
     loopLabel: "Air Mass loop",
-    provider: "gibs",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-airmass",
     gibsLayer: "Himawari_AHI_Air_Mass",
   },
 ] as const;
@@ -157,7 +160,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1536-gibs-only";
+export const FRAME_QUALITY_TAG = "q1024-re-contig-v1";
 
 /** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
 export function realEarthRasterSize(
@@ -412,27 +415,38 @@ export function alignTimesToRadar(
 }
 
 /**
- * Build a shared Himawari timeline from satellite product times, optionally
- * enriched with radar stamps that fall inside the same window.
+ * Contiguous Himawari spine ending at `latestUnix` (inclusive).
+ * Always every `stepSec` — never thinned to RainViewer radar stamps.
+ */
+export function buildContiguousTimeline(
+  latestUnix: number,
+  maxCount = SATELLITE_FRAME_COUNT,
+  stepSec = HIMAWARI_STEP_SEC,
+): number[] {
+  if (!Number.isFinite(latestUnix) || latestUnix <= 0 || maxCount <= 0) {
+    return [];
+  }
+  const tip = Math.round(latestUnix / stepSec) * stepSec;
+  const times: number[] = [];
+  for (let i = maxCount - 1; i >= 0; i--) {
+    times.push(tip - i * stepSec);
+  }
+  return times;
+}
+
+/**
+ * Build a shared Himawari timeline from satellite product times.
+ * Fills any missing 10-minute slots so playback never jumps.
  */
 export function buildSatelliteTimeline(
   satTimesUnix: number[],
-  radarTimesUnix: number[] = [],
+  _radarTimesUnix: number[] = [],
   stepSec = HIMAWARI_STEP_SEC,
   maxCount = SATELLITE_FRAME_COUNT,
 ): number[] {
   if (satTimesUnix.length === 0) return [];
   const latest = satTimesUnix[satTimesUnix.length - 1]!;
-  const earliestWanted = latest - (maxCount - 1) * stepSec;
-  const snapped = new Set<number>();
-  for (const t of satTimesUnix) {
-    if (t < earliestWanted - stepSec / 2) continue;
-    snapped.add(Math.round(t / stepSec) * stepSec);
-  }
-  for (const t of radarTimesUnix) {
-    if (t < earliestWanted - stepSec / 2 || t > latest + stepSec / 2) continue;
-    snapped.add(Math.round(t / stepSec) * stepSec);
-  }
-  snapped.add(Math.round(latest / stepSec) * stepSec);
-  return [...snapped].sort((a, b) => a - b).slice(-maxCount);
+  // Prefer a dense contiguous spine from the tip — radar is matched per-frame
+  // in the UI and must not thin the satellite loop.
+  return buildContiguousTimeline(latest, maxCount, stepSec);
 }

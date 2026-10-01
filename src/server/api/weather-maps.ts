@@ -5,10 +5,11 @@ import {
   HIMAWARI_STEP_SEC,
   SATELLITE_FRAME_COUNT,
   SATELLITE_PRODUCTS,
-  alignTimesToRadar,
+  buildContiguousTimeline,
   gibsHimawariWmsUrl,
   getSatelliteProduct,
   isSatelliteProductId,
+  parseRealEarthTimeToken,
   rainviewerTileUrl,
   satelliteFrameProxyUrl,
   toIsoZ,
@@ -79,10 +80,9 @@ async function probeGibsWms(
 }
 
 /** When NASA probing fails (timeouts / egress blips), still offer a loop. */
-function fallbackGibsLatestMs(): number {
-  // RealEarth is typically ~15–35 min behind; GIBS often ~40–90.
-  // Keep the fallback near RealEarth so a probe failure does not jump backwards.
-  const lagMs = 25 * 60 * 1000;
+function fallbackLatestMs(): number {
+  // RealEarth tip is typically ~15–30 min behind wall clock.
+  const lagMs = 20 * 60 * 1000;
   return Math.floor((Date.now() - lagMs) / GIBS_STEP_MS) * GIBS_STEP_MS;
 }
 
@@ -91,8 +91,8 @@ async function findLatestGibsTime(
 ): Promise<number | null> {
   const latestMs = Math.floor(Date.now() / GIBS_STEP_MS) * GIBS_STEP_MS;
   const candidates: number[] = [];
-  // Skip the freshest ~20 minutes — GIBS stubs often 200 for unpublished tips.
-  for (let i = 2; i < GIBS_PROBE_MAX + 2; i++) {
+  // Probe from the current slot — unpublished tips fail the content gate.
+  for (let i = 0; i < GIBS_PROBE_MAX; i++) {
     candidates.push(latestMs - i * GIBS_STEP_MS);
   }
 
@@ -107,6 +107,35 @@ async function findLatestGibsTime(
     if (hit != null) return hit;
   }
   return null;
+}
+
+async function fetchRealEarthTimes(
+  realearthProduct: string,
+  count = FRAME_COUNT,
+): Promise<number[]> {
+  try {
+    const res = await fetch(
+      `https://realearth.ssec.wisc.edu/api/products?products=${encodeURIComponent(realearthProduct)}`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "SkyWatchAustralia/1.0",
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as Array<{ times?: string[] }>;
+    const tokens = data[0]?.times ?? [];
+    const parsed = tokens
+      .map(parseRealEarthTimeToken)
+      .filter((t) => Number.isFinite(t) && t > 0) as number[];
+    if (parsed.length === 0) return [];
+    return parsed.slice(-count);
+  } catch {
+    return [];
+  }
 }
 
 function buildFramesFromTimes(
@@ -125,11 +154,10 @@ function buildFramesAtLatest(
   latestMs: number,
   count = FRAME_COUNT,
 ): WeatherFrame[] {
-  const times: number[] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    times.push(Math.floor((latestMs - i * GIBS_STEP_MS) / 1000));
-  }
-  return buildFramesFromTimes(product, times);
+  return buildFramesFromTimes(
+    product,
+    buildContiguousTimeline(Math.floor(latestMs / 1000), count),
+  );
 }
 
 function normalizeRainviewerFrames(
@@ -148,64 +176,66 @@ function normalizeRainviewerFrames(
 async function buildProductFrames(
   meta: SatelliteProductMeta,
   sharedTimelineUnix: number[] | null,
-  gibsLatestMs: number | null,
-  radarTimesUnix: number[] = [],
+  fallbackLatestMs: number | null,
 ): Promise<WeatherFrame[]> {
-  if (gibsLatestMs == null) return [];
   if (sharedTimelineUnix && sharedTimelineUnix.length >= 3) {
     return buildFramesFromTimes(meta.id, sharedTimelineUnix);
   }
-  const latestUnix = Math.floor(gibsLatestMs / 1000);
-  if (radarTimesUnix.length >= 3) {
-    const aligned = alignTimesToRadar(
-      radarTimesUnix,
-      latestUnix,
-      HIMAWARI_STEP_SEC,
-      FRAME_COUNT,
-    );
-    if (aligned.length >= 3) {
-      return buildFramesFromTimes(meta.id, aligned);
+
+  if (meta.realearthProduct) {
+    const native = await fetchRealEarthTimes(meta.realearthProduct, FRAME_COUNT);
+    if (native.length >= 3) {
+      const tip = native[native.length - 1]!;
+      return buildFramesFromTimes(
+        meta.id,
+        buildContiguousTimeline(tip, FRAME_COUNT),
+      );
     }
   }
-  return buildFramesAtLatest(meta.id, gibsLatestMs);
+
+  if (fallbackLatestMs != null) {
+    return buildFramesAtLatest(meta.id, fallbackLatestMs);
+  }
+  return [];
 }
 
 /**
- * Build every catalog product on a shared NASA GIBS Himawari timeline so
- * national and state crops stay on one watermark-free source.
+ * Shared RealEarth-led Himawari spine (contiguous 10-minute stamps).
+ * GIBS is only a tip/fallback — never thin the loop to RainViewer radar.
  */
-async function buildAllSatelliteProducts(
-  radarTimesUnix: number[] = [],
-): Promise<{
+async function buildAllSatelliteProducts(): Promise<{
   products: WeatherMapsPayload["satellite"]["products"];
   source: WeatherMapsPayload["satellite"]["source"];
 }> {
   const products = emptyProductFrames();
 
-  const gibsLatestMs =
-    (await findLatestGibsTime("infrared")) ??
-    (await findLatestGibsTime("airmass")) ??
-    (await findLatestGibsTime("visible")) ??
-    fallbackGibsLatestMs();
+  const infraredMeta = getSatelliteProduct("infrared");
+  const infraredTimes =
+    infraredMeta.realearthProduct != null
+      ? await fetchRealEarthTimes(infraredMeta.realearthProduct, FRAME_COUNT)
+      : [];
 
-  const latestUnix = Math.floor(gibsLatestMs / 1000);
-  const sharedTimeline =
-    radarTimesUnix.length >= 3
-      ? alignTimesToRadar(
-          radarTimesUnix,
-          latestUnix,
-          HIMAWARI_STEP_SEC,
-          FRAME_COUNT,
-        )
-      : null;
+  const gibsLatestMs =
+    infraredTimes.length >= 3
+      ? null
+      : ((await findLatestGibsTime("infrared")) ??
+        (await findLatestGibsTime("airmass")) ??
+        (await findLatestGibsTime("visible")) ??
+        fallbackLatestMs());
+
+  const tipUnix =
+    infraredTimes.length >= 3
+      ? infraredTimes[infraredTimes.length - 1]!
+      : Math.floor((gibsLatestMs ?? fallbackLatestMs()) / 1000);
+
+  const sharedTimeline = buildContiguousTimeline(tipUnix, FRAME_COUNT);
 
   const built = await Promise.all(
     SATELLITE_PRODUCTS.map(async (meta) => {
       const frames = await buildProductFrames(
         meta,
-        sharedTimeline && sharedTimeline.length >= 3 ? sharedTimeline : null,
-        gibsLatestMs,
-        radarTimesUnix,
+        sharedTimeline,
+        gibsLatestMs ?? tipUnix * 1000,
       );
       return [meta.id, frames] as const;
     }),
@@ -223,7 +253,10 @@ async function buildAllSatelliteProducts(
     );
   }
 
-  return { products, source: "gibs-himawari" };
+  return {
+    products,
+    source: infraredTimes.length >= 3 ? "realearth-himawari" : "gibs-himawari",
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -259,38 +292,43 @@ export async function GET(request: NextRequest) {
       rv?.radar?.nowcast,
       "radar",
     );
-    // Past + nowcast so overlays can track a fresher satellite tip.
     const radarAll = [...radarPast, ...radarNowcast].sort(
       (a, b) => a.time - b.time,
     );
-    const radarTimesUnix = radarAll.map((f) => f.time);
 
     const satellite = wantAll
-      ? await buildAllSatelliteProducts(radarTimesUnix)
+      ? await buildAllSatelliteProducts()
       : await (async () => {
           const products = emptyProductFrames();
           const meta = getSatelliteProduct(product);
+          const native = meta.realearthProduct
+            ? await fetchRealEarthTimes(meta.realearthProduct, FRAME_COUNT)
+            : [];
           const gibsLatestMs =
-            (await findLatestGibsTime(
-              meta.id === "visible" ? "infrared" : meta.id,
-            )) ?? fallbackGibsLatestMs();
+            native.length >= 3
+              ? null
+              : ((await findLatestGibsTime(
+                  meta.id === "visible" ? "infrared" : meta.id,
+                )) ?? fallbackLatestMs());
+          const tipUnix =
+            native.length >= 3
+              ? native[native.length - 1]!
+              : Math.floor((gibsLatestMs ?? fallbackLatestMs()) / 1000);
           products[product] = {
             frames: await buildProductFrames(
               meta,
-              null,
-              gibsLatestMs,
-              radarTimesUnix,
+              buildContiguousTimeline(tipUnix, FRAME_COUNT),
+              gibsLatestMs ?? tipUnix * 1000,
             ),
           };
           return {
             products,
-            source: "gibs-himawari" as const,
+            source:
+              native.length >= 3
+                ? ("realearth-himawari" as const)
+                : ("gibs-himawari" as const),
           };
         })();
-
-    // Do not clip the satellite loop to RainViewer's ~2h past window — that
-    // discarded older Himawari frames whenever the sat tip was freshly ahead.
-    // Radar overlays still pick the nearest stamp (or none) per frame.
 
     const generated = rv?.generated ?? Math.floor(Date.now() / 1000);
     const activeProduct = wantAll ? DEFAULT_SATELLITE_PRODUCT : product;
@@ -314,12 +352,16 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "public, s-maxage=20, stale-while-revalidate=10",
+        // Tip advances every ~10 min — keep CDN short so live polls see it.
+        "Cache-Control": "public, s-maxage=15, stale-while-revalidate=15",
         "X-Satellite-Product": wantAll ? "all" : product,
-        "X-Satellite-Layer": activeMeta.gibsLayer ?? activeProduct,
+        "X-Satellite-Layer":
+          activeMeta.realearthProduct ?? activeMeta.gibsLayer ?? activeProduct,
+        "X-Satellite-Source": satellite.source,
         "X-Satellite-Latest": frames.length
           ? String(frames[frames.length - 1]!.time)
           : "",
+        "X-Satellite-Frame-Count": String(frames.length),
       },
     });
   } catch (error) {

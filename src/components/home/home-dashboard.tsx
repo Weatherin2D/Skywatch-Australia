@@ -221,6 +221,7 @@ export function HomeDashboard() {
   const hardLoopKeyRef = useRef("");
   const prevTipRef = useRef(0);
   const activeTimeRef = useRef<number | null>(null);
+  const playbackHoldMsRef = useRef(0);
 
   const {
     satelliteFrames,
@@ -281,6 +282,7 @@ export function HomeDashboard() {
     readyCount,
     total: preloadTotal,
     allReady,
+    isIndexReady,
   } = useFramePreloader(loopFrames, showSatelliteLoop);
 
   const hardLoopKey = `${satProduct}:${regionId}`;
@@ -375,15 +377,41 @@ export function HomeDashboard() {
     frameIndex,
   ]);
 
-  // Fixed-cadence satellite playback — never stall waiting on a frame.
+  // Fixed-cadence playback. Prefer the next buffered frame; if it is still
+  // loading, hold briefly then advance to the nearest ready neighbour so the
+  // loop never freezes or visually jumps over missing stamps.
   useEffect(() => {
     if (!playing || !showSatelliteLoop || loopFrames.length === 0) return;
     const n = loopFrames.length;
+    playbackHoldMsRef.current = 0;
     const id = window.setInterval(() => {
-      setFrameIndex((prev) => (prev + 1) % n);
+      setFrameIndex((prev) => {
+        const next = (prev + 1) % n;
+        if (isIndexReady(next) || allReady) {
+          playbackHoldMsRef.current = 0;
+          return next;
+        }
+        playbackHoldMsRef.current += playback.msPerFrame;
+        if (playbackHoldMsRef.current < playback.msPerFrame * 2) {
+          return prev;
+        }
+        playbackHoldMsRef.current = 0;
+        for (let step = 1; step < n; step++) {
+          const candidate = (prev + step) % n;
+          if (isIndexReady(candidate)) return candidate;
+        }
+        return next;
+      });
     }, playback.msPerFrame);
     return () => window.clearInterval(id);
-  }, [playing, showSatelliteLoop, loopFrames.length, playback.msPerFrame]);
+  }, [
+    playing,
+    showSatelliteLoop,
+    loopFrames.length,
+    playback.msPerFrame,
+    isIndexReady,
+    allReady,
+  ]);
 
   useEffect(() => {
     if (!showSatelliteLoop) {
