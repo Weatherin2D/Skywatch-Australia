@@ -110,7 +110,8 @@ export function strikeAgeSize(
   windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ) {
   const t = strikeAgeNorm(ageSec, windowSec);
-  return Math.round(lerp(18, 11, t));
+  // ~2.5× smaller than the original 18→11 px trail.
+  return Math.max(4, Math.round(lerp(7.2, 4.4, t)));
 }
 
 /**

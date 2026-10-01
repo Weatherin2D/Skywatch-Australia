@@ -68,10 +68,10 @@ function drawCrosshair(
   opacity: number,
 ) {
   const half = size / 2;
-  const gap = Math.max(1.5, size * 0.12);
-  const thick = Math.max(1.5, size * 0.14);
+  const gap = Math.max(0.6, size * 0.12);
+  const thick = Math.max(0.6, size * 0.14);
   const arm = half - gap;
-  if (arm <= 0.5) return;
+  if (arm <= 0.25) return;
 
   ctx.globalAlpha = opacity;
   ctx.strokeStyle = `rgb(${r},${g},${b})`;
@@ -276,8 +276,8 @@ export function SatelliteLightningOverlay({
 const iconCache = new Map<string, L.DivIcon>();
 
 function crosshairHtml(color: string, size: number, opacity: number) {
-  const gap = Math.max(2, Math.round(size * 0.12));
-  const thick = Math.max(2, size * 0.14);
+  const gap = Math.max(1, Math.round(size * 0.12));
+  const thick = Math.max(1, size * 0.14);
   return `<span class="skywatch-lightning-crosshair" style="width:${size}px;height:${size}px;color:${color};opacity:${opacity};--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
 }
 
