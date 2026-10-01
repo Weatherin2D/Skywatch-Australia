@@ -396,7 +396,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=15",
+        "Cache-Control": "public, s-maxage=20, stale-while-revalidate=10",
         "X-Satellite-Product": wantAll ? "all" : product,
         "X-Satellite-Layer":
           activeMeta.realearthProduct ??

@@ -217,6 +217,10 @@ export function HomeDashboard() {
   /** Respect manual pause; autoplay resumes only after user hits play again. */
   const userPausedRef = useRef(false);
   const autoPlayKeyRef = useRef("");
+  /** Hard reset key (product / region) — tip advances are soft live updates. */
+  const hardLoopKeyRef = useRef("");
+  const prevTipRef = useRef(0);
+  const activeTimeRef = useRef<number | null>(null);
 
   const {
     satelliteFrames,
@@ -224,6 +228,8 @@ export function HomeDashboard() {
     loading: mapsLoading,
     error: mapsError,
     satelliteSource,
+    lastTipAt,
+    tipSeenAtMs,
   } = useWeatherMaps(satProduct);
 
   const showLightning = layers.lightning;
@@ -259,6 +265,10 @@ export function HomeDashboard() {
       ? frameIndexToScrub(frameIndex, loopFrames.length)
       : 100;
 
+  useEffect(() => {
+    if (activeFrame?.time != null) activeTimeRef.current = activeFrame.time;
+  }, [activeFrame?.time]);
+
   /** Rain radar overlay frame: time-matched on Satellite, latest on Map. */
   const overlayRadarFrame = useMemo(() => {
     if (!showRadarOverlay || radarFrames.length === 0) return null;
@@ -274,10 +284,8 @@ export function HomeDashboard() {
     allReady,
   } = useFramePreloader(loopFrames, showSatelliteLoop);
 
-  const loopIdentity = useMemo(() => {
-    if (loopFrames.length === 0) return "";
-    return `${satProduct}:${regionId}:${loopFrames[0]?.time ?? 0}:${loopFrames[loopFrames.length - 1]?.time ?? 0}:${loopFrames.length}`;
-  }, [loopFrames, satProduct, regionId]);
+  const hardLoopKey = `${satProduct}:${regionId}`;
+  const tipTime = loopFrames[loopFrames.length - 1]?.time ?? 0;
 
   // Prefetch synoptic analyses that cover the satellite loop into the shared
   // memory cache so play-from-start never waits on the network.
@@ -296,36 +304,76 @@ export function HomeDashboard() {
     void prefetchSynopticGeoJson(urls);
   }, [showSynoptic, showSatelliteLoop, loopFrames, synopticFrames]);
 
-  // Reset to start when the loop catalog identity changes (product / region / frames).
-  // Pause until the preloader has warmed enough frames — otherwise autoplay
-  // advances every 500ms and cancels in-flight region crops forever.
+  // Soft live tip updates: keep the same wall-clock frame when a new 10-minute
+  // Himawari stamp arrives. Hard-reset only when product/region changes.
   useEffect(() => {
     if (!showSatelliteLoop) return;
-    setPlaying(false);
-    autoPlayKeyRef.current = "";
-    userPausedRef.current = false;
-    setFrameIndex(0);
-  }, [loopIdentity, showSatelliteLoop]);
+    if (loopFrames.length === 0) {
+      setPlaying(false);
+      setFrameIndex(0);
+      return;
+    }
+
+    const hardChanged = hardLoopKeyRef.current !== hardLoopKey;
+    const prevTip = prevTipRef.current;
+    const tipAdvanced = prevTip > 0 && tipTime > prevTip;
+
+    hardLoopKeyRef.current = hardLoopKey;
+    prevTipRef.current = tipTime;
+
+    if (hardChanged || prevTip === 0) {
+      autoPlayKeyRef.current = "";
+      userPausedRef.current = false;
+      setPlaying(false);
+      setFrameIndex(0);
+      return;
+    }
+
+    if (tipAdvanced) {
+      const keepTime = activeTimeRef.current;
+      let nextIndex = keepTime
+        ? loopFrames.findIndex((f) => f.time === keepTime)
+        : -1;
+      if (nextIndex < 0) {
+        // Sliding window dropped the current stamp — stay near the live tip.
+        nextIndex = Math.max(0, loopFrames.length - 2);
+      }
+      setFrameIndex(nextIndex);
+      // Keep playing if the user hadn't paused.
+      if (!userPausedRef.current && autoPlayKeyRef.current) {
+        setPlaying(true);
+      }
+    } else {
+      // Length/order tweaks without a newer tip — clamp index.
+      setFrameIndex((prev) => Math.min(prev, loopFrames.length - 1));
+    }
+  }, [hardLoopKey, tipTime, loopFrames, showSatelliteLoop]);
 
   // Auto-start once a usable buffer is warm (or the whole loop is ready).
   useEffect(() => {
     if (!showSatelliteLoop || loopFrames.length === 0) return;
     if (userPausedRef.current) return;
-    if (autoPlayKeyRef.current === loopIdentity && playing) return;
+    if (autoPlayKeyRef.current === hardLoopKey && playing) return;
 
-    const minReady = Math.min(loopFrames.length, Math.max(4, Math.ceil(loopFrames.length * 0.25)));
+    const minReady = Math.min(
+      loopFrames.length,
+      Math.max(4, Math.ceil(loopFrames.length * 0.25)),
+    );
     if (!allReady && readyCount < minReady) return;
 
-    autoPlayKeyRef.current = loopIdentity;
-    setFrameIndex(0);
+    autoPlayKeyRef.current = hardLoopKey;
+    if (hardLoopKeyRef.current === hardLoopKey && frameIndex === 0) {
+      // Only force start-from-zero on the initial warm for this hard key.
+    }
     setPlaying(true);
   }, [
     showSatelliteLoop,
     loopFrames.length,
-    loopIdentity,
+    hardLoopKey,
     readyCount,
     allReady,
     playing,
+    frameIndex,
   ]);
 
   // Fixed-cadence satellite playback — never stall waiting on a frame.
@@ -409,7 +457,7 @@ export function HomeDashboard() {
     if (preloadTotal > 0 && readyCount < preloadTotal) {
       return `Buffering ${readyCount}/${preloadTotal}`;
     }
-    return satProductMeta.loopLabel;
+    return `${satProductMeta.loopLabel} · live 10 min`;
   }, [
     mapsLoading,
     mapsError,
@@ -419,6 +467,13 @@ export function HomeDashboard() {
     readyCount,
     preloadTotal,
   ]);
+
+  const liveTipLabel = useMemo(() => {
+    if (!lastTipAt) return null;
+    return formatFrameTimeAEST(lastTipAt);
+  }, [lastTipAt]);
+
+  const liveFresh = tipSeenAtMs != null && Date.now() - tipSeenAtMs < 2 * 60_000;
 
   function setLayer(id: LayerId, on: boolean) {
     setLayers((prev) => ({ ...prev, [id]: on }));
@@ -718,7 +773,35 @@ export function HomeDashboard() {
               </button>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
-                  <span className="font-semibold text-[var(--brand)]">{scrubLabel}</span>
+                  <span className="inline-flex flex-wrap items-center gap-2 font-semibold text-[var(--brand)]">
+                    {scrubLabel}
+                    {loopFrames.length > 0 ? (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                          liveFresh
+                            ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
+                            : "bg-[var(--brand)]/10 text-[var(--brand)]/80",
+                        )}
+                        title={
+                          liveTipLabel
+                            ? `Latest frame ${liveTipLabel} · checks for a new 10-minute frame every minute`
+                            : "Live Himawari updates"
+                        }
+                      >
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            liveFresh
+                              ? "bg-[var(--brand)]"
+                              : "bg-emerald-500",
+                          )}
+                          aria-hidden
+                        />
+                        Live
+                      </span>
+                    ) : null}
+                  </span>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="hidden sm:inline">{loopStatusLabel}</span>
                     {loopFrames.length > 0 ? (
