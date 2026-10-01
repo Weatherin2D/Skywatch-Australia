@@ -79,18 +79,21 @@ export const MAP_REGIONS = [
     id: "qld",
     label: "Queensland",
     short: "QLD",
+    // Full mainland + Torres approaches + Coral Sea pad (geojson ~138–153.5E, 29.2–10.7S)
     bounds: [
-      [-29.25, 137.85],
-      [-9.05, 153.65],
+      [-29.55, 137.55],
+      [-9.05, 154.55],
     ] as RegionBounds,
   },
   {
     id: "wa",
     label: "Western Australia",
     short: "WA",
+    // Full mainland + ocean pad so Kimberley, Albany & Steep Point aren't edge-clipped
+    // (geojson ~113.4–129E, 35.1–13.7S)
     bounds: [
-      [-35.25, 112.85],
-      [-13.55, 129.15],
+      [-36.15, 111.95],
+      [-12.85, 129.55],
     ] as RegionBounds,
   },
   {

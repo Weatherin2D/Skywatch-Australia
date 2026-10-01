@@ -267,10 +267,9 @@ async function fetchRealEarthClean(
 }
 
 /**
- * RealEarth-primary products (IR/visible/airmass/etc.): fetch RealEarth first
- * so national AND state crops stay on the fresher timeline — at a size that
- * keeps the export free of SSEC's size-limit banner. Fall back to GIBS only
- * when RealEarth misses. Pure GIBS products keep GIBS-only.
+ * National uses watermark-free NASA GIBS. State crops keep RealEarth (fresher
+ * tip) at a size that avoids SSEC's size-limit banner. GIBS is the fallback
+ * when RealEarth misses; pure GIBS products stay GIBS-only.
  */
 async function fetchUpstreamWithRetry(
   product: SatelliteProductId,
@@ -280,7 +279,23 @@ async function fetchUpstreamWithRetry(
 ): Promise<{ body: Buffer; contentType: string } | null> {
   const meta = getSatelliteProduct(product);
   const gibsUrl = gibsUrlFor(product, timeUnix, bounds, region);
+  const isNational = region === "national";
 
+  // National overview: prefer GIBS (no RealEarth watermark / size-limit text).
+  if (isNational && gibsUrl) {
+    for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+      const got = await fetchUpstreamOnce(gibsUrl);
+      if (got) return got;
+      if (attempt < FETCH_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+      }
+    }
+    // Do not fall back to RealEarth here — resilient lookback retries older
+    // GIBS stamps (often 30–90 min fresher-lag) so national stays watermark-free.
+    return null;
+  }
+
+  // State / regional crops: RealEarth first for freshness.
   if (meta.provider === "realearth") {
     const re = await fetchRealEarthClean(product, timeUnix, bounds);
     if (re) return re;
@@ -288,7 +303,6 @@ async function fetchUpstreamWithRetry(
 
   const tryUrls: Array<{ url: string; strip: boolean }> = [];
   if (meta.provider !== "realearth") {
-    // Non-RE products: GIBS first; optional RE secondary.
     if (gibsUrl) tryUrls.push({ url: gibsUrl, strip: false });
     const reUrl = realEarthUrlAtSize(
       product,
@@ -373,12 +387,28 @@ export async function fetchAndCacheFrameResilient(
     };
   }
 
-  const offsets = [
-    0,
-    -HIMAWARI_STEP_SEC,
-    HIMAWARI_STEP_SEC,
-    -2 * HIMAWARI_STEP_SEC,
-  ];
+  // National GIBS publishes ~30–90 min behind RealEarth — walk further back
+  // so the national loop stays on watermark-free NASA frames.
+  const offsets =
+    region === "national"
+      ? [
+          0,
+          -HIMAWARI_STEP_SEC,
+          -2 * HIMAWARI_STEP_SEC,
+          -3 * HIMAWARI_STEP_SEC,
+          -4 * HIMAWARI_STEP_SEC,
+          -5 * HIMAWARI_STEP_SEC,
+          -6 * HIMAWARI_STEP_SEC,
+          -7 * HIMAWARI_STEP_SEC,
+          -8 * HIMAWARI_STEP_SEC,
+          HIMAWARI_STEP_SEC,
+        ]
+      : [
+          0,
+          -HIMAWARI_STEP_SEC,
+          HIMAWARI_STEP_SEC,
+          -2 * HIMAWARI_STEP_SEC,
+        ];
   for (const off of offsets) {
     const t = timeUnix + off;
     if (t <= 0) continue;
