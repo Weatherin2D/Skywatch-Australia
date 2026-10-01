@@ -169,17 +169,17 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1080-re-panels-v6";
+export const FRAME_QUALITY_TAG = "q1080-re-panels-v7";
 
 /**
  * Target long-edge for stitched regional RealEarth mosaics. Built from several
  * smaller panel requests so SSEC's "Size limit exceeded" banner never burns in.
  * Keep modest so serverless frame requests finish inside the 60s budget.
  */
-export const RE_STITCH_LONG_EDGE = 1080;
+export const RE_STITCH_LONG_EDGE = 1020;
 /** Per-panel caps — larger single exports intermittently watermark. */
-export const RE_PANEL_MAX_EDGE = 400;
-export const RE_PANEL_MAX_PIXELS = 150_000;
+export const RE_PANEL_MAX_EDGE = 720;
+export const RE_PANEL_MAX_PIXELS = 300_000;
 
 /** Safe RealEarth raster size for a lon/lat crop (no size-limit overlay). */
 export function realEarthRasterSize(

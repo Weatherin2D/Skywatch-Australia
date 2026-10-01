@@ -23,8 +23,8 @@ import { getCachedFrame, setCachedFrame } from "@/lib/weather/frame-cache";
 const MIN_FRAME_BYTES = 8_000;
 const HIMAWARI_STEP_SEC = 10 * 60;
 const FETCH_ATTEMPTS = 3;
-const PANEL_FETCH_ATTEMPTS = 2;
-const PANEL_CONCURRENCY = 4;
+const PANEL_FETCH_ATTEMPTS = 3;
+const PANEL_CONCURRENCY = 2;
 
 function gibsUrlFor(
   product: SatelliteProductId,
@@ -280,26 +280,41 @@ function planPanelGrid(bounds: LonLatBounds): PanelPlan {
   const outHeight =
     aspect >= 1 ? Math.max(1, Math.round(longEdge / aspect)) : longEdge;
 
-  for (let rows = 1; rows <= 5; rows++) {
-    for (let cols = 1; cols <= 4; cols++) {
-      const pw = Math.ceil(outWidth / cols);
-      const ph = Math.ceil(outHeight / rows);
-      if (
-        pw <= RE_PANEL_MAX_EDGE &&
-        ph <= RE_PANEL_MAX_EDGE &&
-        pw * ph <= RE_PANEL_MAX_PIXELS
-      ) {
-        return { cols, rows, outWidth, outHeight };
-      }
+  // Prefer fewer panels so RealEarth is less likely to rate-limit / watermark.
+  // Tall states: vertical bands. Wide states: 2x2.
+  const candidates: Array<[number, number]> =
+    aspect < 0.9
+      ? [
+          [1, 3],
+          [1, 4],
+          [2, 3],
+          [2, 4],
+        ]
+      : aspect > 1.15
+        ? [
+            [2, 2],
+            [3, 2],
+            [2, 3],
+          ]
+        : [
+            [2, 2],
+            [2, 3],
+            [1, 3],
+          ];
+
+  for (const [cols, rows] of candidates) {
+    const pw = Math.ceil(outWidth / cols);
+    const ph = Math.ceil(outHeight / rows);
+    if (
+      pw <= RE_PANEL_MAX_EDGE &&
+      ph <= RE_PANEL_MAX_EDGE &&
+      pw * ph <= RE_PANEL_MAX_PIXELS
+    ) {
+      return { cols, rows, outWidth, outHeight };
     }
   }
-  // Fallback densest grid.
-  return {
-    cols: 3,
-    rows: 4,
-    outWidth,
-    outHeight,
-  };
+
+  return { cols: 2, rows: 3, outWidth, outHeight };
 }
 
 function panelBounds(
@@ -462,26 +477,9 @@ async function fetchRealEarthStitched(
     return { col, row, png };
   });
 
-  const ok = panels.filter((p) => p.png != null);
-  if (ok.length === 0) {
-    return null;
-  }
-  // Fill holes from the nearest successful panel so one missing tile does not
-  // abandon a large-state mosaic.
-  const filled = panels.map((p) => {
-    if (p.png) return p;
-    let best: (typeof panels)[number] | null = null;
-    let bestDist = Infinity;
-    for (const q of ok) {
-      const dist = Math.abs(q.col - p.col) + Math.abs(q.row - p.row);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = q;
-      }
-    }
-    return { col: p.col, row: p.row, png: best?.png ?? null };
-  });
-  if (filled.some((p) => p.png == null)) {
+  // Never borrow a neighbouring tile's imagery — that duplicated bands and
+  // looked like a broken zoom. Missing panels fall through to full-region GIBS.
+  if (panels.some((p) => p.png == null)) {
     return null;
   }
 
@@ -491,7 +489,7 @@ async function fetchRealEarthStitched(
     fill: true,
   });
 
-  for (const { col, row, png } of filled) {
+  for (const { col, row, png } of panels) {
     if (!png) continue;
     const x0 = Math.round((plan.outWidth * col) / plan.cols);
     const x1 = Math.round((plan.outWidth * (col + 1)) / plan.cols);
