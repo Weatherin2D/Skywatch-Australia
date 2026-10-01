@@ -702,8 +702,10 @@ export function HomeDashboard() {
           <div
             className={cn(
               "relative z-0 overflow-hidden rounded-lg border border-white/20 bg-black",
+              // Satellite: let the region crop's mercator aspect drive height so
+              // tall states (WA/QLD/NT/…) are not clipped by a fixed 4:3 box.
               showSatelliteLoop
-                ? "aspect-[4/3] w-full sm:aspect-[16/10] lg:aspect-auto lg:min-h-[420px]"
+                ? "w-full"
                 : "min-h-[280px] sm:min-h-[360px] lg:min-h-[420px] lg:flex-1",
             )}
           >

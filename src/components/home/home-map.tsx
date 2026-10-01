@@ -72,34 +72,62 @@ function MapModeEffect({ mode }: { mode: MapMode }) {
   return null;
 }
 
+function regionFitPaddingPx(isNational: boolean, width: number): number {
+  // Keep padding light on narrow phones so tall/wide states still fit fully.
+  if (isNational) return width < 640 ? 4 : 8;
+  if (width < 480) return 8;
+  if (width < 768) return 14;
+  return 28;
+}
+
 function FitRegionBounds({
   bounds,
   animate = true,
-  padding = 24,
+  isNational = false,
+  padding,
 }: {
   bounds: RegionBounds;
   animate?: boolean;
+  isNational?: boolean;
+  /** Fixed padding override; when omitted, scales down on mobile. */
   padding?: number;
 }) {
   const map = useMap();
   const key = `${bounds[0][0]},${bounds[0][1]},${bounds[1][0]},${bounds[1][1]}`;
   useEffect(() => {
-    map.fitBounds(bounds, {
-      animate,
-      padding: [padding, padding],
-    });
+    const fit = (withAnimate: boolean) => {
+      const pad =
+        padding ??
+        regionFitPaddingPx(
+          isNational,
+          map.getContainer().clientWidth || window.innerWidth,
+        );
+      map.fitBounds(bounds, {
+        animate: withAnimate,
+        padding: [pad, pad],
+        // Avoid over-zooming ACT/TAS on tall phones and clipping edges.
+        maxZoom: isNational ? 6 : 9,
+      });
+    };
+    fit(animate);
     const onResize = () => {
       map.invalidateSize({ animate: false });
-      map.fitBounds(bounds, { animate: false, padding: [padding, padding] });
+      fit(false);
     };
     map.whenReady(onResize);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [map, key, animate, padding, bounds]);
+  }, [map, key, animate, padding, bounds, isNational]);
   return null;
 }
 
-function MapTools({ bounds }: { bounds: RegionBounds }) {
+function MapTools({
+  bounds,
+  isNational,
+}: {
+  bounds: RegionBounds;
+  isNational: boolean;
+}) {
   const map = useMap();
   return (
     <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2">
@@ -107,9 +135,17 @@ function MapTools({ bounds }: { bounds: RegionBounds }) {
         type="button"
         className="flex h-9 w-9 items-center justify-center border border-[var(--brand)]/20 bg-[var(--bom-blue)] text-[var(--brand)] shadow transition hover:bg-[var(--navy-deep)] hover:text-[var(--brand)]"
         aria-label="Recentre on selected region"
-        onClick={() =>
-          map.fitBounds(bounds, { animate: true, padding: [24, 24] })
-        }
+        onClick={() => {
+          const pad = regionFitPaddingPx(
+            isNational,
+            map.getContainer().clientWidth || window.innerWidth,
+          );
+          map.fitBounds(bounds, {
+            animate: true,
+            padding: [pad, pad],
+            maxZoom: isNational ? 6 : 9,
+          });
+        }}
       >
         <LocateFixed className="h-4 w-4" />
       </button>
@@ -143,7 +179,12 @@ function SatelliteRadarOverlay({
         touchZoom={false}
         style={{ background: "transparent" }}
       >
-        <FitRegionBounds bounds={bounds} animate={false} padding={0} />
+        <FitRegionBounds
+          bounds={bounds}
+          animate={false}
+          padding={0}
+          isNational={false}
+        />
         <TileLayer url={tileUrl} opacity={0.72} />
       </MapContainer>
     </div>
@@ -279,11 +320,12 @@ export function HomeMap({
 
   // Satellite: full-bleed region crop (national or state) — image is already
   // georeferenced to `bounds`, so CSS overlays use the same projection.
+  // Aspect must match the crop so mobile viewports don't clip the state.
   if (satelliteLoop) {
     return (
       <div
         className="skywatch-map relative z-0 w-full overflow-hidden bg-black"
-        style={{ aspectRatio: String(satAspect) }}
+        style={{ aspectRatio: `${satAspect}` }}
         data-map-mode="Satellite"
         data-region={regionId}
       >
@@ -336,7 +378,7 @@ export function HomeMap({
         attributionControl
       >
         <MapModeEffect mode={mode} />
-        <FitRegionBounds bounds={bounds} animate padding={isNational ? 8 : 28} />
+        <FitRegionBounds bounds={bounds} animate isNational={isNational} />
         <TileLayer url={basemapUrl} attribution="Esri" />
         {radarTiles ? <TileLayer url={radarTiles} opacity={0.78} /> : null}
         <LeafletSynopticOverlay
@@ -357,7 +399,7 @@ export function HomeMap({
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
         />
-        <MapTools bounds={bounds} />
+        <MapTools bounds={bounds} isNational={isNational} />
       </MapContainer>
     </div>
   );
