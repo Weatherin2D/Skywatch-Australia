@@ -542,12 +542,14 @@ export function HomeDashboard() {
               );
             })}
 
-            <div className="relative" ref={regionMenuRef}>
+            <div className="relative z-40" ref={regionMenuRef}>
               <button
                 type="button"
                 aria-haspopup="listbox"
                 aria-expanded={regionMenuOpen}
-                onClick={() => {
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
                   setSatMenuOpen(false);
                   setRegionMenuOpen((open) => !open);
                 }}
@@ -575,7 +577,8 @@ export function HomeDashboard() {
                 <ul
                   role="listbox"
                   aria-label="Map region"
-                  className="absolute left-0 top-full z-30 mt-1 max-h-80 min-w-[14rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                  className="absolute left-0 top-full z-50 mt-1 max-h-80 min-w-[14rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
                   {MAP_REGIONS.map((r) => (
                     <li key={r.id} role="option" aria-selected={regionId === r.id}>

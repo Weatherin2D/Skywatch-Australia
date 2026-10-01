@@ -21,7 +21,7 @@ import {
   strikeOpacity,
   strikesForAnimation,
 } from "@/lib/weather/lightning";
-import { lonLatToGibsPct } from "@/lib/weather/maps";
+import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
 
 type LightningAnimProps = {
   strikes: LightningStrike[];
@@ -32,6 +32,8 @@ type LightningAnimProps = {
   playing?: boolean;
   msPerFrame?: number;
   nextFrameTime?: number | null;
+  /** Image georeference; defaults to national AU Himawari crop. */
+  bounds?: LonLatBounds;
 };
 
 function useNowTick(enabled: boolean) {
@@ -112,6 +114,7 @@ export function SatelliteLightningOverlay({
   playing = false,
   msPerFrame = 500,
   nextFrameTime = null,
+  bounds,
 }: LightningAnimProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -120,9 +123,11 @@ export function SatelliteLightningOverlay({
   const strikesRef = useRef(strikes);
   const timelineStartRef = useRef(timelineStart);
   const timelineEndRef = useRef(timelineEnd);
+  const boundsRef = useRef(bounds);
   strikesRef.current = strikes;
   timelineStartRef.current = timelineStart;
   timelineEndRef.current = timelineEnd;
+  boundsRef.current = bounds;
 
   const paint = useRef((animTime: number) => {
     const canvas = canvasRef.current;
@@ -162,8 +167,13 @@ export function SatelliteLightningOverlay({
       const age = strikeAgeSeconds(strike, animTime);
       const opacity = strikeOpacity(age);
       if (opacity <= 0.03) continue;
-      const { x, y } = lonLatToGibsPct(strike.lon, strike.lat);
+      const { x, y } = lonLatToBoundsPct(
+        strike.lon,
+        strike.lat,
+        boundsRef.current,
+      );
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < -5 || x > 105 || y < -5 || y > 105) continue;
       const { r, g, b } = strikeAgeRgb(age);
       const size = strikeAgeSize(age);
       const fresh = strikeIsFresh(age);
@@ -199,7 +209,7 @@ export function SatelliteLightningOverlay({
     if (playing) return;
     const t = referenceTime ?? Math.floor(Date.now() / 1000);
     setCount(paint(t));
-  }, [enabled, playing, referenceTime, strikes, timelineStart, timelineEnd, paint]);
+  }, [enabled, playing, referenceTime, strikes, timelineStart, timelineEnd, paint, bounds]);
 
   // Play: interpolate clock in rAF and paint — zero React commits per tick.
   // Strikes are read from refs so live buffer updates don't restart the clock.

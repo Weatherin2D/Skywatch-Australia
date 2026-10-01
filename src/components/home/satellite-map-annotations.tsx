@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { MapSettingsState } from "@/components/home/mock-data";
-import { lonLatToGibsPct } from "@/lib/weather/maps";
+import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
 
 type Ring = [number, number][];
 type GeoJson = {
@@ -36,11 +36,11 @@ function ringsFromGeometry(geometry: {
   return [];
 }
 
-function ringToPath(ring: Ring): string {
+function ringToPath(ring: Ring, bounds?: LonLatBounds): string {
   return (
     ring
       .map(([lon, lat], i) => {
-        const { x, y } = lonLatToGibsPct(lon, lat);
+        const { x, y } = lonLatToBoundsPct(lon, lat, bounds);
         // Keep sub-pixel precision so high-res coast rings stay sharp when projected
         return `${i === 0 ? "M" : "L"}${x.toFixed(4)} ${y.toFixed(4)}`;
       })
@@ -74,9 +74,11 @@ function useGeoJson(url: string, enabled: boolean) {
 export function SatelliteMapAnnotations({
   settings,
   cities,
+  bounds,
 }: {
   settings: MapSettingsState;
   cities: { name: string; lat: number; lon: number }[];
+  bounds?: LonLatBounds;
 }) {
   const outline = useGeoJson(
     "/geo/australia-outline.geojson",
@@ -102,7 +104,7 @@ export function SatelliteMapAnnotations({
     for (const g of geoms) {
       if (!g) continue;
       for (const ring of ringsFromGeometry(g)) {
-        outlinePaths.push(ringToPath(ring));
+        outlinePaths.push(ringToPath(ring, bounds));
       }
     }
   }
@@ -112,7 +114,7 @@ export function SatelliteMapAnnotations({
     for (const feat of states.features) {
       if (!feat.geometry) continue;
       for (const ring of ringsFromGeometry(feat.geometry)) {
-        statePaths.push(ringToPath(ring));
+        statePaths.push(ringToPath(ring, bounds));
       }
     }
   }
@@ -161,7 +163,7 @@ export function SatelliteMapAnnotations({
               | [number, number]
               | undefined;
             if (!coords) return null;
-            const { x, y } = lonLatToGibsPct(coords[0], coords[1]);
+            const { x, y } = lonLatToBoundsPct(coords[0], coords[1], bounds);
             return (
               <span
                 key={feat.properties?.code ?? feat.properties?.name}
@@ -180,7 +182,7 @@ export function SatelliteMapAnnotations({
               | [number, number]
               | undefined;
             if (!coords) return null;
-            const { x, y } = lonLatToGibsPct(coords[0], coords[1]);
+            const { x, y } = lonLatToBoundsPct(coords[0], coords[1], bounds);
             return (
               <span
                 key={feat.properties?.name}
@@ -194,7 +196,7 @@ export function SatelliteMapAnnotations({
         : null}
 
       {cities.map((city) => {
-        const { x, y } = lonLatToGibsPct(city.lon, city.lat);
+        const { x, y } = lonLatToBoundsPct(city.lon, city.lat, bounds);
         return (
           <span
             key={city.name}

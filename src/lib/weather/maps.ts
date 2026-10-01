@@ -141,19 +141,29 @@ export function lonLatToWebMercator(lon: number, lat: number): [number, number] 
 }
 
 /**
- * Project lon/lat into the national Himawari frame as CSS percentages.
- * Uses Web Mercator so SVG outlines / lightning / synoptic isobars align with GIBS WMS frames.
+ * Project lon/lat into a lon/lat image frame as CSS percentages (Web Mercator).
  */
-export function lonLatToGibsPct(lon: number, lat: number): { x: number; y: number } {
-  const [[south, west], [north, east]] = GIBS_AU_BOUNDS;
+export function lonLatToBoundsPct(
+  lon: number,
+  lat: number,
+  bounds: LonLatBounds = GIBS_AU_BOUNDS,
+): { x: number; y: number } {
+  const [[south, west], [north, east]] = bounds;
   const [minx, miny] = lonLatToWebMercator(west, south);
   const [maxx, maxy] = lonLatToWebMercator(east, north);
   const [x, y] = lonLatToWebMercator(lon, lat);
   return {
     x: ((x - minx) / (maxx - minx)) * 100,
-    // maxy is north (larger mercator y); screen y grows downward
     y: ((maxy - y) / (maxy - miny)) * 100,
   };
+}
+
+/**
+ * Project lon/lat into the national Himawari frame as CSS percentages.
+ * Uses Web Mercator so SVG outlines / lightning / synoptic isobars align with GIBS WMS frames.
+ */
+export function lonLatToGibsPct(lon: number, lat: number): { x: number; y: number } {
+  return lonLatToBoundsPct(lon, lat, GIBS_AU_BOUNDS);
 }
 
 /** Mercator width/height ratio of a lon/lat bounds box. */

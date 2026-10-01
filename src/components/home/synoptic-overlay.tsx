@@ -16,7 +16,8 @@ import type {
 } from "@/lib/weather/synoptic-contour";
 import {
   GIBS_AU_ASPECT,
-  lonLatToGibsPct,
+  lonLatToBoundsPct,
+  type LonLatBounds,
 } from "@/lib/weather/maps";
 import {
   getCachedSynopticGeoJson,
@@ -119,19 +120,22 @@ function useSynopticGeoJson(
   }, [enabled, url, frame, embedded, embeddedTime, version]);
 }
 
-function lineToPath(coords: [number, number][]): string {
+function lineToPath(coords: [number, number][], bounds?: LonLatBounds): string {
   return coords
     .map(([lon, lat], i) => {
-      const { x, y } = lonLatToGibsPct(lon, lat);
+      const { x, y } = lonLatToBoundsPct(lon, lat, bounds);
       return `${i === 0 ? "M" : "L"}${x.toFixed(3)} ${y.toFixed(3)}`;
     })
     .join(" ");
 }
 
 /** Catmull–Rom → cubic Bezier path for smooth front curves in the viewBox. */
-function lineToSmoothPath(coords: [number, number][]): string {
+function lineToSmoothPath(
+  coords: [number, number][],
+  bounds?: LonLatBounds,
+): string {
   if (coords.length < 2) return "";
-  const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
+  const pts = coords.map(([lon, lat]) => lonLatToBoundsPct(lon, lat, bounds));
   if (pts.length === 2) {
     const a = pts[0]!;
     const b = pts[1]!;
@@ -189,10 +193,11 @@ function frontBarbPaths(
   coords: [number, number][],
   kind: FrontKind,
   _warmSide?: [number, number],
+  bounds?: LonLatBounds,
+  aspect: number = GIBS_AU_ASPECT,
 ): string[] {
   if (kind === "trough" || coords.length < 2) return [];
-  const pts = coords.map(([lon, lat]) => lonLatToGibsPct(lon, lat));
-  const aspect = GIBS_AU_ASPECT;
+  const pts = coords.map(([lon, lat]) => lonLatToBoundsPct(lon, lat, bounds));
 
   const segs: { a: { x: number; y: number }; b: { x: number; y: number }; len: number }[] =
     [];
@@ -320,7 +325,7 @@ function frontBarbPaths(
   return paths;
 }
 
-/** Vector isobars, fronts, and H/L over the national satellite plane. */
+/** Vector isobars, fronts, and H/L over the satellite image plane. */
 export function SatelliteSynopticOverlay({
   frames,
   enabled,
@@ -328,6 +333,7 @@ export function SatelliteSynopticOverlay({
   geojson: embedded = null,
   validTime = null,
   opacity = SYNOPTIC_OPACITY,
+  bounds,
 }: {
   frames: SynopticFrame[];
   enabled: boolean;
@@ -335,9 +341,16 @@ export function SatelliteSynopticOverlay({
   geojson?: SynopticGeoJson | null;
   validTime?: number | null;
   opacity?: number;
+  bounds?: LonLatBounds;
 }) {
   const frame = useActiveSynopticFrame(enabled, frames, referenceTime);
   const geojson = useSynopticGeoJson(enabled, frame, embedded, validTime);
+  const frameAspect = bounds
+    ? (() => {
+        const [[south, west], [north, east]] = bounds;
+        return Math.max(0.2, (east - west) / Math.max(0.1, north - south));
+      })()
+    : GIBS_AU_ASPECT;
 
   if (!enabled || !geojson) return null;
 
@@ -368,7 +381,7 @@ export function SatelliteSynopticOverlay({
         {isobars.map((f, i) => (
           <path
             key={`iso-${f.properties.pressure}-${i}`}
-            d={lineToPath(f.geometry.coordinates)}
+            d={lineToPath(f.geometry.coordinates, bounds)}
             fill="none"
             stroke="rgba(255,255,255,0.92)"
             strokeWidth={f.properties.pressure % 8 === 0 ? 1.7 : 1.15}
@@ -383,7 +396,7 @@ export function SatelliteSynopticOverlay({
         {isobars.map((f, i) => (
           <path
             key={`iso-core-${f.properties.pressure}-${i}`}
-            d={lineToPath(f.geometry.coordinates)}
+            d={lineToPath(f.geometry.coordinates, bounds)}
             fill="none"
             stroke="rgba(15,15,15,0.88)"
             strokeWidth={f.properties.pressure % 8 === 0 ? 1.15 : 0.75}
@@ -400,7 +413,7 @@ export function SatelliteSynopticOverlay({
                 Math.floor(f.geometry.coordinates.length / 2)
               ];
             if (!mid) return null;
-            const { x, y } = lonLatToGibsPct(mid[0], mid[1]);
+            const { x, y } = lonLatToBoundsPct(mid[0], mid[1], bounds);
             return (
               <text
                 key={`lbl-${f.properties.pressure}-${i}`}
@@ -430,11 +443,13 @@ export function SatelliteSynopticOverlay({
             f.geometry.coordinates,
             f.properties.kind,
             warm,
+            bounds,
+            frameAspect,
           );
           return (
             <g key={`front-${f.properties.kind}-${i}`}>
               <path
-                d={lineToSmoothPath(f.geometry.coordinates)}
+                d={lineToSmoothPath(f.geometry.coordinates, bounds)}
                 fill="none"
                 stroke={stroke.color}
                 strokeWidth={stroke.width}
@@ -471,7 +486,7 @@ export function SatelliteSynopticOverlay({
         const coords = f.geometry.coordinates;
         const lon = coords[0] as number;
         const lat = coords[1] as number;
-        const { x, y } = lonLatToGibsPct(lon, lat);
+        const { x, y } = lonLatToBoundsPct(lon, lat, bounds);
         const high = f.properties.kind === "high";
         return (
           <div

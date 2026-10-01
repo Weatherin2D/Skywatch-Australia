@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
-  ImageOverlay,
   useMap,
 } from "react-leaflet";
 import { LocateFixed } from "lucide-react";
@@ -32,7 +31,6 @@ import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import {
   GIBS_AU_ASPECT,
-  GIBS_AU_BOUNDS,
   boundsMercatorAspect,
 } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
@@ -238,135 +236,6 @@ function SatelliteFrameView({
   );
 }
 
-function RegionalSatelliteView({
-  bounds,
-  frameImageUrl,
-  frameAlt,
-  frameOpacity,
-  frameTileUrl,
-  showRadarOverlay,
-  mapSettings,
-  showLightning,
-  lightningStrikes,
-  lightningReferenceTime,
-  lightningTimelineStart,
-  lightningTimelineEnd,
-  lightningPlaying,
-  lightningMsPerFrame,
-  lightningNextFrameTime,
-  showSynoptic,
-  synopticFrames,
-  synopticGeoJson,
-  synopticValidTime,
-  synopticReferenceTime,
-}: {
-  bounds: RegionBounds;
-  frameImageUrl: string | null;
-  frameAlt: string;
-  frameOpacity: number;
-  frameTileUrl: string | null;
-  showRadarOverlay: boolean;
-  mapSettings: MapSettingsState;
-  showLightning: boolean;
-  lightningStrikes: LightningStrike[];
-  lightningReferenceTime: number | null;
-  lightningTimelineStart: number | null;
-  lightningTimelineEnd: number | null;
-  lightningPlaying: boolean;
-  lightningMsPerFrame: number;
-  lightningNextFrameTime: number | null;
-  showSynoptic: boolean;
-  synopticFrames: SynopticFrame[];
-  synopticGeoJson: SynopticGeoJson | null;
-  synopticValidTime: number | null;
-  synopticReferenceTime: number | null;
-}) {
-  const aspect = useMemo(() => boundsMercatorAspect(bounds), [bounds]);
-  const [displayUrl, setDisplayUrl] = useState<string | null>(frameImageUrl);
-
-  useEffect(() => {
-    if (!frameImageUrl) {
-      setDisplayUrl(null);
-      return;
-    }
-    let cancelled = false;
-    const img = new window.Image();
-    img.onload = () => {
-      if (!cancelled) setDisplayUrl(frameImageUrl);
-    };
-    img.onerror = () => {
-      /* keep previous */
-    };
-    img.src = frameImageUrl;
-    if (img.complete && img.naturalWidth > 0) setDisplayUrl(frameImageUrl);
-    return () => {
-      cancelled = true;
-    };
-  }, [frameImageUrl]);
-
-  return (
-    <div
-      className="skywatch-map relative w-full overflow-hidden bg-black"
-      style={{ aspectRatio: String(aspect) }}
-      data-map-mode="Satellite"
-    >
-      <MapContainer
-        key={`sat-region-${bounds[0][0]}-${bounds[1][1]}`}
-        center={[-25.5, 134.5]}
-        zoom={5}
-        className="h-full w-full"
-        zoomControl={false}
-        attributionControl={false}
-        maxBounds={bounds}
-        maxBoundsViscosity={0.85}
-      >
-        <FitRegionBounds bounds={bounds} animate padding={8} />
-        {displayUrl ? (
-          <ImageOverlay
-            key={displayUrl}
-            url={displayUrl}
-            bounds={bounds}
-            opacity={frameOpacity}
-            zIndex={200}
-          />
-        ) : (
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-            attribution="Esri"
-          />
-        )}
-        {showRadarOverlay && frameTileUrl ? (
-          <TileLayer url={frameTileUrl} opacity={0.72} zIndex={350} />
-        ) : null}
-        <LeafletSynopticOverlay
-          frames={synopticFrames}
-          enabled={showSynoptic}
-          referenceTime={synopticReferenceTime}
-          geojson={synopticGeoJson}
-          validTime={synopticValidTime}
-        />
-        <LeafletMapAnnotations settings={mapSettings} />
-        <LeafletLightningOverlay
-          strikes={lightningStrikes}
-          enabled={showLightning}
-          referenceTime={lightningReferenceTime}
-          timelineStart={lightningTimelineStart}
-          timelineEnd={lightningTimelineEnd}
-          playing={lightningPlaying}
-          msPerFrame={lightningMsPerFrame}
-          nextFrameTime={lightningNextFrameTime}
-        />
-        <MapTools bounds={bounds} />
-      </MapContainer>
-      {!displayUrl ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white/80">
-          Loading {frameAlt}…
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function HomeMap({
   mode,
   regionId = DEFAULT_MAP_REGION,
@@ -395,44 +264,22 @@ export function HomeMap({
   const isNational = regionId === "national";
   const satelliteLoop = mode === "Satellite";
   const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
+  const satAspect = isNational
+    ? GIBS_AU_ASPECT
+    : boundsMercatorAspect(bounds);
 
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
 
-  if (satelliteLoop && !isNational) {
-    return (
-      <RegionalSatelliteView
-        bounds={bounds}
-        frameImageUrl={frameImageUrl}
-        frameAlt={frameAlt}
-        frameOpacity={frameOpacity}
-        frameTileUrl={frameTileUrl}
-        showRadarOverlay={showRadarOverlay}
-        mapSettings={mapSettings}
-        showLightning={showLightning}
-        lightningStrikes={lightningStrikes}
-        lightningReferenceTime={lightningReferenceTime}
-        lightningTimelineStart={lightningTimelineStart}
-        lightningTimelineEnd={lightningTimelineEnd}
-        lightningPlaying={lightningPlaying}
-        lightningMsPerFrame={lightningMsPerFrame}
-        lightningNextFrameTime={lightningNextFrameTime}
-        showSynoptic={showSynoptic}
-        synopticFrames={synopticFrames}
-        synopticGeoJson={synopticGeoJson}
-        synopticValidTime={synopticValidTime}
-        synopticReferenceTime={synopticReferenceTime}
-      />
-    );
-  }
-
-  // National satellite: full-bleed image, no zoom/pan
+  // Satellite: full-bleed region crop (national or state) — image is already
+  // georeferenced to `bounds`, so CSS overlays use the same projection.
   if (satelliteLoop) {
     return (
       <div
         className="skywatch-map relative w-full overflow-hidden bg-black"
-        style={{ aspectRatio: String(GIBS_AU_ASPECT) }}
+        style={{ aspectRatio: String(satAspect) }}
         data-map-mode="Satellite"
+        data-region={regionId}
       >
         <SatelliteFrameView
           url={frameImageUrl}
@@ -440,10 +287,7 @@ export function HomeMap({
           opacity={frameOpacity}
         />
         {showRadarOverlay && frameTileUrl ? (
-          <SatelliteRadarOverlay
-            tileUrl={frameTileUrl}
-            bounds={GIBS_AU_BOUNDS}
-          />
+          <SatelliteRadarOverlay tileUrl={frameTileUrl} bounds={bounds} />
         ) : null}
         <SatelliteSynopticOverlay
           frames={synopticFrames}
@@ -451,10 +295,12 @@ export function HomeMap({
           referenceTime={synopticReferenceTime}
           geojson={synopticGeoJson}
           validTime={synopticValidTime}
+          bounds={bounds}
         />
         <SatelliteMapAnnotations
           settings={mapSettings}
           cities={CITY_MARKERS}
+          bounds={bounds}
         />
         <SatelliteLightningOverlay
           strikes={lightningStrikes}
@@ -465,6 +311,7 @@ export function HomeMap({
           playing={lightningPlaying}
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
+          bounds={bounds}
         />
       </div>
     );
