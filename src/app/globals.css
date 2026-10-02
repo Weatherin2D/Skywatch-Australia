@@ -462,9 +462,11 @@
   background-clip: text;
   color: transparent;
   text-shadow: none;
-  /* Condensed face + slight vertical emphasis so the headline reads taller. */
+  /* Narrow the glyph width and lift height so the headline reads taller. */
   font-stretch: condensed;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
+  transform: scaleX(0.9) scaleY(1.12);
+  transform-origin: left center;
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35))
     drop-shadow(0 3px 0 rgba(7, 11, 22, 0.45))
     drop-shadow(0 14px 34px rgba(34, 211, 238, 0.35))

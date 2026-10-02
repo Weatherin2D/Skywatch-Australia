@@ -36,8 +36,8 @@ export function HomeHero() {
         <p className="animate-fade-up font-[family-name:var(--font-display)] text-xs font-bold uppercase tracking-[0.28em] text-[var(--cyan)] drop-shadow-[0_0_18px_rgba(34,211,238,0.45)]">
           SkyWatch Australia
         </p>
-        <div className="animate-fade-up-delay max-w-xl space-y-3">
-          <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[2.65rem] font-extrabold leading-[0.95] sm:text-[3.35rem] lg:text-[4.15rem]">
+        <div className="animate-fade-up-delay max-w-lg space-y-3">
+          <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[3rem] font-extrabold leading-[0.9] sm:text-[3.75rem] lg:text-[4.6rem]">
             <span className="block">Live weather</span>
             <span className="block">across the continent</span>
           </h1>
