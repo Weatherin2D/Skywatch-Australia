@@ -18,6 +18,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
 | `/forecast/[geohash]` | Direct forecast for a BoM location |
 | `/warnings` | Live BoM warnings by severity and state |
+| `/risk` | Day 1–3 convective risk map, updated live from BoM |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
@@ -30,13 +31,14 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/locations` | BoM location search (`?q=`) |
 | `/api/weather/forecast` | BoM daily + hourly + observations (`?geohash=` / `/:geohash` / `?region=`) |
 | `/api/weather/capitals` | Capital-city observation/forecast snapshots |
-| `/risk` | Day 1–3 convective risk polygons on the national map (BoM colour key) |
-| `/risk/admin` | Upload GFC `forecast-cycle` JSON for Day 1–3 risk areas |
-| `/api/forecast` | Rolled Day 1–N outlook GeoJSON used by `/risk` |
+| `/api/weather/risk` | Live Day 1–3 convective risk catalog |
+| `/api/forecast` | Day 1–3 convective risk GeoJSON used by `/risk` |
 
 Risk legend (BoM key): **Thunderstorms Possible** green · **Thunderstorms Likely** pale green · **Severe Thunderstorms Possible** yellow · **Severe Thunderstorms Likely** red.
 
-**Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (moderate/minor flood warnings; major/moderate flood watches) · Minor (minor flood watches; marine wind warnings).
+`/risk` samples BoM daily forecasts across a national town grid and classifies thunderstorm wording into that key. Day 1 severe areas also include active BoM severe thunderstorm warnings. No admin upload — the map refreshes from BoM automatically.
+
+**Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
 
 ## Run locally
 
@@ -46,11 +48,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Set `ADMIN_PASSWORD` and `ADMIN_SESSION_SECRET` if using `/risk/admin`. Production outlook storage needs Vercel Blob (`BLOB_READ_WRITE_TOKEN` or store OIDC).
-
 ## Stack
 
-Next.js (App Router), TypeScript, Tailwind, shadcn/ui, Leaflet, Vercel Blob (for `/risk` uploads).
+Next.js (App Router), TypeScript, Tailwind, shadcn/ui, Leaflet.
 
 ## Synoptic data
 

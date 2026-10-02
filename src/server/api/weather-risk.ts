@@ -1,54 +1,33 @@
 import { NextResponse } from "next/server";
-import {
-  BOM_THUNDERSTORM_CATEGORIES,
-  bomRiskDayLabels,
-  boundsForRiskRegion,
-  type BomRiskDayPublic,
-  type BomThunderstormDay,
-} from "@/lib/weather/bom-thunderstorm";
-import {
-  ensureSeedBomRiskManifest,
-  readBomRiskManifest,
-} from "@/lib/weather/bom-thunderstorm-storage";
+import { BOM_THUNDERSTORM_CATEGORIES } from "@/lib/weather/bom-thunderstorm";
+import { getBomRiskOutlook } from "@/lib/weather/bom-risk-outlook";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * GET /api/weather/risk
- * Day 1–3 BoM thunderstorm forecast chart catalog.
+ * Catalog of live BoM Day 1–3 convective risk (same source as `/api/forecast`).
  */
 export async function GET() {
   try {
-    await ensureSeedBomRiskManifest();
-    const manifest = await readBomRiskManifest();
-    const labels = bomRiskDayLabels();
-    const days: BomRiskDayPublic[] = ([1, 2, 3] as BomThunderstormDay[]).map(
-      (day) => {
-        const rec = manifest.days[String(day) as "1" | "2" | "3"];
-        const available = Boolean(rec?.imagePath);
-        return {
-          day,
-          label: labels[day].label,
-          dateLabel: labels[day].dateLabel,
-          available,
-          issuedAt: rec?.issuedAt ?? null,
-          regionId: rec?.regionId ?? "national",
-          display: rec?.display ?? "sheet",
-          imageUrl: available
-            ? `/api/weather/risk-image?day=${day}&t=${encodeURIComponent(manifest.updatedAt)}`
-            : null,
-          imageBounds: boundsForRiskRegion(rec?.regionId ?? "national"),
-        };
-      },
-    );
-
+    const outlook = await getBomRiskOutlook();
     return NextResponse.json(
       {
-        status: days.some((d) => d.available) ? "ok" : "empty",
-        updatedAt: manifest.updatedAt,
-        days,
+        status: outlook.status,
+        updatedAt: outlook.issuedAt,
+        days: outlook.days.map((d) => ({
+          day: d.effectiveDay,
+          label: d.label,
+          dateLabel: d.dateLabel,
+          available: d.features.length > 0,
+          featureCount: d.features.length,
+          issuedAt: outlook.issuedAt,
+        })),
         legend: BOM_THUNDERSTORM_CATEGORIES,
-        source: "Bureau of Meteorology thunderstorm forecast charts",
+        source:
+          "Bureau of Meteorology daily forecasts + severe thunderstorm warnings",
+        message: outlook.message,
       },
       {
         headers: {

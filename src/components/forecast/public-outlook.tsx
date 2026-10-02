@@ -70,12 +70,6 @@ export function PublicOutlook() {
             map to explore risk areas.
           </p>
         </div>
-        <a
-          href="/risk/admin"
-          className="mb-1 hidden text-xs uppercase tracking-[0.22em] text-white/40 transition hover:text-[var(--cyan)] sm:inline"
-        >
-          Admin
-        </a>
       </header>
 
       <div className="relative z-10 mx-auto w-full max-w-7xl">

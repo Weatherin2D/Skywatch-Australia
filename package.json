@@ -6,8 +6,7 @@
     "dev": "npx next dev --hostname 127.0.0.1 --port 43127",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 43127",
-    "lint": "eslint",
-    "seed": "node scripts/seed-forecast.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

@@ -1,9 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as adminDays from "@/server/api/admin-days";
-import * as adminLogin from "@/server/api/admin-login";
-import * as adminLogout from "@/server/api/admin-logout";
-import * as adminSession from "@/server/api/admin-session";
-import * as adminUpload from "@/server/api/admin-upload";
 import * as forecast from "@/server/api/forecast";
 import * as weatherFrame from "@/server/api/weather-frame";
 import * as weatherLightning from "@/server/api/weather-lightning";
@@ -19,8 +14,6 @@ import * as weatherModels from "@/server/api/weather-models";
 import * as weatherUpperAir from "@/server/api/weather-upper-air";
 import * as weatherRadarTile from "@/server/api/weather-radar-tile";
 import * as weatherRisk from "@/server/api/weather-risk";
-import * as weatherRiskImage from "@/server/api/weather-risk-image";
-import * as adminRiskUpload from "@/server/api/admin-risk-upload";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -38,12 +31,6 @@ type RouteHandlers = {
 };
 
 const ROUTES: Record<string, RouteHandlers> = {
-  "admin/days": adminDays as RouteHandlers,
-  "admin/login": adminLogin as RouteHandlers,
-  "admin/logout": adminLogout as RouteHandlers,
-  "admin/session": adminSession as RouteHandlers,
-  "admin/upload": adminUpload as RouteHandlers,
-  "admin/risk-upload": adminRiskUpload as RouteHandlers,
   forecast: forecast as RouteHandlers,
   "weather/frame": weatherFrame as RouteHandlers,
   "weather/lightning": weatherLightning as RouteHandlers,
@@ -59,7 +46,6 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/upper-air": weatherUpperAir as RouteHandlers,
   "weather/radar-tile": weatherRadarTile as RouteHandlers,
   "weather/risk": weatherRisk as RouteHandlers,
-  "weather/risk-image": weatherRiskImage as RouteHandlers,
 };
 
 function resolve(

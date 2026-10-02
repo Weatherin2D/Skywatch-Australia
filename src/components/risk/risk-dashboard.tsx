@@ -144,16 +144,10 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            Convective risk outlook for Australia — thunderstorms and severe
-            thunderstorms as possible or likely across Day 1–3.
+            Live convective risk from the Bureau of Meteorology — thunderstorms
+            and severe thunderstorms as possible or likely across Day 1–3.
           </p>
         </div>
-        <a
-          href="/risk/admin"
-          className="hidden text-xs uppercase tracking-[0.22em] text-white/40 transition hover:text-[var(--cyan)] sm:inline"
-        >
-          Admin
-        </a>
       </div>
 
       <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] xl:grid-cols-[minmax(0,1fr)_260px]">
@@ -265,7 +259,7 @@ export function RiskDashboard() {
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
                       {data.message ??
-                        "No active outlook. Publish Day 1–3 risk from Admin."}
+                        "No thunderstorm risk in the current BoM Day 1–3 forecasts."}
                     </p>
                   </div>
                 ) : null}
@@ -283,22 +277,17 @@ export function RiskDashboard() {
             )}
           </div>
 
-          {data?.issuedAt ? (
-            <p className="text-xs text-white/45">
-              Issued{" "}
-              {new Date(data.issuedAt).toLocaleString("en-AU", {
-                timeZone: "Australia/Sydney",
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}{" "}
-              (AEST/AEDT).
-            </p>
-          ) : (
-            <p className="text-xs text-white/45">
-              Upload a forecast-cycle outlook in Admin to publish Day 1–3 risk
-              areas.
-            </p>
-          )}
+          <p className="text-xs text-white/45">
+            Source: Bureau of Meteorology daily forecasts
+            {data?.issuedAt
+              ? ` · updated ${new Date(data.issuedAt).toLocaleString("en-AU", {
+                  timeZone: "Australia/Sydney",
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })} (AEST/AEDT)`
+              : ""}
+            . Day 1 severe areas include active severe thunderstorm warnings.
+          </p>
         </section>
 
         <aside className="sw-panel h-fit space-y-3 p-4">
