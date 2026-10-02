@@ -3,6 +3,11 @@ import {
   rainviewerRawTileUrl,
   recolourRadarPng,
 } from "@/lib/weather/radar-palette";
+import {
+  getCachedRadarTile,
+  radarTileCacheKey,
+  setCachedRadarTile,
+} from "@/lib/weather/radar-tile-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +49,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid tile coords" }, { status: 400 });
   }
 
+  const cacheKey = radarTileCacheKey(host, path, zi, xi, yi);
+  const cached = getCachedRadarTile(cacheKey);
+  if (cached) {
+    return new NextResponse(new Uint8Array(cached), {
+      status: 200,
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=600, stale-while-revalidate=3600, immutable",
+        "X-Radar-Cache": "HIT",
+        "X-Radar-Source": "rainviewer-raw",
+        "X-Radar-Palette": "skywatch-dbz",
+      },
+    });
+  }
+
   const upstream = rainviewerRawTileUrl(host, path, zi, xi, yi);
   try {
     const res = await fetch(upstream, {
       headers: { Accept: "image/png" },
-      next: { revalidate: 120 },
+      // Radar frame paths are content-addressed — safe to cache hard.
+      cache: "force-cache",
+      next: { revalidate: 3600 },
     });
     if (!res.ok) {
       return NextResponse.json(
@@ -58,11 +80,13 @@ export async function GET(req: NextRequest) {
     }
     const buf = Buffer.from(await res.arrayBuffer());
     const out = recolourRadarPng(buf);
+    setCachedRadarTile(cacheKey, out);
     return new NextResponse(new Uint8Array(out), {
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=120, stale-while-revalidate=300",
+        "Cache-Control": "public, max-age=600, stale-while-revalidate=3600, immutable",
+        "X-Radar-Cache": "MISS",
         "X-Radar-Source": "rainviewer-raw",
         "X-Radar-Palette": "skywatch-dbz",
       },

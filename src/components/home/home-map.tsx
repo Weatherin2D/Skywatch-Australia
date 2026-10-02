@@ -28,12 +28,17 @@ import {
 } from "@/components/home/synoptic-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
 import { MapFullscreenButton } from "@/components/home/map-fullscreen";
+import {
+  RadarFramePreloader,
+  SmoothRadarLayer,
+} from "@/components/home/smooth-radar-layer";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import {
   GIBS_AU_ASPECT,
   boundsMercatorAspect,
+  type WeatherFrame,
 } from "@/lib/weather/maps";
 import "leaflet/dist/leaflet.css";
 
@@ -67,6 +72,9 @@ type Props = {
   /** Latest Himawari frame for Map-mode satellite overlay (optional). */
   mapSatelliteImageUrl?: string | null;
   mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
+  /** Radar timeline frames for prefetch / smooth playback. */
+  radarLoopFrames?: WeatherFrame[];
+  radarFrameIndex?: number;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -206,11 +214,7 @@ function SatelliteRadarOverlay({
           padding={0}
           isNational={false}
         />
-        <TileLayer
-          url={tileUrl}
-          opacity={0.85}
-          className="skywatch-radar-tiles"
-        />
+        <SmoothRadarLayer url={tileUrl} opacity={0.88} />
       </MapContainer>
     </div>
   );
@@ -332,6 +336,8 @@ export function HomeMap({
   synopticReferenceTime = null,
   mapSatelliteImageUrl = null,
   mapSatelliteImageBounds = null,
+  radarLoopFrames = [],
+  radarFrameIndex = 0,
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -445,11 +451,12 @@ export function HomeMap({
             className="skywatch-map-himawari"
           />
         ) : null}
-        {radarTiles ? (
-          <TileLayer
-            url={radarTiles}
-            opacity={0.88}
-            className="skywatch-radar-tiles"
+        {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.9} /> : null}
+        {showRadarOverlay && radarLoopFrames.length > 0 ? (
+          <RadarFramePreloader
+            frames={radarLoopFrames}
+            activeIndex={radarFrameIndex}
+            enabled
           />
         ) : null}
         <LeafletSynopticOverlay

@@ -57,6 +57,7 @@ import {
   type PlaybackSpeedId,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
+import { radarWarmupTileUrls } from "@/lib/weather/radar-palette";
 import { cn } from "@/lib/utils";
 
 function Toggle({
@@ -495,6 +496,41 @@ export function HomeDashboard({
     }
   }, [useTimeline]);
 
+  // Eagerly warm AU radar tiles for the playhead ± a few frames (browser HTTP cache).
+  useEffect(() => {
+    if (!showRadarOverlay || radarFrames.length === 0) return;
+    let cancelled = false;
+    const n = radarFrames.length;
+    const start = useRadarLoop ? frameIndex : Math.max(0, n - 1);
+    const templates: string[] = [];
+    for (let step = 0; step <= 5; step++) {
+      const tpl = radarFrames[(start + step) % n]?.tileUrlTemplate;
+      if (tpl) templates.push(tpl);
+    }
+    const urls = templates.flatMap((tpl) => radarWarmupTileUrls(tpl, [4, 5]));
+    let active = 0;
+    const queue = [...urls];
+    const pump = () => {
+      while (!cancelled && active < 12 && queue.length > 0) {
+        const url = queue.shift()!;
+        active += 1;
+        const img = new window.Image();
+        const done = () => {
+          active -= 1;
+          pump();
+        };
+        img.onload = done;
+        img.onerror = done;
+        img.decoding = "async";
+        img.src = url;
+      }
+    };
+    pump();
+    return () => {
+      cancelled = true;
+    };
+  }, [showRadarOverlay, radarFrames, useRadarLoop, frameIndex]);
+
   useEffect(() => {
     if (!satMenuOpen && !regionMenuOpen) return;
     function onPointerDown(e: MouseEvent) {
@@ -843,6 +879,17 @@ export function HomeDashboard({
               }
               mapSatelliteImageBounds={
                 himawariOnMap ? (activeFrame?.imageBounds ?? null) : null
+              }
+              radarLoopFrames={showRadarOverlay ? radarFrames : []}
+              radarFrameIndex={
+                useRadarLoop
+                  ? frameIndex
+                  : Math.max(
+                      0,
+                      radarFrames.findIndex(
+                        (f) => f.time === overlayRadarFrame?.time,
+                      ),
+                    )
               }
               mapSettings={mapSettings}
               showLightning={showLightning}

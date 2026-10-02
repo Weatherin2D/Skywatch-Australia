@@ -7,6 +7,7 @@ import type {
   MapSettingsState,
 } from "@/components/home/mock-data";
 import type { LightningStrike } from "@/lib/weather/lightning";
+import type { WeatherFrame } from "@/lib/weather/maps";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 
@@ -48,6 +49,8 @@ export function HomeMapDynamic({
   synopticReferenceTime,
   mapSatelliteImageUrl,
   mapSatelliteImageBounds,
+  radarLoopFrames,
+  radarFrameIndex,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -74,6 +77,8 @@ export function HomeMapDynamic({
   synopticReferenceTime?: number | null;
   mapSatelliteImageUrl?: string | null;
   mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
+  radarLoopFrames?: WeatherFrame[];
+  radarFrameIndex?: number;
 }) {
   return (
     <HomeMap
@@ -102,6 +107,8 @@ export function HomeMapDynamic({
       synopticReferenceTime={synopticReferenceTime}
       mapSatelliteImageUrl={mapSatelliteImageUrl}
       mapSatelliteImageBounds={mapSatelliteImageBounds}
+      radarLoopFrames={radarLoopFrames}
+      radarFrameIndex={radarFrameIndex}
     />
   );
 }

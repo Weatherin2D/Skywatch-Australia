@@ -36,20 +36,6 @@ export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
 
 const UB_DBZ = universalBlueDbz as Record<string, number>;
 
-const UB_ENTRIES: Array<{
-  r: number;
-  g: number;
-  b: number;
-  a: number;
-  dbz: number;
-}> = Object.entries(UB_DBZ).map(([hex, dbz]) => ({
-  r: parseInt(hex.slice(0, 2), 16),
-  g: parseInt(hex.slice(2, 4), 16),
-  b: parseInt(hex.slice(4, 6), 16),
-  a: parseInt(hex.slice(6, 8), 16),
-  dbz,
-}));
-
 function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
@@ -60,7 +46,6 @@ function lerp(a: number, b: number, t: number): number {
 
 export function colourForDbz(dbz: number): Rgba {
   const stops = RADAR_DBZ_STOPS;
-  // No reflectivity / below scale → fully clear.
   if (dbz < 0) return [0, 0, 0, 0];
   const first = stops[0]!;
   if (dbz <= first.dbz) return first.rgba;
@@ -92,27 +77,33 @@ const CUSTOM_LUT: Rgba[] = (() => {
   return lut;
 })();
 
-function rgbaKey(r: number, g: number, b: number, a: number): string {
-  return (
-    r.toString(16).padStart(2, "0") +
-    g.toString(16).padStart(2, "0") +
-    b.toString(16).padStart(2, "0") +
-    a.toString(16).padStart(2, "0")
-  );
+function packRgba(r: number, g: number, b: number, a: number): number {
+  return ((r << 24) | (g << 16) | (b << 8) | a) >>> 0;
 }
 
-/** Exact Universal Blue match, else nearest opaque palette colour. */
-function dbzFromUniversalBlue(
-  r: number,
-  g: number,
-  b: number,
-  a: number,
-): number | null {
-  if (a === 0) return null;
-  const exact = UB_DBZ[rgbaKey(r, g, b, a)];
-  if (exact != null) return exact;
+/** Universal Blue packed RGBA → SkyWatch packed RGBA (0 = transparent). */
+const RECOLOUR_MAP = new Map<number, number>();
+for (const [hex, dbz] of Object.entries(UB_DBZ)) {
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const a = parseInt(hex.slice(6, 8), 16);
+  const idx = Math.max(0, Math.min(CUSTOM_LUT.length - 1, dbz + 32));
+  const [nr, ng, nb, na] = CUSTOM_LUT[idx]!;
+  RECOLOUR_MAP.set(packRgba(r, g, b, a), packRgba(nr, ng, nb, na));
+}
 
-  let bestDbz: number | null = null;
+const UB_ENTRIES = [...RECOLOUR_MAP.keys()].map((packed) => ({
+  packed,
+  r: (packed >>> 24) & 255,
+  g: (packed >>> 16) & 255,
+  b: (packed >>> 8) & 255,
+  a: packed & 255,
+  out: RECOLOUR_MAP.get(packed)!,
+}));
+
+function nearestRecolour(r: number, g: number, b: number, a: number): number {
+  let best = 0;
   let bestDist = Infinity;
   for (const entry of UB_ENTRIES) {
     const dist =
@@ -122,11 +113,10 @@ function dbzFromUniversalBlue(
       (a - entry.a) ** 2 * 2;
     if (dist < bestDist) {
       bestDist = dist;
-      bestDbz = entry.dbz;
+      best = entry.out;
     }
   }
-  if (bestDist > 48 * 48) return null;
-  return bestDbz;
+  return bestDist > 48 * 48 ? 0 : best;
 }
 
 /**
@@ -138,24 +128,30 @@ export function recolourRadarPng(input: Buffer): Buffer {
   const { data } = png;
 
   for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3]!;
+    if (a === 0) {
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      continue;
+    }
     const r = data[i]!;
     const g = data[i + 1]!;
     const b = data[i + 2]!;
-    const a = data[i + 3]!;
-    const dbz = dbzFromUniversalBlue(r, g, b, a);
-    if (dbz == null) {
+    const packed = packRgba(r, g, b, a);
+    let out = RECOLOUR_MAP.get(packed);
+    if (out == null) out = nearestRecolour(r, g, b, a);
+    if (out === 0) {
       data[i] = 0;
       data[i + 1] = 0;
       data[i + 2] = 0;
       data[i + 3] = 0;
       continue;
     }
-    const idx = Math.max(0, Math.min(CUSTOM_LUT.length - 1, dbz + 32));
-    const [nr, ng, nb, na] = CUSTOM_LUT[idx]!;
-    data[i] = nr;
-    data[i + 1] = ng;
-    data[i + 2] = nb;
-    data[i + 3] = na;
+    data[i] = (out >>> 24) & 255;
+    data[i + 1] = (out >>> 16) & 255;
+    data[i + 2] = (out >>> 8) & 255;
+    data[i + 3] = out & 255;
   }
 
   return PNG.sync.write(png);
@@ -172,4 +168,31 @@ export function rainviewerRawTileUrl(
 ): string {
   const base = `${host.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
   return `${base}/${size}/${z}/${x}/${y}/2/0_0.png`;
+}
+
+/** Expand a Leaflet tile template for AU national coverage warm-up. */
+export function radarWarmupTileUrls(
+  template: string,
+  zooms: number[] = [4, 5],
+): string[] {
+  const urls: string[] = [];
+  for (const z of zooms) {
+    const n = 2 ** z;
+    // Australia-ish mercator window with pad.
+    const x0 = Math.floor(n * 0.38);
+    const x1 = Math.ceil(n * 0.52);
+    const y0 = Math.floor(n * 0.52);
+    const y1 = Math.ceil(n * 0.68);
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        urls.push(
+          template
+            .replace(/\{z\}/g, String(z))
+            .replace(/\{x\}/g, String(x))
+            .replace(/\{y\}/g, String(y)),
+        );
+      }
+    }
+  }
+  return urls;
 }
