@@ -10,21 +10,13 @@ import {
   type MapRegionId,
   type MapSettingsState,
 } from "@/components/home/mock-data";
+import type { PublicForecastResponse, RolledDay } from "@/lib/forecast/types";
 import {
   BOM_THUNDERSTORM_CATEGORIES,
-  type BomRiskDayPublic,
-  type BomThunderstormDay,
+  bomLegendItems,
+  classifyBomRiskLabel,
 } from "@/lib/weather/bom-thunderstorm";
 import { cn } from "@/lib/utils";
-
-type RiskApiResponse = {
-  status: "ok" | "empty";
-  updatedAt?: string;
-  days: BomRiskDayPublic[];
-  legend?: typeof BOM_THUNDERSTORM_CATEGORIES;
-  source?: string;
-  error?: string;
-};
 
 const RISK_MAP_SETTINGS: MapSettingsState = {
   ...DEFAULT_MAP_SETTINGS,
@@ -34,34 +26,50 @@ const RISK_MAP_SETTINGS: MapSettingsState = {
   satelliteBasemap: false,
 };
 
-function BomRiskLegend({
-  items = BOM_THUNDERSTORM_CATEGORIES,
-}: {
-  items?: typeof BOM_THUNDERSTORM_CATEGORIES;
-}) {
+function dayChipLabel(day: RolledDay): string {
+  if (day.effectiveDay === 1) return "Day 1 · Today";
+  return `Day ${day.effectiveDay}`;
+}
+
+function BomRiskLegend({ usedIds }: { usedIds: Set<string> }) {
+  const items = bomLegendItems();
   return (
     <ul className="flex flex-col gap-2.5">
-      {items.map((item) => (
-        <li key={item.id} className="flex items-center gap-3">
-          <span
-            className="h-5 w-8 shrink-0 border-2 border-white/80"
-            style={{ backgroundColor: item.color }}
-            aria-hidden
-          />
-          <span className="text-sm font-medium tracking-wide text-white/90">
-            {item.label}
-          </span>
-        </li>
-      ))}
+      {items.map((item) => {
+        const used = usedIds.size === 0 ? true : usedIds.has(item.id);
+        return (
+          <li
+            key={item.id}
+            className={cn("flex items-center gap-3", !used && "opacity-45")}
+          >
+            <span
+              className={cn(
+                "h-5 w-8 shrink-0",
+                used ? "border-2 border-white/80" : "border border-white/25",
+              )}
+              style={{ backgroundColor: item.style.fillColor }}
+              aria-hidden
+            />
+            <span
+              className={cn(
+                "text-sm font-medium tracking-wide",
+                used ? "text-white/90" : "text-white/45",
+              )}
+            >
+              {item.label}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 export function RiskDashboard() {
-  const [data, setData] = useState<RiskApiResponse | null>(null);
+  const [data, setData] = useState<PublicForecastResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [day, setDay] = useState<BomThunderstormDay>(1);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [regionId, setRegionId] = useState<MapRegionId>("national");
   const [regionMenuOpen, setRegionMenuOpen] = useState(false);
 
@@ -71,20 +79,27 @@ export function RiskDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/weather/risk?t=${Date.now()}`, {
+        const res = await fetch(`/api/forecast?t=${Date.now()}`, {
           cache: "no-store",
         });
-        if (!res.ok) throw new Error("Could not load thunderstorm outlook");
-        const json = (await res.json()) as RiskApiResponse;
+        if (!res.ok) throw new Error("Could not load risk outlook");
+        const json = (await res.json()) as PublicForecastResponse;
         if (cancelled) return;
-        setData(json);
-        const first =
-          json.days.find((d) => d.available)?.day ??
-          (json.days[0]?.day as BomThunderstormDay | undefined) ??
-          1;
-        setDay(first);
-        const active = json.days.find((d) => d.day === first);
-        if (active?.regionId) setRegionId(active.regionId);
+        // Public risk surface is Day 1–3 only.
+        const days = (json.days ?? []).filter(
+          (d) => d.effectiveDay >= 1 && d.effectiveDay <= 3,
+        );
+        setData({ ...json, days });
+        setSelectedDay((prev) => {
+          if (prev != null && days.some((d) => d.effectiveDay === prev)) {
+            return prev;
+          }
+          return (
+            days.find((d) => d.effectiveDay === json.defaultDay)?.effectiveDay ??
+            days[0]?.effectiveDay ??
+            null
+          );
+        });
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load");
@@ -99,18 +114,27 @@ export function RiskDashboard() {
     };
   }, []);
 
-  const active = useMemo(
-    () => data?.days.find((d) => d.day === day) ?? null,
-    [data, day],
-  );
+  const active = useMemo(() => {
+    if (!data?.days?.length) return null;
+    return (
+      data.days.find((d) => d.effectiveDay === selectedDay) ?? data.days[0]
+    );
+  }, [data, selectedDay]);
 
-  useEffect(() => {
-    if (!active?.available) return;
-    // Follow the chart's native region when switching days.
-    setRegionId(active.regionId);
-  }, [active?.day, active?.available, active?.regionId]);
+  const usedCategoryIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const f of active?.features ?? []) {
+      const id = classifyBomRiskLabel(f.title);
+      if (id) ids.add(id);
+    }
+    return ids;
+  }, [active?.features]);
 
   const region = getMapRegion(regionId);
+  const daySlots = [1, 2, 3].map((n) => {
+    const hit = data?.days.find((d) => d.effectiveDay === n) ?? null;
+    return { day: n, rolled: hit };
+  });
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-6 pt-3 sm:px-4 sm:pb-8 sm:pt-4">
@@ -120,8 +144,8 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            Bureau of Meteorology thunderstorm forecast charts for Day 1–3 —
-            possible and likely thunderstorm / severe thunderstorm areas.
+            Convective risk outlook for Australia — thunderstorms and severe
+            thunderstorms as possible or likely across Day 1–3.
           </p>
         </div>
         <a
@@ -135,31 +159,26 @@ export function RiskDashboard() {
       <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] xl:grid-cols-[minmax(0,1fr)_260px]">
         <section className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            {(
-              data?.days ??
-              ([1, 2, 3] as BomThunderstormDay[]).map((d) => ({
-                day: d,
-                label: `Day ${d}`,
-                dateLabel: "",
-                available: false,
-              }))
-            ).map((slot) => {
-              const selected = day === slot.day;
+            {daySlots.map(({ day, rolled }) => {
+              const selected = selectedDay === day;
+              const available = Boolean(rolled?.features.length);
               return (
                 <button
-                  key={slot.day}
+                  key={day}
                   type="button"
-                  onClick={() => setDay(slot.day)}
+                  onClick={() => setSelectedDay(day)}
                   className={cn(
                     "sw-chip inline-flex flex-col items-start gap-0.5 !py-1.5",
                     selected ? "sw-chip-active" : "sw-chip-idle",
-                    !slot.available && !loading && "opacity-55",
+                    !available && !loading && "opacity-55",
                   )}
                 >
-                  <span>{slot.label}</span>
-                  {slot.dateLabel ? (
+                  <span>
+                    {rolled ? dayChipLabel(rolled) : day === 1 ? "Day 1 · Today" : `Day ${day}`}
+                  </span>
+                  {rolled?.dateLabel ? (
                     <span className="text-[10px] font-normal uppercase tracking-wide opacity-70">
-                      {slot.dateLabel}
+                      {rolled.dateLabel}
                     </span>
                   ) : null}
                 </button>
@@ -220,7 +239,7 @@ export function RiskDashboard() {
           <div className="relative h-[min(68vh,720px)] min-h-[360px] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
             {loading ? (
               <div className="flex h-full items-center justify-center text-sm text-white/60">
-                Loading thunderstorm outlook…
+                Loading risk outlook…
               </div>
             ) : error ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
@@ -238,14 +257,25 @@ export function RiskDashboard() {
                   showRadarOverlay={false}
                   showLightning={false}
                   showSynoptic={false}
-                  riskImageUrl={active?.available ? active.imageUrl : null}
-                  riskImageBounds={active?.imageBounds ?? null}
-                  riskImageDisplay={active?.display ?? "sheet"}
+                  riskFeatures={active?.features ?? []}
                 />
-                {!active?.available ? (
+                {!loading &&
+                data?.status === "empty" &&
+                !(active?.features.length) ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
-                      No BoM thunderstorm chart for this day yet.
+                      {data.message ??
+                        "No active outlook. Publish Day 1–3 risk from Admin."}
+                    </p>
+                  </div>
+                ) : null}
+                {!loading &&
+                data?.status === "ok" &&
+                selectedDay != null &&
+                !(active?.features.length) ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
+                    <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
+                      No risk areas for this day.
                     </p>
                   </div>
                 ) : null}
@@ -253,20 +283,20 @@ export function RiskDashboard() {
             )}
           </div>
 
-          {active?.issuedAt ? (
+          {data?.issuedAt ? (
             <p className="text-xs text-white/45">
-              Chart updated{" "}
-              {new Date(active.issuedAt).toLocaleString("en-AU", {
+              Issued{" "}
+              {new Date(data.issuedAt).toLocaleString("en-AU", {
                 timeZone: "Australia/Sydney",
                 dateStyle: "medium",
                 timeStyle: "short",
               })}{" "}
-              (AEST/AEDT). Source: {data?.source ?? "Bureau of Meteorology"}.
+              (AEST/AEDT).
             </p>
           ) : (
             <p className="text-xs text-white/45">
-              Official BoM thunderstorm forecast graphics. Upload Day 1–3 charts
-              in Admin when new products are issued.
+              Upload a forecast-cycle outlook in Admin to publish Day 1–3 risk
+              areas.
             </p>
           )}
         </section>
@@ -280,10 +310,9 @@ export function RiskDashboard() {
               Convective risk
             </h2>
           </div>
-          <BomRiskLegend items={data?.legend ?? BOM_THUNDERSTORM_CATEGORIES} />
+          <BomRiskLegend usedIds={usedCategoryIds} />
           <p className="text-xs leading-relaxed text-white/50">
-            Categories match BoM thunderstorm forecast charts: thunderstorms /
-            severe thunderstorms as possible or likely.
+            {BOM_THUNDERSTORM_CATEGORIES.map((c) => c.label).join(" · ")}.
           </p>
         </aside>
       </div>

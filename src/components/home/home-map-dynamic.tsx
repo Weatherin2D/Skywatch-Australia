@@ -7,6 +7,7 @@ import type {
   MapSettingsState,
 } from "@/components/home/mock-data";
 import type { LightningStrike } from "@/lib/weather/lightning";
+import type { DisplayFeature } from "@/lib/forecast/types";
 import type { WeatherFrame } from "@/lib/weather/maps";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
@@ -55,6 +56,7 @@ export function HomeMapDynamic({
   riskImageBounds,
   riskImageDisplay,
   riskImageOpacity,
+  riskFeatures,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -87,6 +89,7 @@ export function HomeMapDynamic({
   riskImageBounds?: [[number, number], [number, number]] | null;
   riskImageDisplay?: "sheet" | "geo";
   riskImageOpacity?: number;
+  riskFeatures?: DisplayFeature[];
 }) {
   return (
     <HomeMap
@@ -121,6 +124,7 @@ export function HomeMapDynamic({
       riskImageBounds={riskImageBounds}
       riskImageDisplay={riskImageDisplay}
       riskImageOpacity={riskImageOpacity}
+      riskFeatures={riskFeatures}
     />
   );
 }

@@ -11,11 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MAP_REGIONS, type MapRegionId } from "@/components/home/mock-data";
-import type { BomRiskDayPublic } from "@/lib/weather/bom-thunderstorm";
+import { MAX_FORECAST_DAYS } from "@/lib/forecast/process";
 
-type RiskCatalog = {
-  days: BomRiskDayPublic[];
+const DAY_OPTIONS = [1, 2, 3];
+
+type StoredDay = {
+  day: number;
+  validDate: string | null;
+  hasCustomLayer: boolean;
 };
 
 export function AdminPanel() {
@@ -27,24 +30,23 @@ export function AdminPanel() {
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [targetDay, setTargetDay] = useState<1 | 2 | 3>(1);
-  const [regionId, setRegionId] = useState<MapRegionId>("nsw");
-  const [display, setDisplay] = useState<"sheet" | "geo">("sheet");
-  const [days, setDays] = useState<BomRiskDayPublic[]>([]);
-  const [busyDay, setBusyDay] = useState<number | null>(null);
+  const [targetDay, setTargetDay] = useState(1);
+  const [publishMode, setPublishMode] = useState<"replace" | "single">(
+    "replace",
+  );
+  const [storedDays, setStoredDays] = useState<StoredDay[]>([]);
   const [manageMessage, setManageMessage] = useState<string | null>(null);
   const [manageError, setManageError] = useState<string | null>(null);
+  const [busyDay, setBusyDay] = useState<number | "all" | null>(null);
 
   const refreshDays = useCallback(async () => {
-    const res = await fetch(`/api/weather/risk?t=${Date.now()}`, {
-      cache: "no-store",
-    });
+    const res = await fetch("/api/admin/days", { cache: "no-store" });
     if (!res.ok) {
-      setDays([]);
+      setStoredDays([]);
       return;
     }
-    const json = (await res.json()) as RiskCatalog;
-    setDays(json.days ?? []);
+    const json = (await res.json()) as { days?: StoredDay[] };
+    setStoredDays(json.days ?? []);
   }, []);
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export function AdminPanel() {
         if (!cancelled) setChecking(false);
       }
     }
-    void check();
+    check();
     return () => {
       cancelled = true;
     };
@@ -89,7 +91,7 @@ export function AdminPanel() {
   async function onLogout() {
     await fetch("/api/admin/logout", { method: "POST" });
     setAuthenticated(false);
-    setDays([]);
+    setStoredDays([]);
   }
 
   async function uploadFile(file: File) {
@@ -99,20 +101,29 @@ export function AdminPanel() {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("day", String(targetDay));
-      form.append("regionId", regionId);
-      form.append("display", display);
-      const res = await fetch("/api/admin/risk-upload", {
+      form.append("targetDay", String(targetDay));
+      form.append("mode", publishMode);
+      const res = await fetch("/api/admin/upload", {
         method: "POST",
         body: form,
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        dayCount?: number;
+        targetStartDay?: number;
+        mode?: string;
+        days?: number[];
+        error?: string;
+      };
       if (!res.ok) {
         setUploadError(json.error ?? "Upload failed");
         return;
       }
+      const dayList = (json.days ?? []).join(", ");
       setUploadMessage(
-        `Published Day ${targetDay} BoM chart (${display}, ${regionId.toUpperCase()}).`,
+        publishMode === "single"
+          ? `Updated Day ${json.targetStartDay ?? targetDay} only. Active days: ${dayList || json.dayCount}.`
+          : `Published from Day ${json.targetStartDay ?? targetDay}. Other existing days were kept. Active days: ${dayList || json.dayCount}.`,
       );
       await refreshDays();
     } catch {
@@ -123,26 +134,69 @@ export function AdminPanel() {
   }
 
   async function removeDay(day: number) {
-    if (!confirm(`Remove Day ${day} BoM thunderstorm chart?`)) return;
+    if (!confirm(`Remove Day ${day} from the public outlook?`)) return;
     setBusyDay(day);
     setManageError(null);
     setManageMessage(null);
     try {
-      const res = await fetch(`/api/admin/risk-upload?day=${day}`, {
+      const res = await fetch("/api/admin/days", {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ day }),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as { error?: string; days?: number[] };
       if (!res.ok) {
         setManageError(json.error ?? "Could not remove day");
         return;
       }
-      setManageMessage(`Removed Day ${day} chart.`);
+      setManageMessage(
+        json.days?.length
+          ? `Removed Day ${day}. Remaining: ${json.days.join(", ")}.`
+          : `Removed Day ${day}. No active outlook days left.`,
+      );
       await refreshDays();
     } catch {
       setManageError("Could not remove day");
     } finally {
       setBusyDay(null);
     }
+  }
+
+  async function wipeAll() {
+    if (
+      !confirm(
+        "Wipe the entire forecast cycle? The public map will show no active outlook.",
+      )
+    ) {
+      return;
+    }
+    setBusyDay("all");
+    setManageError(null);
+    setManageMessage(null);
+    try {
+      const res = await fetch("/api/admin/days?wipe=all", { method: "DELETE" });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setManageError(json.error ?? "Could not wipe forecast");
+        return;
+      }
+      setManageMessage("All forecast days wiped.");
+      await refreshDays();
+    } catch {
+      setManageError("Could not wipe forecast");
+    } finally {
+      setBusyDay(null);
+    }
+  }
+
+  function formatValidDate(iso: string | null) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("en-AU", {
+      timeZone: "UTC",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
   }
 
   if (checking) {
@@ -163,13 +217,12 @@ export function AdminPanel() {
           ← Risk map
         </a>
         <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl font-bold tracking-tight text-white">
-          Risk admin
+          Admin
         </h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Upload official BoM thunderstorm forecast graphics for Day 1 (today),
-          Day 2 and Day 3. BoM does not publish these charts on a public image
-          feed — paste the product sheet issued to emergency services / state
-          pages.
+          Upload a GFC <code className="text-neutral-200">forecast-cycle</code>{" "}
+          JSON with Day 1–3 convective risk polygons. Categories map to the BoM
+          key: thunderstorms possible/likely and severe possible/likely.
         </p>
 
         {!authenticated ? (
@@ -177,7 +230,7 @@ export function AdminPanel() {
             <CardHeader>
               <CardTitle>Sign in</CardTitle>
               <CardDescription className="text-neutral-400">
-                Enter the admin password to upload charts.
+                Enter the admin password to upload or manage forecasts.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -207,9 +260,9 @@ export function AdminPanel() {
             <Card className="border-neutral-800 bg-neutral-950 text-[#fafafa]">
               <CardHeader className="flex flex-row items-start justify-between gap-4">
                 <div>
-                  <CardTitle>Published days</CardTitle>
+                  <CardTitle>Manage days</CardTitle>
                   <CardDescription className="text-neutral-400">
-                    Charts currently shown on the public risk map.
+                    Remove a single day or wipe the whole public outlook.
                   </CardDescription>
                 </div>
                 <Button variant="outline" onClick={onLogout}>
@@ -217,36 +270,49 @@ export function AdminPanel() {
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
-                <ul className="space-y-2">
-                  {days.map((d) => (
-                    <li
-                      key={d.day}
-                      className="flex items-center justify-between gap-3 border border-neutral-800 bg-black px-3 py-2"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold">{d.label}</p>
-                        <p className="text-xs text-neutral-500">
-                          {d.available
-                            ? `${d.regionId.toUpperCase()} · ${d.display}`
-                            : "No chart"}
-                        </p>
-                      </div>
-                      {d.available ? (
+                {storedDays.length === 0 ? (
+                  <p className="text-sm text-neutral-400">
+                    No forecast days published.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {storedDays.map((day) => (
+                      <li
+                        key={day.day}
+                        className="flex items-center justify-between gap-3 border border-neutral-800 bg-black px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold">Day {day.day}</p>
+                          <p className="text-xs text-neutral-500">
+                            {formatValidDate(day.validDate)}
+                            {day.hasCustomLayer
+                              ? " · AusRisk layer"
+                              : " · categorical"}
+                          </p>
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
                           disabled={busyDay !== null}
-                          onClick={() => void removeDay(d.day)}
+                          onClick={() => void removeDay(day.day)}
                           className="border-neutral-700 text-neutral-200 hover:bg-neutral-900"
                         >
-                          {busyDay === d.day ? "Removing…" : "Remove"}
+                          {busyDay === day.day ? "Removing…" : "Remove"}
                         </Button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Button
+                  variant="outline"
+                  disabled={busyDay !== null || storedDays.length === 0}
+                  onClick={() => void wipeAll()}
+                  className="w-full border-neutral-700 text-neutral-200 hover:bg-neutral-900"
+                >
+                  {busyDay === "all" ? "Wiping…" : "Wipe all forecast days"}
+                </Button>
                 {manageMessage && (
-                  <p className="text-sm text-emerald-400">{manageMessage}</p>
+                  <p className="text-sm text-neutral-300">{manageMessage}</p>
                 )}
                 {manageError && (
                   <p className="text-sm text-red-400">{manageError}</p>
@@ -256,62 +322,76 @@ export function AdminPanel() {
 
             <Card className="border-neutral-800 bg-neutral-950 text-[#fafafa]">
               <CardHeader>
-                <CardTitle>Upload BoM chart</CardTitle>
+                <CardTitle>Upload forecast</CardTitle>
                 <CardDescription className="text-neutral-400">
-                  PNG or JPEG of the official thunderstorm forecast graphic.
+                  Choose which day slot (1–{MAX_FORECAST_DAYS}) this upload
+                  should land on. Extra days in the file fill the following
+                  slots. Maximum outlook range is {MAX_FORECAST_DAYS} days.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="day">Day</Label>
-                    <select
-                      id="day"
-                      value={targetDay}
-                      onChange={(e) =>
-                        setTargetDay(Number(e.target.value) as 1 | 2 | 3)
-                      }
-                      className="flex h-9 w-full rounded-md border border-neutral-800 bg-black px-3 text-sm"
-                    >
-                      <option value={1}>Day 1 · Today</option>
-                      <option value={2}>Day 2</option>
-                      <option value={3}>Day 3</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="region">Region</Label>
-                    <select
-                      id="region"
-                      value={regionId}
-                      onChange={(e) =>
-                        setRegionId(e.target.value as MapRegionId)
-                      }
-                      className="flex h-9 w-full rounded-md border border-neutral-800 bg-black px-3 text-sm"
-                    >
-                      {MAP_REGIONS.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.short}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="display">Display</Label>
-                    <select
-                      id="display"
-                      value={display}
-                      onChange={(e) =>
-                        setDisplay(e.target.value as "sheet" | "geo")
-                      }
-                      className="flex h-9 w-full rounded-md border border-neutral-800 bg-black px-3 text-sm"
-                    >
-                      <option value="sheet">Product sheet</option>
-                      <option value="geo">Georeferenced</option>
-                    </select>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="targetDay">Day slot</Label>
+                  <select
+                    id="targetDay"
+                    value={targetDay}
+                    onChange={(e) => setTargetDay(Number(e.target.value))}
+                    className="flex h-9 w-full rounded-md border border-neutral-800 bg-black px-3 text-sm text-[#fafafa] outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    {DAY_OPTIONS.map((day) => (
+                      <option key={day} value={day}>
+                        Day {day}
+                        {day === 1 ? " (Today)" : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div
+                <fieldset className="space-y-3 border border-neutral-800 p-3">
+                  <legend className="px-1 text-sm font-medium text-neutral-200">
+                    Publish mode
+                  </legend>
+                  <label className="flex items-start gap-3 text-sm text-neutral-300">
+                    <input
+                      type="radio"
+                      name="publishMode"
+                      checked={publishMode === "replace"}
+                      onChange={() => setPublishMode("replace")}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="font-medium text-white">
+                        Replace outlook
+                      </span>
+                      <span className="mt-0.5 block text-xs text-neutral-500">
+                        Writes this file into the selected day slot (and the
+                        following slots for multi-day files). Days you already
+                        published outside those slots are kept. Use Wipe all
+                        first for a clean slate.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 text-sm text-neutral-300">
+                    <input
+                      type="radio"
+                      name="publishMode"
+                      checked={publishMode === "single"}
+                      onChange={() => setPublishMode("single")}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="font-medium text-white">
+                        Update one day only
+                      </span>
+                      <span className="mt-0.5 block text-xs text-neutral-500">
+                        Puts only the AusRisk layer from the file into the
+                        selected day slot and leaves every other day untouched.
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
+
+                <label
                   onDragOver={(e) => {
                     e.preventDefault();
                     setDragOver(true);
@@ -323,25 +403,20 @@ export function AdminPanel() {
                     const file = e.dataTransfer.files?.[0];
                     if (file) void uploadFile(file);
                   }}
-                  className={
+                  className={`flex cursor-pointer flex-col items-center justify-center border border-dashed px-4 py-12 text-center transition ${
                     dragOver
-                      ? "rounded-lg border border-dashed border-cyan-400 bg-cyan-400/10 px-4 py-10 text-center"
-                      : "rounded-lg border border-dashed border-neutral-700 bg-black px-4 py-10 text-center"
-                  }
+                      ? "border-white bg-neutral-900"
+                      : "border-neutral-700 bg-black"
+                  }`}
                 >
-                  <p className="text-sm text-neutral-300">
-                    Drag & drop a BoM chart image, or choose a file.
-                  </p>
-                  <Label
-                    htmlFor="risk-file"
-                    className="mt-4 inline-flex cursor-pointer items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-black"
-                  >
-                    {uploading ? "Uploading…" : "Choose image"}
-                  </Label>
-                  <Input
-                    id="risk-file"
+                  <span className="text-sm text-neutral-300">
+                    {uploading
+                      ? "Uploading…"
+                      : "Drop JSON here or click to choose a file"}
+                  </span>
+                  <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    accept="application/json,.json"
                     className="hidden"
                     disabled={uploading}
                     onChange={(e) => {
@@ -350,13 +425,16 @@ export function AdminPanel() {
                       e.target.value = "";
                     }}
                   />
-                </div>
+                </label>
                 {uploadMessage && (
-                  <p className="text-sm text-emerald-400">{uploadMessage}</p>
+                  <p className="text-sm text-neutral-300">{uploadMessage}</p>
                 )}
                 {uploadError && (
                   <p className="text-sm text-red-400">{uploadError}</p>
                 )}
+                <p className="text-xs text-neutral-500">
+                  PLACEHOLDER legend entries are removed automatically on upload.
+                </p>
               </CardContent>
             </Card>
           </div>

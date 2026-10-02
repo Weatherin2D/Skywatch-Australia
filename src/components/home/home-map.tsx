@@ -32,6 +32,8 @@ import {
   RadarFramePreloader,
   SmoothRadarLayer,
 } from "@/components/home/smooth-radar-layer";
+import { RiskPolygonLayer } from "@/components/risk/risk-polygon-layer";
+import type { DisplayFeature } from "@/lib/forecast/types";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
@@ -81,6 +83,8 @@ type Props = {
   /** sheet = product graphic over map; geo = georeferenced plate */
   riskImageDisplay?: "sheet" | "geo";
   riskImageOpacity?: number;
+  /** Convective risk polygons (Day 1–3 outlook). */
+  riskFeatures?: DisplayFeature[];
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -348,6 +352,7 @@ export function HomeMap({
   riskImageBounds = null,
   riskImageDisplay = "sheet",
   riskImageOpacity = 0.92,
+  riskFeatures = [],
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -480,6 +485,9 @@ export function HomeMap({
             activeIndex={radarFrameIndex}
             enabled
           />
+        ) : null}
+        {riskFeatures.length > 0 ? (
+          <RiskPolygonLayer features={riskFeatures} fit={false} />
         ) : null}
         <LeafletSynopticOverlay
           frames={synopticFrames}

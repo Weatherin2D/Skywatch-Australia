@@ -224,26 +224,37 @@ export async function clearBomRiskDay(day: BomThunderstormDay): Promise<void> {
   await persistManifest(manifest);
 }
 
+/** Ensure a manifest exists; never inject demo chart images. */
 export async function ensureSeedBomRiskManifest(): Promise<BomRiskManifest> {
-  // Only seed on a truly empty first run — never re-seed after an admin wipe.
-  const local = await readManifestFile(MANIFEST_PATH);
-  if (local) return local;
-  const tmp = await readManifestFile(TMP_MANIFEST);
-  if (tmp) return tmp;
-  const blob = await readBlobManifest();
-  if (blob) return blob;
-
-  // Seed Day 1 with the sample NSW BoM product sheet shipped in public/.
-  const seed: BomRiskManifest = emptyBomRiskManifest();
-  seed.days["1"] = {
-    day: 1,
-    issuedAt: new Date().toISOString(),
-    regionId: "nsw",
-    display: "sheet",
-    imagePath: "public:risk/bom-nsw-day1.jpg",
-    contentType: "image/jpeg",
-    fileName: "bom-nsw-day1.jpg",
-  };
-  await persistManifest(seed);
-  return seed;
+  const existing = await readBomRiskManifest();
+  if (
+    existing.days["1"]?.imagePath ||
+    existing.days["2"]?.imagePath ||
+    existing.days["3"]?.imagePath ||
+    existing.updatedAt
+  ) {
+    // Drop legacy demo seed if still pointed at the bundled sample.
+    let changed = false;
+    for (const key of ["1", "2", "3"] as const) {
+      const path = existing.days[key]?.imagePath;
+      if (path && path.includes("bom-nsw-day1")) {
+        existing.days[key] = {
+          ...existing.days[key]!,
+          imagePath: null,
+          contentType: null,
+          fileName: null,
+          issuedAt: null,
+        };
+        changed = true;
+      }
+    }
+    if (changed) {
+      existing.updatedAt = new Date().toISOString();
+      await persistManifest(existing);
+    }
+    return existing;
+  }
+  const empty = emptyBomRiskManifest();
+  await persistManifest(empty);
+  return empty;
 }
