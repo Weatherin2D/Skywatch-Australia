@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 /**
  * GET /api/forecast
- * Live Day 1–3 convective risk from the official BoM MetEye thunderstorm layer.
+ * Live MetEye thunderstorm outlook for the full MetEye horizon (~7 days).
  */
 export async function GET() {
   try {
@@ -21,7 +21,7 @@ export async function GET() {
   } catch (error) {
     console.error("[forecast]", error);
     return NextResponse.json(
-      { error: "Failed to load BoM risk outlook" },
+      { error: "Failed to load BoM MetEye risk outlook" },
       {
         status: 502,
         headers: { "Cache-Control": "no-store" },

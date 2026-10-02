@@ -31,13 +31,10 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/locations` | BoM location search (`?q=`) |
 | `/api/weather/forecast` | BoM daily + hourly + observations (`?geohash=` / `/:geohash` / `?region=`) |
 | `/api/weather/capitals` | Capital-city observation/forecast snapshots |
-| `/api/weather/risk` | Live Day 1–3 convective risk catalog |
-| `/api/forecast` | Day 1–3 convective risk GeoJSON used by `/risk` |
+| `/api/weather/risk` | Live MetEye thunderstorm risk catalog (~7 days) |
+| `/api/forecast` | MetEye thunderstorm outlook used by `/risk` |
 
-Risk sources (official BoM only — no town-forecast synthesis):
-
-- **National / Day 3:** MetEye thunderstorm layer `IDZ73094` (Chance teal · Likely red), daily max of 3-hourly frames.
-- **State Day 1–2:** BoM Thunderstorm Forecast charts (`ID*21031` / `ID*21032`) when published (e.g. Victoria IDV21031), shown as the official product sheet with the 4-category convective key.
+`/risk` uses only the official BoM MetEye thunderstorm layer (`IDZ73094`) — Chance (teal) / Likely (red) — for the full MetEye horizon (~7 days). Each day shows the same 3-hourly frame MetEye displays for that period.
 
 **Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
 

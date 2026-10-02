@@ -1,22 +1,21 @@
 /**
  * Official BoM MetEye thunderstorm forecast (IDZ73094 / ADFD WxThunderstorm).
  *
- * This is the same national layer MetEye shows under Weather → Thunderstorms:
- * 3-hourly Chance / Likely areas from the Australian Digital Forecast Database.
- * Day 1–3 charts are daily max composites of those 3-hourly frames.
+ * Same national layer MetEye shows under Weather → Thunderstorms:
+ * 3-hourly Chance / Likely areas for the full MetEye horizon (~7 days /
+ * TIMESTEP 0–162).
  */
 
 import { PNG } from "pngjs";
 import type {
   DisplayLegendItem,
   PublicForecastResponse,
+  RolledDay,
 } from "@/lib/forecast/types";
-import { bomRiskDayLabels } from "@/lib/weather/bom-thunderstorm";
 import {
   BOM_METEYE_IMAGE_BOUNDS,
   METEYE_THUNDERSTORM_CATEGORIES,
 } from "@/lib/weather/bom-meteye-constants";
-import { listAvailableThunderstormCharts } from "@/lib/weather/bom-thunderstorm-charts";
 
 export {
   BOM_METEYE_IMAGE_BOUNDS,
@@ -24,12 +23,13 @@ export {
 } from "@/lib/weather/bom-meteye-constants";
 
 export const METEYE_LAYER = "IDZ73094";
+/** MetEye `timeline.3hourly7days` forecastEnd. */
+export const METEYE_FORECAST_END_HOURS = 162;
+export const METEYE_PERIOD_HOURS = 3;
 
 const BBOX = `${BOM_METEYE_IMAGE_BOUNDS[0][1]},${BOM_METEYE_IMAGE_BOUNDS[0][0]},${BOM_METEYE_IMAGE_BOUNDS[1][1]},${BOM_METEYE_IMAGE_BOUNDS[1][0]}`;
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 760;
-const PERIOD_HOURS = 3;
-const FORECAST_END_HOURS = 162;
 
 const WMS_HOSTS = [
   "https://wvs1.bom.gov.au/mapcache/meteye",
@@ -52,17 +52,26 @@ type GridMeta = {
   issuetime: string;
 };
 
-type DayComposite = {
+type DayWindow = {
+  day: number;
+  startMs: number;
+  endMs: number;
+  dateLabel: string;
+  validDate: string;
+  label: string;
+};
+
+type DayFrame = {
   png: Buffer;
   usedRanks: Set<number>;
-  timesteps: number[];
+  timestep: number;
 };
 
 type CacheBundle = {
   at: number;
   meta: GridMeta;
   issuedAtIso: string;
-  days: Record<1 | 2 | 3, DayComposite | null>;
+  days: Map<number, DayFrame>;
   outlook: PublicForecastResponse;
 };
 
@@ -96,7 +105,6 @@ async function fetchBuffer(url: string, timeoutMs = 20_000): Promise<Buffer> {
 }
 
 function parseBomStamp(stamp: string): Date {
-  // YYYYMMDDHHmm[ss]
   const y = Number(stamp.slice(0, 4));
   const mo = Number(stamp.slice(4, 6));
   const d = Number(stamp.slice(6, 8));
@@ -126,42 +134,7 @@ async function fetchGridMeta(): Promise<GridMeta> {
   };
 }
 
-/** Sydney calendar midnights for Day 1–3 relative to "now". */
-function sydneyDayWindows(now = new Date()): Record<
-  1 | 2 | 3,
-  { startMs: number; endMs: number; dateLabel: string; validDate: string }
-> {
-  const fmtYmd = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Australia/Sydney",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const todayYmd = fmtYmd.format(now); // YYYY-MM-DD
-  const [y, m, d] = todayYmd.split("-").map(Number);
-  const labels = bomRiskDayLabels(now);
-  const out = {} as Record<
-    1 | 2 | 3,
-    { startMs: number; endMs: number; dateLabel: string; validDate: string }
-  >;
-
-  for (const day of [1, 2, 3] as const) {
-    const target = new Date(Date.UTC(y!, m! - 1, d! + (day - 1)));
-    const targetYmd = `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}-${String(target.getUTCDate()).padStart(2, "0")}`;
-    const startMs = findSydneyMidnightUtc(targetYmd);
-    out[day] = {
-      startMs,
-      endMs: startMs + 24 * 3600_000,
-      dateLabel: labels[day].dateLabel,
-      validDate: `${targetYmd}T00:00:00+10:00`,
-    };
-  }
-  return out;
-}
-
 function findSydneyMidnightUtc(ymd: string): number {
-  // ymd = YYYY-MM-DD in Sydney. Search UTC candidates from ymd 14:00Z previous
-  // calendar day through ymd 16:00Z.
   const [y, m, d] = ymd.split("-").map(Number);
   const startProbe = Date.UTC(y!, m! - 1, d! - 1, 12, 0, 0);
   for (let ms = startProbe; ms <= startProbe + 36 * 3600_000; ms += 15 * 60_000) {
@@ -184,8 +157,68 @@ function findSydneyMidnightUtc(ymd: string): number {
       return ms;
     }
   }
-  // Fallback AEST
   return Date.UTC(y!, m! - 1, d!, 0, 0, 0) - 10 * 3600_000;
+}
+
+function sydneyYmd(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Australia/Sydney",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+}
+
+function formatDayLabel(day: number, ymd: string): { label: string; dateLabel: string } {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const noon = new Date(Date.UTC(y!, m! - 1, d!, 12));
+  const dateLabel = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(noon);
+  return {
+    label: day === 1 ? "Day 1 · Today" : `Day ${day}`,
+    dateLabel,
+  };
+}
+
+/**
+ * Sydney calendar days covered by MetEye TIMESTEP 0…forecastEnd from basetime,
+ * starting at "today" in Sydney.
+ */
+export function meteyeDayWindows(
+  basetime: string,
+  now = new Date(),
+): DayWindow[] {
+  const baseMs = parseBomStamp(basetime).getTime();
+  const forecastEndMs =
+    baseMs + (METEYE_FORECAST_END_HOURS + METEYE_PERIOD_HOURS) * 3600_000;
+  const todayYmd = sydneyYmd(now.getTime());
+  const todayStart = findSydneyMidnightUtc(todayYmd);
+
+  const windows: DayWindow[] = [];
+  for (let day = 1; day <= 8; day++) {
+    const startMs = todayStart + (day - 1) * 24 * 3600_000;
+    const endMs = startMs + 24 * 3600_000;
+    // Keep the day if any MetEye period overlaps it and starts before forecast end.
+    if (startMs >= forecastEndMs) break;
+    if (endMs <= baseMs) continue;
+    const steps = timestepsForSydneyDay(basetime, startMs, endMs);
+    if (!steps.length) continue;
+    const ymd = sydneyYmd(startMs + 12 * 3600_000);
+    const labels = formatDayLabel(day, ymd);
+    windows.push({
+      day,
+      startMs,
+      endMs,
+      dateLabel: labels.dateLabel,
+      validDate: `${ymd}T00:00:00+10:00`,
+      label: labels.label,
+    });
+  }
+  return windows;
 }
 
 /** TIMESTEP values (hours from basetime) that overlap a Sydney local day. */
@@ -194,17 +227,20 @@ export function timestepsForSydneyDay(
   dayStartMs: number,
   dayEndMs: number,
 ): number[] {
-  // Metadata basetime is YYYYMMDDHH or YYYYMMDDHHmm[ss] (UTC).
   const baseMs = parseBomStamp(basetime).getTime();
   const steps: number[] = [];
-  for (let ts = 0; ts <= FORECAST_END_HOURS; ts += PERIOD_HOURS) {
+  for (let ts = 0; ts <= METEYE_FORECAST_END_HOURS; ts += METEYE_PERIOD_HOURS) {
     const validStart = baseMs + ts * 3600_000;
-    const validEnd = validStart + PERIOD_HOURS * 3600_000;
+    const validEnd = validStart + METEYE_PERIOD_HOURS * 3600_000;
     if (validStart < dayEndMs && validEnd > dayStartMs) {
       steps.push(ts);
     }
   }
   return steps;
+}
+
+export function isMeteyeOutlookDay(n: number): boolean {
+  return Number.isInteger(n) && n >= 1 && n <= 8;
 }
 
 function wmsUrl(host: string, issuetime: string, timestep: number): string {
@@ -222,7 +258,6 @@ function wmsUrl(host: string, issuetime: string, timestep: number): string {
     TRANSPARENT: "TRUE",
     TIMESTEP: String(timestep),
     ISSUETIME: issuetime,
-    // Some mapcache builds also honour BASETIME; harmless if ignored.
   });
   return `${host}?${params.toString()}`;
 }
@@ -235,7 +270,6 @@ async function fetchTimestepPng(
   for (const host of WMS_HOSTS) {
     try {
       const buf = await fetchBuffer(wmsUrl(host, issuetime, timestep));
-      // PNG magic
       if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50) {
         return buf;
       }
@@ -249,20 +283,13 @@ async function fetchTimestepPng(
     : new Error(`GetMap failed for TIMESTEP=${timestep}`);
 }
 
-/** Rank a MetEye pixel: 0 none, 1 chance (teal), 2 likely (red). */
 function rankPixel(r: number, g: number, b: number, a: number): number {
   if (a < 20) return 0;
-  // Near-white / nodata grey
   if (r > 220 && g > 220 && b > 220) return 0;
   if (Math.abs(r - g) < 12 && Math.abs(g - b) < 12 && r > 180) return 0;
-
-  // Likely — red family (#DB0303)
   if (r > 150 && g < 90 && b < 90) return 2;
-  // Chance — teal family (#00B193)
   if (g > 120 && b > 100 && r < 80) return 1;
-  // Soft anti-alias toward red
   if (r > g + 40 && r > b + 40 && r > 100) return 2;
-  // Soft anti-alias toward teal
   if (g > r + 40 && b > r + 20 && g > 100) return 1;
   return 0;
 }
@@ -289,16 +316,14 @@ function meteyeLegend(usedRanks: Set<number>): DisplayLegendItem[] {
 }
 
 /**
- * Pick the MetEye TIMESTEP that matches what MetEye shows for that day —
- * one 3-hourly frame, not a daily-max union (which overstates coverage).
- *
- * Day 1: the period containing "now" (else the next remaining step).
- * Day 2–3: the step closest to 15:00 Australia/Sydney (peak heating).
+ * One MetEye TIMESTEP per day — same as scrubbing MetEye to that period.
+ * Day 1: period containing "now" (else next remaining).
+ * Later days: closest to 15:00 Australia/Sydney.
  */
 function pickRepresentativeTimestep(
   basetime: string,
   steps: number[],
-  day: 1 | 2 | 3,
+  day: number,
   dayStartMs: number,
   nowMs = Date.now(),
 ): number | null {
@@ -308,19 +333,19 @@ function pickRepresentativeTimestep(
   if (day === 1) {
     for (const ts of steps) {
       const start = baseMs + ts * 3600_000;
-      const end = start + PERIOD_HOURS * 3600_000;
+      const end = start + METEYE_PERIOD_HOURS * 3600_000;
       if (nowMs >= start && nowMs < end) return ts;
     }
     const upcoming = steps.find((ts) => baseMs + ts * 3600_000 >= nowMs);
     return upcoming ?? steps[steps.length - 1]!;
   }
 
-  // Target 15:00 Sydney on that civil day.
   const targetLocal = dayStartMs + 15 * 3600_000;
   let best = steps[0]!;
   let bestDist = Infinity;
   for (const ts of steps) {
-    const mid = baseMs + ts * 3600_000 + (PERIOD_HOURS * 3600_000) / 2;
+    const mid =
+      baseMs + ts * 3600_000 + (METEYE_PERIOD_HOURS * 3600_000) / 2;
     const dist = Math.abs(mid - targetLocal);
     if (dist < bestDist) {
       bestDist = dist;
@@ -330,7 +355,7 @@ function pickRepresentativeTimestep(
   return best;
 }
 
-function frameToComposite(frame: Buffer, timestep: number): DayComposite {
+function frameToDay(frame: Buffer, timestep: number): DayFrame {
   const png = decodePng(frame);
   const usedRanks = new Set<number>();
   const out = new PNG({ width: png.width, height: png.height });
@@ -359,38 +384,35 @@ function frameToComposite(frame: Buffer, timestep: number): DayComposite {
   return {
     png: PNG.sync.write(out),
     usedRanks,
-    timesteps: [timestep],
+    timestep,
   };
 }
 
-async function buildDayComposite(
+async function buildDayFrame(
   meta: GridMeta,
-  day: 1 | 2 | 3,
-  windows: ReturnType<typeof sydneyDayWindows>,
-): Promise<DayComposite | null> {
-  const win = windows[day];
+  win: DayWindow,
+): Promise<DayFrame | null> {
   const steps = timestepsForSydneyDay(meta.basetime, win.startMs, win.endMs);
   if (!steps.length) return null;
 
   const picked = pickRepresentativeTimestep(
     meta.basetime,
     steps,
-    day,
+    win.day,
     win.startMs,
   );
   if (picked == null) return null;
 
   try {
     const frame = await fetchTimestepPng(meta.issuetime, picked);
-    return frameToComposite(frame, picked);
+    return frameToDay(frame, picked);
   } catch (err) {
     console.warn(`[meteye] TIMESTEP ${picked} failed`, err);
-    // Fall back through remaining steps for that day.
     for (const ts of steps) {
       if (ts === picked) continue;
       try {
         const frame = await fetchTimestepPng(meta.issuetime, ts);
-        return frameToComposite(frame, ts);
+        return frameToDay(frame, ts);
       } catch {
         /* try next */
       }
@@ -401,31 +423,26 @@ async function buildDayComposite(
 
 async function buildBundle(): Promise<CacheBundle> {
   const meta = await fetchGridMeta();
-  const windows = sydneyDayWindows();
+  const windows = meteyeDayWindows(meta.basetime);
   const issuedAtIso = formatIssuedAtIso(meta.issuetime);
-  const labels = bomRiskDayLabels();
+  const dayFrames = new Map<number, DayFrame>();
 
-  const days: Record<1 | 2 | 3, DayComposite | null> = {
-    1: null,
-    2: null,
-    3: null,
-  };
-
-  // Build sequentially to be gentle on BoM WMS.
-  for (const day of [1, 2, 3] as const) {
-    days[day] = await buildDayComposite(meta, day, windows);
+  // Gentle on BoM WMS — sequential day fetches.
+  for (const win of windows) {
+    const frame = await buildDayFrame(meta, win);
+    if (frame) dayFrames.set(win.day, frame);
   }
 
-  const rolled = ([1, 2, 3] as const).map((effectiveDay) => {
-    const comp = days[effectiveDay];
-    const used = comp?.usedRanks ?? new Set<number>();
+  const rolled: RolledDay[] = windows.map((win) => {
+    const frame = dayFrames.get(win.day);
+    const used = frame?.usedRanks ?? new Set<number>();
     return {
-      effectiveDay,
-      storedDay: effectiveDay,
-      validDate: windows[effectiveDay].validDate,
-      label: labels[effectiveDay].label,
-      dateLabel: labels[effectiveDay].dateLabel,
-      isToday: effectiveDay === 1,
+      effectiveDay: win.day,
+      storedDay: win.day,
+      validDate: win.validDate,
+      label: win.label,
+      dateLabel: win.dateLabel,
+      isToday: win.day === 1,
       features: [],
       legend: meteyeLegend(used),
       source: "categorical" as const,
@@ -434,41 +451,22 @@ async function buildBundle(): Promise<CacheBundle> {
 
   const any = rolled.some((d) => d.legend.some((l) => l.used));
 
-  const chartLists = await Promise.all(
-    ([1, 2] as const).map(async (day) =>
-      (await listAvailableThunderstormCharts(day)).map((c) => ({
-        day,
-        regionId: c.regionId,
-        productId: c.productId,
-      })),
-    ),
-  );
-  const availableCharts = chartLists.flat();
-  // Prefer an official Thunderstorm Forecast chart region when BoM has published one.
-  const defaultRegion =
-    availableCharts.find((c) => c.day === 1)?.regionId ??
-    availableCharts[0]?.regionId ??
-    null;
-
   const outlook: PublicForecastResponse = {
-    status: any || availableCharts.length > 0 ? "ok" : "empty",
+    status: any ? "ok" : "empty",
     issuedAt: issuedAtIso,
     mapView: { center: [-25.5, 134.5], zoom: 4.5 },
     days: rolled,
     defaultDay: 1,
-    availableCharts,
-    defaultRegion,
-    message:
-      any || availableCharts.length > 0
-        ? undefined
-        : "No thunderstorm areas in the current BoM MetEye Day 1–3 forecast.",
+    message: any
+      ? undefined
+      : "No thunderstorm areas in the current BoM MetEye forecast.",
   };
 
   return {
     at: Date.now(),
     meta,
     issuedAtIso,
-    days,
+    days: dayFrames,
     outlook,
   };
 }
@@ -489,7 +487,7 @@ async function getBundle(opts: { force?: boolean } = {}): Promise<CacheBundle> {
   return inflight;
 }
 
-/** Cached MetEye-backed Day 1–3 outlook for `/api/forecast` and `/risk`. */
+/** Cached MetEye outlook for `/api/forecast` and `/risk` (full MetEye horizon). */
 export async function getMeteyeThunderstormOutlook(
   opts: { force?: boolean } = {},
 ): Promise<PublicForecastResponse> {
@@ -497,17 +495,18 @@ export async function getMeteyeThunderstormOutlook(
   return bundle.outlook;
 }
 
-/** Official daily-max MetEye thunderstorm PNG for Leaflet ImageOverlay. */
+/** MetEye thunderstorm PNG for one outlook day (Leaflet ImageOverlay). */
 export async function getMeteyeThunderstormDayPng(
-  day: 1 | 2 | 3,
+  day: number,
   opts: { force?: boolean } = {},
 ): Promise<{ png: Buffer; issuedAt: string; empty: boolean } | null> {
+  if (!isMeteyeOutlookDay(day)) return null;
   const bundle = await getBundle(opts);
-  const comp = bundle.days[day];
-  if (!comp) return null;
+  const frame = bundle.days.get(day);
+  if (!frame) return null;
   return {
-    png: comp.png,
+    png: frame.png,
     issuedAt: bundle.issuedAtIso,
-    empty: comp.usedRanks.size === 0,
+    empty: frame.usedRanks.size === 0,
   };
 }

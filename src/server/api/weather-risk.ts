@@ -7,7 +7,7 @@ export const maxDuration = 60;
 
 /**
  * GET /api/weather/risk
- * Catalog of live BoM MetEye Day 1–3 thunderstorm risk (same source as `/api/forecast`).
+ * Catalog of live BoM MetEye thunderstorm risk (same source as `/api/forecast`).
  */
 export async function GET() {
   try {
