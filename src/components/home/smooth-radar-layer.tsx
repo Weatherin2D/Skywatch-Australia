@@ -46,6 +46,9 @@ export function SmoothRadarLayer({
     const a = createBufferLayer(450);
     const b = createBufferLayer(451);
     buffersRef.current = [a, b];
+    frontRef.current = 0;
+    displayedUrlRef.current = null;
+    pendingUrlRef.current = null;
     a.addTo(map);
     b.addTo(map);
     return () => {
@@ -66,6 +69,8 @@ export function SmoothRadarLayer({
     buffers[frontRef.current]!.setOpacity(opacity);
   }, [opacity]);
 
+  // Include `map` so buffer remounts (Strict Mode / map rebuild) reload the
+  // current frame — otherwise freshly created empty buffers stay blank.
   useEffect(() => {
     const buffers = buffersRef.current;
     if (!buffers) return;
@@ -79,21 +84,25 @@ export function SmoothRadarLayer({
       return;
     }
 
-    if (url === displayedUrlRef.current) {
-      // Cancel any stale in-flight load for an older target.
-      if (pendingUrlRef.current && pendingUrlRef.current !== url) {
-        loadGenRef.current += 1;
-        pendingUrlRef.current = null;
-      }
-      return;
-    }
-
-    if (url === pendingUrlRef.current) return;
-
     const frontIdx = frontRef.current;
     const backIdx = 1 - frontIdx;
     const front = buffers[frontIdx]!;
     const back = buffers[backIdx]!;
+    const frontUrl = String(
+      (front as L.TileLayer & { _url?: string })._url || "",
+    );
+
+    if (url === displayedUrlRef.current && frontUrl === url) {
+      if (pendingUrlRef.current && pendingUrlRef.current !== url) {
+        loadGenRef.current += 1;
+        pendingUrlRef.current = null;
+      }
+      front.setOpacity(opacityRef.current);
+      return;
+    }
+
+    if (url === pendingUrlRef.current && frontUrl === url) return;
+
     const gen = ++loadGenRef.current;
     pendingUrlRef.current = url;
 
@@ -109,8 +118,6 @@ export function SmoothRadarLayer({
       pendingUrlRef.current = null;
     };
 
-    // Force redraw even when the buffer already holds this URL (loop wrap),
-    // otherwise Leaflet's setUrl no-ops and `load` never fires.
     const loadInto = (layer: L.TileLayer, onReady: () => void) => {
       layer.off("load");
       layer.once("load", onReady);
@@ -118,15 +125,15 @@ export function SmoothRadarLayer({
       layer.setUrl(url, false);
     };
 
-    // First paint: load into the front buffer and show when ready.
-    if (!displayedUrlRef.current) {
+    // First paint / remount: load into the front buffer and show when ready.
+    if (!displayedUrlRef.current || frontUrl !== url) {
       loadInto(front, () => reveal(front, back, frontIdx));
       return;
     }
 
     // Subsequent frames: load into the hidden back buffer, then snap.
     loadInto(back, () => reveal(back, front, backIdx));
-  }, [url]);
+  }, [url, map]);
 
   return null;
 }
