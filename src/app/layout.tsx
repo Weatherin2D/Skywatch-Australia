@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Barlow_Condensed, DM_Sans } from "next/font/google";
+import { DM_Sans, Oswald } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/site/sw-register";
 import "./globals.css";
 
@@ -9,11 +9,11 @@ const sans = DM_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
-/** Tall condensed display — reads less wide than Syne. */
-const display = Barlow_Condensed({
+/** Tall condensed display — narrower glyph width than Syne / Barlow. */
+const display = Oswald({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
