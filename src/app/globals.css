@@ -194,6 +194,23 @@
   isolation: isolate;
 }
 
+.skywatch-map:fullscreen,
+.skywatch-map:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  min-height: 100vh !important;
+  background: #070b16;
+  border-radius: 0 !important;
+}
+
+.skywatch-map:fullscreen .leaflet-container,
+.skywatch-map:-webkit-full-screen .leaflet-container {
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
 /* Keep RainViewer reflectivity blocks crisp (no browser bilinear blur). */
 .skywatch-radar-tiles img,
 .leaflet-tile-pane .skywatch-radar-tiles img {

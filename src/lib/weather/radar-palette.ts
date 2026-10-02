@@ -3,17 +3,35 @@ import universalBlueDbz from "../../../data/rainviewer-universal-blue.json";
 
 export type Rgba = readonly [number, number, number, number];
 
-/** SkyWatch dBZ colour stops (user-specified). */
+/**
+ * SkyWatch dBZ colour stops — raw RainViewer reflectivity remapped to this
+ * ladder (value, [r,g,b,a]).
+ */
 export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
-  { dbz: -10, rgba: [0, 0, 0, 0] },
-  { dbz: 0, rgba: [90, 132, 255, 255] },
-  { dbz: 10, rgba: [48, 203, 112, 255] },
-  { dbz: 20, rgba: [255, 233, 90, 255] },
-  { dbz: 30, rgba: [255, 171, 55, 255] },
-  { dbz: 40, rgba: [255, 95, 60, 255] },
-  { dbz: 50, rgba: [220, 40, 100, 255] },
-  { dbz: 60, rgba: [160, 20, 180, 255] },
-  { dbz: 80, rgba: [220, 120, 255, 255] },
+  { dbz: 0, rgba: [0, 0, 0, 255] },
+  { dbz: 10, rgba: [75, 62, 217, 255] },
+  { dbz: 15, rgba: [99, 208, 255, 255] },
+  { dbz: 22, rgba: [50, 60, 128, 255] },
+  { dbz: 25, rgba: [29, 32, 94, 255] },
+  { dbz: 30, rgba: [140, 227, 100, 255] },
+  { dbz: 33, rgba: [42, 94, 50, 255] },
+  { dbz: 35, rgba: [11, 56, 41, 255] },
+  { dbz: 40, rgba: [215, 224, 90, 255] },
+  { dbz: 44, rgba: [212, 168, 59, 255] },
+  { dbz: 46, rgba: [255, 112, 60, 255] },
+  { dbz: 48, rgba: [240, 22, 22, 255] },
+  { dbz: 50, rgba: [143, 2, 2, 255] },
+  { dbz: 52, rgba: [247, 47, 215, 255] },
+  { dbz: 56, rgba: [128, 35, 126, 255] },
+  { dbz: 60, rgba: [65, 27, 69, 255] },
+  { dbz: 65, rgba: [115, 230, 151, 255] },
+  { dbz: 68, rgba: [21, 66, 30, 255] },
+  { dbz: 70, rgba: [117, 230, 220, 255] },
+  { dbz: 75, rgba: [0, 236, 252, 255] },
+  { dbz: 80, rgba: [130, 88, 48, 255] },
+  { dbz: 85, rgba: [92, 60, 32, 255] },
+  { dbz: 90, rgba: [0, 0, 0, 255] },
+  { dbz: 255, rgba: [255, 255, 255, 255] },
 ] as const;
 
 const UB_DBZ = universalBlueDbz as Record<string, number>;
@@ -32,15 +50,6 @@ const UB_ENTRIES: Array<{
   dbz,
 }));
 
-/** Precomputed custom palette for integer dBZ −32…95. */
-const CUSTOM_LUT: Rgba[] = (() => {
-  const lut: Rgba[] = [];
-  for (let dbz = -32; dbz <= 95; dbz++) {
-    lut.push(colourForDbz(dbz));
-  }
-  return lut;
-})();
-
 function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
@@ -51,9 +60,10 @@ function lerp(a: number, b: number, t: number): number {
 
 export function colourForDbz(dbz: number): Rgba {
   const stops = RADAR_DBZ_STOPS;
-  // Keep sub-0 reflectivity fully clear so raw tiles stay hard-edged
-  // (no soft alpha wash between −10 and 0).
+  // No reflectivity / below scale → fully clear.
   if (dbz < 0) return [0, 0, 0, 0];
+  const first = stops[0]!;
+  if (dbz <= first.dbz) return first.rgba;
   const last = stops[stops.length - 1]!;
   if (dbz >= last.dbz) return last.rgba;
 
@@ -66,13 +76,21 @@ export function colourForDbz(dbz: number): Rgba {
         clampByte(lerp(a.rgba[0], b.rgba[0], t)),
         clampByte(lerp(a.rgba[1], b.rgba[1], t)),
         clampByte(lerp(a.rgba[2], b.rgba[2], t)),
-        // Opaque once reflectivity is on-scale — avoid feathered edges.
-        255,
+        clampByte(lerp(a.rgba[3], b.rgba[3], t)),
       ];
     }
   }
   return last.rgba;
 }
+
+/** Precomputed custom palette for integer dBZ −32…255. */
+const CUSTOM_LUT: Rgba[] = (() => {
+  const lut: Rgba[] = [];
+  for (let dbz = -32; dbz <= 255; dbz++) {
+    lut.push(colourForDbz(dbz));
+  }
+  return lut;
+})();
 
 function rgbaKey(r: number, g: number, b: number, a: number): string {
   return (
@@ -107,7 +125,6 @@ function dbzFromUniversalBlue(
       bestDbz = entry.dbz;
     }
   }
-  // Reject wildly unmatched pixels (shouldn't happen on genuine RV tiles).
   if (bestDist > 48 * 48) return null;
   return bestDbz;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -15,6 +15,7 @@ import type {
   DisplayLegendItem,
   MapView,
 } from "@/lib/forecast/types";
+import { MapFullscreenButton } from "@/components/home/map-fullscreen";
 import "leaflet/dist/leaflet.css";
 
 type OutlookMapProps = {
@@ -204,6 +205,14 @@ function propsOf(feature?: GeoJSON.Feature): FeatureProps | null {
 }
 
 export function OutlookMap({ mapView, features, legend: _legend }: OutlookMapProps) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [fullscreenTarget, setFullscreenTarget] = useState<HTMLElement | null>(
+    null,
+  );
+  useEffect(() => {
+    setFullscreenTarget(shellRef.current);
+  }, []);
+
   const byKey = useMemo(() => {
     const map = new Map<string, DisplayFeature>();
     for (const f of features) map.set(f.id, f);
@@ -299,27 +308,49 @@ export function OutlookMap({ mapView, features, legend: _legend }: OutlookMapPro
   };
 
   return (
-    <MapContainer
-      key="ausrisk-outlook-map"
-      center={mapView.center}
-      zoom={mapView.zoom}
-      className="h-full w-full rounded-none"
-      scrollWheelZoom
-      zoomControl
-      attributionControl={false}
-    >
-      <TileLayer
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-        attribution="Tiles &copy; Esri"
-        maxZoom={16}
-      />
-      <FitFeatures features={features} mapView={mapView} />
-      <GeoJSON
-        key={features.map((f) => `${f.id}:${f.categoryId}:${f.title}`).join(",") || "empty"}
-        data={geojson as GeoJSON.FeatureCollection}
-        style={styleFn}
-        onEachFeature={onEachFeature}
-      />
-    </MapContainer>
+    <div ref={shellRef} className="skywatch-map relative h-full w-full">
+      <div className="absolute right-3 top-3 z-[1000]">
+        <MapFullscreenButton target={fullscreenTarget} compact />
+      </div>
+      <MapContainer
+        key="ausrisk-outlook-map"
+        center={mapView.center}
+        zoom={mapView.zoom}
+        className="h-full w-full rounded-none"
+        scrollWheelZoom
+        zoomControl
+        attributionControl={false}
+      >
+        <InvalidateOnFullscreen />
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          attribution="Tiles &copy; Esri"
+          maxZoom={16}
+        />
+        <FitFeatures features={features} mapView={mapView} />
+        <GeoJSON
+          key={features.map((f) => `${f.id}:${f.categoryId}:${f.title}`).join(",") || "empty"}
+          data={geojson as GeoJSON.FeatureCollection}
+          style={styleFn}
+          onEachFeature={onEachFeature}
+        />
+      </MapContainer>
+    </div>
   );
+}
+
+function InvalidateOnFullscreen() {
+  const map = useMap();
+  useEffect(() => {
+    const onFs = () => {
+      window.setTimeout(() => map.invalidateSize({ animate: false }), 80);
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange", onFs);
+    };
+  }, [map]);
+  return null;
 }

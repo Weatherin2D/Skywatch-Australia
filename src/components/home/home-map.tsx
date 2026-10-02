@@ -27,6 +27,7 @@ import {
   SatelliteSynopticOverlay,
 } from "@/components/home/synoptic-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
+import { MapFullscreenButton } from "@/components/home/map-fullscreen";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
@@ -128,16 +129,32 @@ function FitRegionBounds({
 function MapTools({
   bounds,
   isNational,
+  fullscreenTarget,
 }: {
   bounds: RegionBounds;
   isNational: boolean;
+  fullscreenTarget: HTMLElement | null;
 }) {
   const map = useMap();
+
+  useEffect(() => {
+    const onFs = () => {
+      window.setTimeout(() => map.invalidateSize({ animate: false }), 80);
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange", onFs);
+    };
+  }, [map]);
+
   return (
-    <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2">
+    <div className="absolute right-3 top-3 z-[1000] flex flex-col gap-2">
+      <MapFullscreenButton target={fullscreenTarget} compact />
       <button
         type="button"
-        className="flex h-9 w-9 items-center justify-center border border-[var(--brand)]/20 bg-[var(--bom-blue)] text-[var(--brand)] shadow transition hover:bg-[var(--navy-deep)] hover:text-[var(--brand)]"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-[#0f172a]/90 text-white shadow-lg backdrop-blur-md transition hover:border-[var(--cyan)]/40 hover:bg-[var(--cyan)]/15 hover:text-[var(--cyan)]"
         aria-label="Recentre on selected region"
         onClick={() => {
           const pad = regionFitPaddingPx(
@@ -328,6 +345,14 @@ export function HomeMap({
   const lightningIconStyle = mapSettings.lightningBolts
     ? ("bolt" as const)
     : ("crosshair" as const);
+  const mapShellRef = useRef<HTMLDivElement>(null);
+  const [fullscreenTarget, setFullscreenTarget] = useState<HTMLElement | null>(
+    null,
+  );
+
+  useEffect(() => {
+    setFullscreenTarget(mapShellRef.current);
+  }, [satelliteLoop, regionId]);
 
   const basemapUrl = useSatelliteBasemap
     ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -342,11 +367,15 @@ export function HomeMap({
   if (satelliteLoop) {
     return (
       <div
+        ref={mapShellRef}
         className="skywatch-map relative z-0 w-full overflow-hidden bg-black"
         style={{ aspectRatio: `${satAspect}` }}
         data-map-mode="Satellite"
         data-region={regionId}
       >
+        <div className="absolute right-3 top-3 z-[20]">
+          <MapFullscreenButton target={fullscreenTarget} compact />
+        </div>
         <SatelliteFrameView
           key={regionId}
           url={frameImageUrl}
@@ -386,7 +415,10 @@ export function HomeMap({
   }
 
   return (
-    <div className="skywatch-map relative z-0 h-full min-h-[360px] w-full overflow-hidden">
+    <div
+      ref={mapShellRef}
+      className="skywatch-map relative z-0 h-full min-h-[360px] w-full overflow-hidden"
+    >
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}
@@ -439,7 +471,11 @@ export function HomeMap({
           nextFrameTime={lightningNextFrameTime}
           iconStyle={lightningIconStyle}
         />
-        <MapTools bounds={bounds} isNational={isNational} />
+        <MapTools
+          bounds={bounds}
+          isNational={isNational}
+          fullscreenTarget={fullscreenTarget}
+        />
       </MapContainer>
     </div>
   );
