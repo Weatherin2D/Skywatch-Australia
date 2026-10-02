@@ -387,8 +387,8 @@ async function mapPool<T, R>(
 
 /**
  * Fetch one RealEarth panel with retries. Size-limit banners are intermittent,
- * so retry the same size before stepping down. Fall back to a GIBS tile for
- * that panel so one dirty SSEC response does not abandon the whole mosaic.
+ * so retry the same size before stepping down.
+ * No per-panel GIBS fallback — mixing sources makes seams obvious.
  */
 async function fetchRealEarthPanel(
   product: SatelliteProductId,
@@ -399,7 +399,7 @@ async function fetchRealEarthPanel(
   const aspect = boundsMercatorAspect(bounds);
   let { width, height } = clampPanelSize(preferWidth, aspect);
 
-  for (let shrink = 0; shrink < 2; shrink++) {
+  for (let shrink = 0; shrink < 3; shrink++) {
     const url = realEarthUrlAtSize(product, timeUnix, bounds, width, height);
     if (!url) break;
     for (let attempt = 0; attempt < PANEL_FETCH_ATTEMPTS; attempt++) {
@@ -409,8 +409,6 @@ async function fetchRealEarthPanel(
       });
       if (got) {
         try {
-          // Strip once on the final mosaic — per-panel badge repair leaves
-          // visible blotches on small tiles.
           const png = PNG.sync.read(got.body);
           stripCornerBadgeInPlace(png);
           return png;
@@ -423,64 +421,103 @@ async function fetchRealEarthPanel(
     width = Math.max(140, Math.floor(width * 0.7));
     height = Math.max(1, Math.round(width / aspect));
   }
-
-  // Panel-level GIBS fallback keeps the mosaic complete and watermark-free.
-  const gibsUrl = gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
-    width: Math.min(480, Math.max(160, preferWidth)),
-    bounds,
-  });
-  const got = await fetchUpstreamOnce(gibsUrl, { timeoutMs: 12_000 });
-  if (!got) return null;
-  try {
-    const png = PNG.sync.read(got.body);
-    stripCornerBadgeInPlace(png);
-    return png;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
-function blitPng(
-  dest: PNG,
-  src: PNG,
-  destX: number,
-  destY: number,
-  destW: number,
-  destH: number,
-  options?: {
-    /** Drop this fraction from the src bottom (cuts SSEC badges at band seams). */
-    trimBottomFrac?: number;
-    /** Drop this fraction from the src left. */
-    trimLeftFrac?: number;
-  },
-): void {
-  const trimBottom = Math.min(0.2, Math.max(0, options?.trimBottomFrac ?? 0));
-  const trimLeft = Math.min(0.2, Math.max(0, options?.trimLeftFrac ?? 0));
-  const srcX0 = Math.floor(src.width * trimLeft);
-  const srcY0 = 0;
-  const srcX1 = src.width;
-  const srcY1 = Math.max(srcX0 + 1, Math.floor(src.height * (1 - trimBottom)));
-  const srcW = Math.max(1, srcX1 - srcX0);
-  const srcH = Math.max(1, srcY1 - srcY0);
+type MercBounds = { minx: number; miny: number; maxx: number; maxy: number };
 
-  // Nearest-neighbor scale trimmed src → dest rect.
-  for (let y = 0; y < destH; y++) {
-    const sy = srcY0 + Math.min(srcH - 1, Math.floor((y * srcH) / destH));
-    for (let x = 0; x < destW; x++) {
-      const sx = srcX0 + Math.min(srcW - 1, Math.floor((x * srcW) / destW));
-      const di = ((destY + y) * dest.width + (destX + x)) * 4;
+function lonLatBoundsToMerc(bounds: LonLatBounds): MercBounds {
+  const [[south, west], [north, east]] = bounds;
+  const [minx, miny] = lonLatToWebMercator(west, south);
+  const [maxx, maxy] = lonLatToWebMercator(east, north);
+  return { minx, miny, maxx, maxy };
+}
+
+/**
+ * Composite a panel onto the mosaic using mercator geography (not a stretched
+ * grid cell). Overlaps are feather-blended so horizontal band edges disappear.
+ */
+function compositePanelGeo(
+  mosaic: PNG,
+  weight: Float32Array,
+  src: PNG,
+  panelBoundsLL: LonLatBounds,
+  fullMerc: MercBounds,
+): void {
+  const panelMerc = lonLatBoundsToMerc(panelBoundsLL);
+  const outW = mosaic.width;
+  const outH = mosaic.height;
+  const fullW = fullMerc.maxx - fullMerc.minx;
+  const fullH = fullMerc.maxy - fullMerc.miny;
+  if (fullW <= 0 || fullH <= 0) return;
+
+  const panelW = panelMerc.maxx - panelMerc.minx;
+  const panelH = panelMerc.maxy - panelMerc.miny;
+  if (panelW <= 0 || panelH <= 0) return;
+
+  // Feather ~12% of the shorter panel edge (in mosaic pixels).
+  const panelPixelW = (panelW / fullW) * outW;
+  const panelPixelH = (panelH / fullH) * outH;
+  const feather = Math.max(8, Math.round(Math.min(panelPixelW, panelPixelH) * 0.12));
+
+  const x0 = Math.max(
+    0,
+    Math.floor(((panelMerc.minx - fullMerc.minx) / fullW) * outW),
+  );
+  const x1 = Math.min(
+    outW,
+    Math.ceil(((panelMerc.maxx - fullMerc.minx) / fullW) * outW),
+  );
+  // Image y=0 is north = maxy
+  const y0 = Math.max(
+    0,
+    Math.floor(((fullMerc.maxy - panelMerc.maxy) / fullH) * outH),
+  );
+  const y1 = Math.min(
+    outH,
+    Math.ceil(((fullMerc.maxy - panelMerc.miny) / fullH) * outH),
+  );
+
+  for (let y = y0; y < y1; y++) {
+    const mercY = fullMerc.maxy - ((y + 0.5) / outH) * fullH;
+    const v = (panelMerc.maxy - mercY) / panelH;
+    if (v < 0 || v > 1) continue;
+    const sy = Math.min(src.height - 1, Math.max(0, Math.floor(v * src.height)));
+    // Distance to panel top/bottom in mosaic pixels for feathering.
+    const distY = Math.min(y - y0 + 1, y1 - y);
+    for (let x = x0; x < x1; x++) {
+      const mercX = fullMerc.minx + ((x + 0.5) / outW) * fullW;
+      const u = (mercX - panelMerc.minx) / panelW;
+      if (u < 0 || u > 1) continue;
+      const sx = Math.min(src.width - 1, Math.max(0, Math.floor(u * src.width)));
+      const distX = Math.min(x - x0 + 1, x1 - x);
+      const edge = Math.min(distX, distY);
+      const w = Math.max(0.05, Math.min(1, edge / feather));
+
       const si = (sy * src.width + sx) * 4;
-      dest.data[di] = src.data[si]!;
-      dest.data[di + 1] = src.data[si + 1]!;
-      dest.data[di + 2] = src.data[si + 2]!;
-      dest.data[di + 3] = 255;
+      const di = (y * outW + x) * 4;
+      const wi = y * outW + x;
+      const prev = weight[wi]!;
+      const next = prev + w;
+      const inv = 1 / next;
+      mosaic.data[di] = Math.round(
+        ((mosaic.data[di]! * prev + src.data[si]! * w) * inv),
+      );
+      mosaic.data[di + 1] = Math.round(
+        ((mosaic.data[di + 1]! * prev + src.data[si + 1]! * w) * inv),
+      );
+      mosaic.data[di + 2] = Math.round(
+        ((mosaic.data[di + 2]! * prev + src.data[si + 2]! * w) * inv),
+      );
+      mosaic.data[di + 3] = 255;
+      weight[wi] = next;
     }
   }
 }
 
 /**
- * Large state crops: request a grid of small RealEarth panels and stitch them
- * into one watermark-free mosaic.
+ * Large state crops: request overlapping RealEarth panels and composite them
+ * in mercator space with feathered seams.
  */
 async function fetchRealEarthStitched(
   product: SatelliteProductId,
@@ -495,18 +532,25 @@ async function fetchRealEarthStitched(
     }
   }
 
+  const fullMerc = lonLatBoundsToMerc(bounds);
+
   const panels = await mapPool(cells, PANEL_CONCURRENCY, async ({ col, row }) => {
-    // Overlap so we can trim each panel's badge strip without gaps.
     const b = panelBounds(bounds, plan.cols, plan.rows, col, row, {
-      overlapFrac: 0.08,
+      // Wide overlap so feathered blends hide band edges.
+      overlapFrac: 0.18,
     });
-    const preferW = Math.ceil(plan.outWidth / plan.cols);
+    // Request panel width from its own geo footprint so pixels/degree matches.
+    const panelMerc = lonLatBoundsToMerc(b);
+    const preferW = Math.max(
+      240,
+      Math.ceil(
+        plan.outWidth * ((panelMerc.maxx - panelMerc.minx) / (fullMerc.maxx - fullMerc.minx)),
+      ),
+    );
     const png = await fetchRealEarthPanel(product, timeUnix, b, preferW);
-    return { col, row, png };
+    return { col, row, bounds: b, png };
   });
 
-  // Never borrow a neighbouring tile's imagery — that duplicated bands and
-  // looked like a broken zoom. Missing panels fall through to full-region GIBS.
   if (panels.some((p) => p.png == null)) {
     return null;
   }
@@ -516,25 +560,16 @@ async function fetchRealEarthStitched(
     height: plan.outHeight,
     fill: true,
   });
+  const weight = new Float32Array(plan.outWidth * plan.outHeight);
 
-  for (const { col, row, png } of panels) {
+  for (const { bounds: b, png } of panels) {
     if (!png) continue;
-    const x0 = Math.round((plan.outWidth * col) / plan.cols);
-    const x1 = Math.round((plan.outWidth * (col + 1)) / plan.cols);
-    const y0 = Math.round((plan.outHeight * row) / plan.rows);
-    const y1 = Math.round((plan.outHeight * (row + 1)) / plan.rows);
-    // Trim badge edges on every panel except the mosaic's outer bottom/left.
-    const trimBottom = row < plan.rows - 1 ? 0.1 : 0.02;
-    const trimLeft = col > 0 ? 0.08 : 0.02;
-    blitPng(
-      mosaic,
-      png,
-      x0,
-      y0,
-      Math.max(1, x1 - x0),
-      Math.max(1, y1 - y0),
-      { trimBottomFrac: trimBottom, trimLeftFrac: trimLeft },
-    );
+    compositePanelGeo(mosaic, weight, png, b, fullMerc);
+  }
+
+  // Any unfilled pixel (shouldn't happen) stays black — treat as failure.
+  for (let i = 0; i < weight.length; i++) {
+    if (weight[i]! <= 0) return null;
   }
 
   let body: Buffer;
@@ -544,8 +579,6 @@ async function fetchRealEarthStitched(
     return null;
   }
   body = stripCornerBadge(body);
-  // Panels were already screened; a mosaic-level false positive (bright cloud)
-  // must not discard a good stitch.
   return { body, contentType: "image/png" };
 }
 
