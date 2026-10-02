@@ -24,10 +24,12 @@ const FETCH_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const CACHE_MS = 15 * 60_000;
-/** Keep concurrency moderate — BoM rate-limits aggressive serverless bursts. */
-const FETCH_CONCURRENCY = 16;
-const FETCH_TIMEOUT_MS = 12_000;
-const FETCH_RETRIES = 2;
+/** BoM rate-limits Vercel datacenter bursts — pace national sampling in waves. */
+const WAVE_SIZE = 28;
+const WAVE_CONCURRENCY = 12;
+const WAVE_PAUSE_MS = 900;
+const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_RETRIES = 1;
 /** Half-width of each sample cell in degrees (lon scaled by cos(lat)). */
 const CELL_HALF_DEG = 1.05;
 
@@ -263,6 +265,22 @@ async function mapPool<T, R>(
   return out;
 }
 
+async function mapWaves<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += WAVE_SIZE) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, WAVE_PAUSE_MS));
+    }
+    const batch = items.slice(i, i + WAVE_SIZE);
+    const rows = await mapPool(batch, WAVE_CONCURRENCY, fn);
+    out.push(...rows);
+  }
+  return out;
+}
+
 type SiteDayRisk = {
   site: BomRiskSite;
   days: Array<{
@@ -493,17 +511,17 @@ function dayDateIso(samples: SiteDayRisk[], dayIndex: number): string {
 }
 
 async function buildLiveOutlook(): Promise<PublicForecastResponse> {
-  const [firstPass, severe] = await Promise.all([
-    mapPool(BOM_RISK_SITES, FETCH_CONCURRENCY, fetchSiteRisk),
-    severeWarningTargets(),
-  ]);
+  const severePromise = severeWarningTargets();
+  const firstPass = await mapWaves(BOM_RISK_SITES, fetchSiteRisk);
+  const severe = await severePromise;
   const sitesOkFirstPass = firstPass.filter((s) => s.ok).length;
 
   const byHash = new Map(firstPass.map((s) => [s.site.geohash, s]));
   const failed = firstPass.filter((s) => !s.ok).map((s) => s.site);
-  // Second pass for failures — lower concurrency helps under BoM rate limits.
-  if (failed.length > 0 && failed.length < BOM_RISK_SITES.length) {
-    const retry = await mapPool(failed, 6, fetchSiteRisk);
+  // One paced retry wave for leftovers.
+  if (failed.length > 0) {
+    await new Promise((r) => setTimeout(r, 1200));
+    const retry = await mapWaves(failed, fetchSiteRisk);
     for (const row of retry) {
       if (row.ok) byHash.set(row.site.geohash, row);
     }
