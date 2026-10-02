@@ -18,7 +18,7 @@ export function SkyWatchLogo({
   const markSize =
     size === "lg" ? "h-11 w-11" : size === "sm" ? "h-8 w-8" : "h-9 w-9";
   const textSize =
-    size === "lg" ? "text-2xl" : size === "sm" ? "text-base" : "text-lg";
+    size === "lg" ? "text-[1.85rem]" : size === "sm" ? "text-lg" : "text-[1.45rem]";
 
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
@@ -45,7 +45,7 @@ export function SkyWatchLogo({
       {showWordmark ? (
         <span
           className={cn(
-            "font-[family-name:var(--font-display)] font-bold tracking-tight",
+            "font-[family-name:var(--font-display)] font-semibold uppercase leading-none tracking-[0.02em]",
             textSize,
           )}
         >
