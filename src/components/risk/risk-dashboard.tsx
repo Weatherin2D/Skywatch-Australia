@@ -12,10 +12,9 @@ import {
 } from "@/components/home/mock-data";
 import type { PublicForecastResponse, RolledDay } from "@/lib/forecast/types";
 import {
-  BOM_THUNDERSTORM_CATEGORIES,
-  bomLegendItems,
-} from "@/lib/weather/bom-thunderstorm";
-import { BOM_RISK_IMAGE_BOUNDS } from "@/lib/weather/bom-risk-smooth";
+  BOM_METEYE_IMAGE_BOUNDS,
+  METEYE_THUNDERSTORM_CATEGORIES,
+} from "@/lib/weather/bom-meteye-constants";
 import { cn } from "@/lib/utils";
 
 const RISK_MAP_SETTINGS: MapSettingsState = {
@@ -32,10 +31,9 @@ function dayChipLabel(day: RolledDay): string {
 }
 
 function BomRiskLegend({ usedIds }: { usedIds: Set<string> }) {
-  const items = bomLegendItems();
   return (
     <ul className="flex flex-col gap-2.5">
-      {items.map((item) => {
+      {METEYE_THUNDERSTORM_CATEGORIES.map((item) => {
         const used = usedIds.size === 0 ? true : usedIds.has(item.id);
         return (
           <li
@@ -47,7 +45,7 @@ function BomRiskLegend({ usedIds }: { usedIds: Set<string> }) {
                 "h-5 w-8 shrink-0",
                 used ? "border-2 border-white/80" : "border border-white/25",
               )}
-              style={{ backgroundColor: item.style.fillColor }}
+              style={{ backgroundColor: item.color }}
               aria-hidden
             />
             <span
@@ -153,8 +151,8 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            Live convective risk from the Bureau of Meteorology — thunderstorms
-            and severe thunderstorms as possible or likely across Day 1–3.
+            Official Bureau of Meteorology MetEye thunderstorm forecast —
+            Chance of and Likely areas for Day 1–3.
           </p>
         </div>
       </div>
@@ -262,15 +260,15 @@ export function RiskDashboard() {
                   showSynoptic={false}
                   riskFeatures={[]}
                   riskImageUrl={riskImageUrl}
-                  riskImageBounds={BOM_RISK_IMAGE_BOUNDS}
+                  riskImageBounds={BOM_METEYE_IMAGE_BOUNDS}
                   riskImageDisplay="geo"
-                  riskImageOpacity={0.88}
+                  riskImageOpacity={0.82}
                 />
                 {!loading && data?.status === "empty" ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
                       {data.message ??
-                        "No thunderstorm risk in the current BoM Day 1–3 forecasts."}
+                        "No thunderstorm areas in the current BoM MetEye Day 1–3 forecast."}
                     </p>
                   </div>
                 ) : null}
@@ -289,15 +287,15 @@ export function RiskDashboard() {
           </div>
 
           <p className="text-xs text-white/45">
-            Source: Bureau of Meteorology daily forecasts
+            Source: BoM MetEye thunderstorm layer (IDZ73094)
             {data?.issuedAt
-              ? ` · updated ${new Date(data.issuedAt).toLocaleString("en-AU", {
+              ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",
                   dateStyle: "medium",
                   timeStyle: "short",
                 })} (AEST/AEDT)`
               : ""}
-            . Day 1 severe areas include active severe thunderstorm warnings.
+            . Day maps are daily maxima of BoM’s 3-hourly thunderstorm areas.
           </p>
         </section>
 
@@ -307,12 +305,13 @@ export function RiskDashboard() {
               Key
             </p>
             <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-bold text-white">
-              Convective risk
+              Thunderstorms
             </h2>
           </div>
           <BomRiskLegend usedIds={usedCategoryIds} />
           <p className="text-xs leading-relaxed text-white/50">
-            {BOM_THUNDERSTORM_CATEGORIES.map((c) => c.label).join(" · ")}.
+            Same Chance / Likely colours as MetEye. Areas show where BoM
+            forecasts at least a low chance of thunderstorms in the period.
           </p>
         </aside>
       </div>

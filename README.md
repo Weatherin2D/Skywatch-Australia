@@ -34,9 +34,9 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/risk` | Live Day 1–3 convective risk catalog |
 | `/api/forecast` | Day 1–3 convective risk GeoJSON used by `/risk` |
 
-Risk legend (BoM key): **Thunderstorms Possible** green · **Thunderstorms Likely** pale green · **Severe Thunderstorms Possible** yellow · **Severe Thunderstorms Likely** red.
+Risk legend (BoM MetEye): **Chance of Thunderstorms** teal · **Thunderstorms Likely** red — the same colours as MetEye’s Thunderstorms layer (`IDZ73094`).
 
-`/risk` samples BoM daily forecasts across a national town grid and classifies thunderstorm wording into that key. Day 1 severe areas also include active BoM severe thunderstorm warnings. No admin upload — the map refreshes from BoM automatically.
+`/risk` loads the official BoM MetEye / ADFD thunderstorm grid (WMS) and builds Day 1–3 maps as daily maxima of the 3-hourly Chance / Likely areas. No admin upload and no town-forecast synthesis — the overlay is the Bureau’s own geometry.
 
 **Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
 

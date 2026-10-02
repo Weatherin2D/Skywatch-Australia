@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBomRiskOutlook } from "@/lib/weather/bom-risk-outlook";
+import { getMeteyeThunderstormOutlook } from "@/lib/weather/bom-meteye-thunderstorm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,23 +8,15 @@ export const maxDuration = 60;
 
 /**
  * GET /api/forecast
- * Live Day 1–3 convective risk from BoM forecasts + severe thunderstorm warnings.
+ * Live Day 1–3 convective risk from the official BoM MetEye thunderstorm layer.
  */
 export async function GET() {
   try {
-    const outlook = await getBomRiskOutlook();
-    const meta = (
-      outlook as PublicForecastLike
-    ).meta;
-    const coverage =
-      meta && meta.sitesTotal > 0 ? meta.sitesOk / meta.sitesTotal : 1;
-    // Avoid CDN-caching a thinly sampled response after upstream rate limits.
-    const cache =
-      coverage >= 0.7
-        ? "public, max-age=60, stale-while-revalidate=300"
-        : "public, max-age=15, stale-while-revalidate=30";
+    const outlook = await getMeteyeThunderstormOutlook();
     return NextResponse.json(outlook, {
-      headers: { "Cache-Control": cache },
+      headers: {
+        "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
+      },
     });
   } catch (error) {
     console.error("[forecast]", error);
@@ -37,7 +29,3 @@ export async function GET() {
     );
   }
 }
-
-type PublicForecastLike = {
-  meta?: { sitesOk: number; sitesTotal: number };
-};
