@@ -404,3 +404,18 @@
 .animate-glow-pulse {
   animation: glow-pulse 3.2s ease-in-out infinite;
 }
+
+.sw-hero-title {
+  background-image: linear-gradient(
+    180deg,
+    #ffffff 12%,
+    #e8f7ff 48%,
+    #67e8f9 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(7, 11, 22, 0.35))
+    drop-shadow(0 10px 28px rgba(34, 211, 238, 0.22))
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18));
+}
