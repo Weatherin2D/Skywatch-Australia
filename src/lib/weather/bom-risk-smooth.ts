@@ -131,11 +131,13 @@ function quantizeField(
     else field[i] = 4;
   }
 
-  // Majority fill closes one-pixel holes between towns.
-  for (let pass = 0; pass < 3; pass++) {
+  // Light gap fill only — keep outer edges organic, not rectangular floods.
+  for (let pass = 0; pass < 1; pass++) {
     const src = Uint8Array.from(field);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (src[i]! !== 0) continue;
         const counts = [0, 0, 0, 0, 0];
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -150,8 +152,8 @@ function quantizeField(
             maj = r;
           }
         }
-        const i = y * width + x;
-        if (majN >= 5 && field[i]! < maj) field[i] = maj;
+        // Only close interior holes fully surrounded by the same rank.
+        if (majN >= 7) field[i] = maj;
       }
     }
   }
