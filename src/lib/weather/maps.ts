@@ -14,7 +14,15 @@ export type WeatherFrame = {
   imageBounds?: [[number, number], [number, number]];
 };
 
-export type SatelliteProductId = "visible" | "infrared" | "airmass";
+export type SatelliteProductId =
+  | "infrared"
+  | "visible"
+  | "truecolor"
+  | "shortwave"
+  | "watervapor"
+  | "airmass"
+  | "dust"
+  | "nightmicro";
 
 export type SatelliteProvider = "gibs" | "realearth";
 
@@ -33,6 +41,14 @@ export type SatelliteProductMeta = {
 
 export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
   {
+    id: "infrared",
+    label: "Infrared",
+    loopLabel: "Infrared loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B13",
+    gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
+  },
+  {
     id: "visible",
     label: "Visible",
     loopLabel: "Visible loop",
@@ -42,12 +58,27 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     daytimeOnly: true,
   },
   {
-    id: "infrared",
-    label: "Infrared",
-    loopLabel: "Infrared loop",
+    id: "truecolor",
+    label: "True colour",
+    loopLabel: "True colour loop",
     provider: "realearth",
-    realearthProduct: "HIMAWARI-B13",
-    gibsLayer: "Himawari_AHI_Band13_Clean_Infrared",
+    realearthProduct: "HIMAWARI-true-color",
+    daytimeOnly: true,
+  },
+  {
+    id: "shortwave",
+    label: "Shortwave IR",
+    loopLabel: "Shortwave IR loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-B07",
+  },
+  {
+    id: "watervapor",
+    label: "Water vapour",
+    loopLabel: "Water vapour loop",
+    provider: "realearth",
+    // Band 8 upper-level WV — same reliable single-band path as IR/Visible.
+    realearthProduct: "HIMAWARI-B08",
   },
   {
     id: "airmass",
@@ -56,6 +87,20 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     provider: "realearth",
     realearthProduct: "HIMAWARI-airmass",
     gibsLayer: "Himawari_AHI_Air_Mass",
+  },
+  {
+    id: "dust",
+    label: "Dust RGB",
+    loopLabel: "Dust RGB loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-dust",
+  },
+  {
+    id: "nightmicro",
+    label: "Night microphysics",
+    loopLabel: "Night microphysics loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-night-microphysics",
   },
 ] as const;
 
@@ -169,7 +214,7 @@ export const RE_MAX_WIDTH = 1024;
 export const RE_SAFE_MAX_PIXELS = 850_000;
 
 /** Bump when raster size / watermark / regional source order changes. */
-export const FRAME_QUALITY_TAG = "q1020-re-panels-v10";
+export const FRAME_QUALITY_TAG = "q1020-re-panels-v11";
 
 /**
  * Target long-edge for stitched regional RealEarth mosaics. Built from several

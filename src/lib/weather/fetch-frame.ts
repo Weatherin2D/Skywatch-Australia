@@ -199,16 +199,19 @@ export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
 
 /**
  * Reject empty placeholders that still return HTTP 200 for unpublished times.
+ * Water-vapour / night products are naturally dark — accept structure (variance)
+ * even when few pixels clear a bright threshold.
  */
 function frameHasRealContent(body: Buffer): boolean {
   if (body.length < MIN_FRAME_BYTES) return false;
 
   if (body.length >= 80_000) {
-    let bright = 0;
-    for (let i = 64; i < Math.min(body.length, 6000); i += 13) {
-      if (body[i]! > 18) bright += 1;
+    let signal = 0;
+    for (let i = 64; i < Math.min(body.length, 8000); i += 11) {
+      if (body[i]! > 10) signal += 1;
     }
-    return bright >= 8;
+    // Large encoded PNGs with any non-trivial payload are real frames.
+    return signal >= 4 || body.length >= 100_000;
   }
 
   try {
@@ -218,6 +221,7 @@ function frameHasRealContent(body: Buffer): boolean {
     let sum = 0;
     let sum2 = 0;
     let lit = 0;
+    let mid = 0;
     let n = 0;
     const step = Math.max(1, Math.floor((width * height) / 2500));
     for (let i = 0; i < width * height; i += step) {
@@ -226,13 +230,20 @@ function frameHasRealContent(body: Buffer): boolean {
       sum += g;
       sum2 += g * g;
       if (g > 22) lit += 1;
+      if (g > 8) mid += 1;
       n += 1;
     }
     if (n < 50) return false;
     const mean = sum / n;
     const variance = sum2 / n - mean * mean;
     const litRatio = lit / n;
-    return litRatio >= 0.04 && variance >= 180;
+    const midRatio = mid / n;
+    // Classic bright IR/visible, or darker WV/night with real texture.
+    return (
+      (litRatio >= 0.04 && variance >= 180) ||
+      (midRatio >= 0.08 && variance >= 60) ||
+      (variance >= 40 && mean >= 4 && body.length >= 20_000)
+    );
   } catch {
     return body.length >= 40_000;
   }
@@ -626,9 +637,11 @@ async function fetchGibsClean(
   bounds: LonLatBounds,
   region: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
-  let gibsUrl = gibsUrlFor(product, timeUnix, bounds, region);
   const meta = getSatelliteProduct(product);
-  if (!gibsUrl && meta.gibsLayer) {
+  // Products without a GIBS layer (true colour, dust, WV, …) stay RealEarth-only.
+  if (!meta.gibsLayer) return null;
+  let gibsUrl = gibsUrlFor(product, timeUnix, bounds, region);
+  if (!gibsUrl) {
     gibsUrl = gibsHimawariWmsUrl(toIsoZ(timeUnix * 1000), product, {
       width:
         region !== "national" ? GIBS_REGION_DISPLAY_WIDTH : GIBS_DISPLAY_WIDTH,

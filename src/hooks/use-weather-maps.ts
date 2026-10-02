@@ -66,12 +66,13 @@ export function useWeatherMaps(
       const data = (await res.json()) as WeatherMapsPayload;
       if (signal?.aborted) return;
 
+      // Only use the selected product's tip — never fall back to another
+      // product's frames (that made IR look like it "switched" to Air Mass).
       const tip =
         data.satellite.products?.[product]?.frames?.at(-1)?.time ??
         (data.satellite.product === product
           ? data.satellite.frames.at(-1)?.time
           : null) ??
-        data.satellite.frames.at(-1)?.time ??
         null;
 
       const tipAdvanced = tip != null && tip !== tipRef.current;

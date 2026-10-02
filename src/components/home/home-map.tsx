@@ -231,22 +231,36 @@ function SatelliteRadarOverlay({
 }
 
 /**
- * Hold the last good frame until the next URL is ready. Cached images commit
- * immediately so fixed-cadence playback does not wait on decode.
+ * Hold the last good frame until the next URL is ready — but only within the
+ * same product/region loop. Crossing products must clear immediately so IR
+ * never keeps showing Air Mass / Visible while the next loop buffers.
  */
 function SatelliteFrameView({
   url,
   alt,
   opacity = 1,
+  loopKey,
 }: {
   url: string | null;
   alt: string;
   opacity?: number;
+  /** Product + region identity; changing this drops any held frame. */
+  loopKey?: string;
 }) {
   const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const displayRef = useRef<string | null>(null);
   const loadingRef = useRef<string | null>(null);
+  const loopKeyRef = useRef(loopKey);
+
+  useEffect(() => {
+    if (loopKeyRef.current === loopKey) return;
+    loopKeyRef.current = loopKey;
+    displayRef.current = null;
+    loadingRef.current = null;
+    setDisplayUrl(null);
+    setFailed(false);
+  }, [loopKey]);
 
   useEffect(() => {
     if (!url) {
@@ -285,7 +299,13 @@ function SatelliteFrameView({
           return;
         }
         loadingRef.current = null;
-        if (!displayRef.current) setFailed(true);
+        // Drop a stale held frame from another stamp so we don't look "stuck"
+        // on an old product while the current URL keeps failing.
+        if (displayRef.current && displayRef.current !== url) {
+          displayRef.current = null;
+          setDisplayUrl(null);
+        }
+        setFailed(true);
       };
       img.src = src;
       if (img.complete && img.naturalWidth > 0) {
@@ -330,6 +350,7 @@ export function HomeMap({
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
   frameImageUrl = null,
+  frameKey,
   mapSettings,
   showLightning = false,
   lightningStrikes = [],
@@ -398,7 +419,16 @@ export function HomeMap({
           <MapFullscreenButton target={fullscreenTarget} compact />
         </div>
         <SatelliteFrameView
-          key={regionId}
+          key={
+            typeof frameKey === "string"
+              ? frameKey.replace(/-\d+$/, "")
+              : regionId
+          }
+          loopKey={
+            typeof frameKey === "string"
+              ? frameKey.replace(/-\d+$/, "")
+              : String(regionId)
+          }
           url={frameImageUrl}
           alt={frameAlt}
           opacity={frameOpacity}

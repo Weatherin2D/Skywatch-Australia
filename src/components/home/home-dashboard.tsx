@@ -314,7 +314,9 @@ function HomeDashboardInner({
     }
     if (!layers.lightning) params.set("lightning", "0");
     if (layers.synoptic) params.set("synoptic", "1");
-    if (satProduct !== DEFAULT_SATELLITE_PRODUCT) {
+    // Always publish product on Satellite so region deep-links stay stable and
+    // we never re-hydrate into a different product after a replace.
+    if (mode === "Satellite" || satProduct !== DEFAULT_SATELLITE_PRODUCT) {
       params.set("product", satProduct);
     }
     const qs = params.toString();
@@ -449,7 +451,9 @@ function HomeDashboardInner({
     readyCount: satReadyCount,
     total: satPreloadTotal,
     allReady: satAllReady,
+    allSettled: satAllSettled,
     isIndexReady: satIsIndexReady,
+    isIndexSettled: satIsIndexSettled,
   } = useFramePreloader(loopFrames, useSatelliteFrames);
 
   // Radar tiles stream via Leaflet — treat the catalog as ready immediately.
@@ -466,9 +470,26 @@ function HomeDashboardInner({
   const allReady = useSatelliteFrames
     ? satAllReady
     : useRadarLoop && loopFrames.length > 0;
+  const allSettled = useSatelliteFrames
+    ? satAllSettled
+    : useRadarLoop && loopFrames.length > 0;
   const isIndexReady = useSatelliteFrames
     ? satIsIndexReady
     : () => true;
+  const isIndexSettled = useSatelliteFrames
+    ? satIsIndexSettled
+    : () => true;
+
+  const loopLenRef = useRef(0);
+  const isIndexReadyRef = useRef(isIndexReady);
+  const isIndexSettledRef = useRef(isIndexSettled);
+  const allReadyRef = useRef(allReady);
+  const allSettledRef = useRef(allSettled);
+  loopLenRef.current = loopFrames.length;
+  isIndexReadyRef.current = isIndexReady;
+  isIndexSettledRef.current = isIndexSettled;
+  allReadyRef.current = allReady;
+  allSettledRef.current = allSettled;
 
   const hardLoopKey = useSatelliteFrames
     ? `sat:${satProduct}:${regionId}`
@@ -566,41 +587,48 @@ function HomeDashboardInner({
     frameIndex,
   ]);
 
-  // Fixed-cadence playback. Prefer the next buffered frame; if it is still
-  // loading, hold briefly then advance to the nearest ready neighbour so the
-  // loop never freezes or visually jumps over missing stamps.
+  // Fixed-cadence playback. Readiness is read from refs so preload settle
+  // updates do not restart the interval (that was freezing the loop mid-way).
   useEffect(() => {
-    if (!playing || !useTimeline || loopFrames.length === 0) return;
-    const n = loopFrames.length;
+    if (!playing || !useTimeline) return;
+    if (loopLenRef.current === 0) return;
     playbackHoldMsRef.current = 0;
     const id = window.setInterval(() => {
       setFrameIndex((prev) => {
+        const n = loopLenRef.current;
+        if (n <= 0) return 0;
+
+        const pickReadyAhead = (from: number): number | null => {
+          for (let step = 1; step < n; step++) {
+            const candidate = (from + step) % n;
+            if (isIndexReadyRef.current(candidate)) return candidate;
+          }
+          return null;
+        };
+
         const next = (prev + 1) % n;
-        if (isIndexReady(next) || allReady) {
+        if (isIndexReadyRef.current(next) || allReadyRef.current) {
           playbackHoldMsRef.current = 0;
           return next;
         }
+
+        // Next stamp failed (404 / decode) — jump to the next ready frame.
+        if (isIndexSettledRef.current(next)) {
+          playbackHoldMsRef.current = 0;
+          return pickReadyAhead(prev) ?? next;
+        }
+
+        // Still loading — hold briefly, then skip so region stitches can't stall.
         playbackHoldMsRef.current += playback.msPerFrame;
-        if (playbackHoldMsRef.current < playback.msPerFrame * 2) {
+        if (playbackHoldMsRef.current < playback.msPerFrame) {
           return prev;
         }
         playbackHoldMsRef.current = 0;
-        for (let step = 1; step < n; step++) {
-          const candidate = (prev + step) % n;
-          if (isIndexReady(candidate)) return candidate;
-        }
-        return next;
+        return pickReadyAhead(prev) ?? (allSettledRef.current ? next : prev);
       });
     }, playback.msPerFrame);
     return () => window.clearInterval(id);
-  }, [
-    playing,
-    useTimeline,
-    loopFrames.length,
-    playback.msPerFrame,
-    isIndexReady,
-    allReady,
-  ]);
+  }, [playing, useTimeline, playback.msPerFrame]);
 
   useEffect(() => {
     if (!useTimeline) {
