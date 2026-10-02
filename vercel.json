@@ -2,6 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "functions": {
+    "src/app/api/[[...slug]]/route.ts": {
+      "maxDuration": 60
+    },
     "src/app/api/weather/synoptic/route.ts": {
       "maxDuration": 60
     },

@@ -24,7 +24,10 @@ const FETCH_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const CACHE_MS = 15 * 60_000;
-const FETCH_CONCURRENCY = 28;
+/** Keep concurrency moderate — BoM rate-limits aggressive serverless bursts. */
+const FETCH_CONCURRENCY = 16;
+const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_RETRIES = 2;
 /** Half-width of each sample cell in degrees (lon scaled by cos(lat)). */
 const CELL_HALF_DEG = 1.05;
 
@@ -205,16 +208,40 @@ function cellPolygon(lat: number, lon: number): GeoJsonGeometry {
 }
 
 async function bomGetJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": FETCH_UA,
-    },
-    cache: "no-store",
-    next: { revalidate: 0 },
-  });
-  if (!res.ok) throw new Error(`BoM ${res.status} for ${url}`);
-  return (await res.json()) as T;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= FETCH_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": FETCH_UA,
+        },
+        cache: "no-store",
+        next: { revalidate: 0 },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        // Retry transient upstream pressure.
+        if ((res.status === 429 || res.status >= 500) && attempt < FETCH_RETRIES) {
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`BoM ${res.status} for ${url}`);
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      lastError = err;
+      if (attempt < FETCH_RETRIES) {
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+        continue;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function mapPool<T, R>(
