@@ -271,12 +271,25 @@ type SiteDayRisk = {
   }>;
 };
 
-async function fetchSiteRisk(site: BomRiskSite): Promise<SiteDayRisk> {
+async function fetchSiteRisk(
+  site: BomRiskSite,
+): Promise<SiteDayRisk & { ok: boolean }> {
   try {
     const payload = await bomGetJson<{ data?: DailyRow[] }>(
       `${BOM_API}/locations/${encodeURIComponent(site.geohash)}/forecasts/daily`,
     );
     const rows = payload.data ?? [];
+    if (!rows.length) {
+      return {
+        site,
+        ok: false,
+        days: [
+          { date: "", category: null },
+          { date: "", category: null },
+          { date: "", category: null },
+        ],
+      };
+    }
     const days = [0, 1, 2].map((i) => {
       const row = rows[i];
       if (!row) return { date: "", category: null as BomRiskCategoryId | null };
@@ -289,10 +302,11 @@ async function fetchSiteRisk(site: BomRiskSite): Promise<SiteDayRisk> {
         ),
       };
     });
-    return { site, days };
+    return { site, ok: true, days };
   } catch {
     return {
       site,
+      ok: false,
       days: [
         { date: "", category: null },
         { date: "", category: null },
@@ -479,10 +493,24 @@ function dayDateIso(samples: SiteDayRisk[], dayIndex: number): string {
 }
 
 async function buildLiveOutlook(): Promise<PublicForecastResponse> {
-  const [samples, severe] = await Promise.all([
+  const [firstPass, severe] = await Promise.all([
     mapPool(BOM_RISK_SITES, FETCH_CONCURRENCY, fetchSiteRisk),
     severeWarningTargets(),
   ]);
+  const sitesOkFirstPass = firstPass.filter((s) => s.ok).length;
+
+  const byHash = new Map(firstPass.map((s) => [s.site.geohash, s]));
+  const failed = firstPass.filter((s) => !s.ok).map((s) => s.site);
+  // Second pass for failures — lower concurrency helps under BoM rate limits.
+  if (failed.length > 0 && failed.length < BOM_RISK_SITES.length) {
+    const retry = await mapPool(failed, 6, fetchSiteRisk);
+    for (const row of retry) {
+      if (row.ok) byHash.set(row.site.geohash, row);
+    }
+  }
+
+  const samples: SiteDayRisk[] = [...byHash.values()];
+  const sitesOk = samples.filter((s) => s.days.some((d) => d.date)).length;
 
   const labels = bomRiskDayLabels();
   const days = ([0, 1, 2] as const).map((dayIndex) => {
@@ -517,6 +545,20 @@ async function buildLiveOutlook(): Promise<PublicForecastResponse> {
     message: anyFeatures
       ? undefined
       : "No thunderstorm risk in the current BoM Day 1–3 forecasts.",
+    // Lightweight ingest health for ops (ignored by the UI).
+    meta: {
+      sitesTotal: BOM_RISK_SITES.length,
+      sitesOkFirstPass,
+      sitesOk,
+      severeWarningTargets: severe.targets.length,
+    },
+  } as PublicForecastResponse & {
+    meta: {
+      sitesTotal: number;
+      sitesOkFirstPass: number;
+      sitesOk: number;
+      severeWarningTargets: number;
+    };
   };
 }
 
