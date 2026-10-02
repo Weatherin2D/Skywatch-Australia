@@ -134,6 +134,13 @@ export function RiskDashboard() {
             null
           );
         });
+        // Open on an official BoM Thunderstorm Forecast chart when published.
+        if (
+          json.defaultRegion &&
+          MAP_REGIONS.some((r) => r.id === json.defaultRegion)
+        ) {
+          setRegionId(json.defaultRegion as MapRegionId);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load");
@@ -228,9 +235,8 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            Official Bureau of Meteorology thunderstorm outlook — national
-            MetEye Chance/Likely for Day 1–3, plus state Thunderstorm Forecast
-            charts when BoM publishes them.
+            Official BoM Thunderstorm Forecast charts for Day 1–2 when published,
+            otherwise the MetEye thunderstorm layer for the matching period.
           </p>
         </div>
       </div>
@@ -379,7 +385,7 @@ export function RiskDashboard() {
               : ""}
             {sheetAvailable
               ? "."
-              : ". Day maps are daily maxima of BoM’s 3-hourly thunderstorm areas."}
+              : ". National / Day 3 uses the same MetEye 3-hourly frame BoM shows for that period."}
           </p>
         </section>
 

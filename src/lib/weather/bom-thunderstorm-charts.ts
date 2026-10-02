@@ -151,3 +151,20 @@ export async function getOfficialThunderstormChart(
     display: "sheet",
   };
 }
+
+const CHART_STATE_REGIONS = Object.keys(REGION_PRODUCT_PREFIX) as MapRegionId[];
+
+/** Which state Day 1/2 Thunderstorm Forecast charts are currently published. */
+export async function listAvailableThunderstormCharts(
+  day: 1 | 2 | 3,
+): Promise<Array<{ regionId: MapRegionId; productId: string }>> {
+  if (day === 3) return [];
+  const out: Array<{ regionId: MapRegionId; productId: string }> = [];
+  await Promise.all(
+    CHART_STATE_REGIONS.map(async (regionId) => {
+      const chart = await getOfficialThunderstormChart(regionId, day);
+      if (chart) out.push({ regionId, productId: chart.productId });
+    }),
+  );
+  return out.sort((a, b) => a.regionId.localeCompare(b.regionId));
+}

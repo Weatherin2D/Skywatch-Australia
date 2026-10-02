@@ -120,6 +120,12 @@ export type RolledDay = {
   source: "customLayers" | "categorical";
 };
 
+export type AvailableThunderstormChart = {
+  day: number;
+  regionId: string;
+  productId: string;
+};
+
 export type PublicForecastResponse = {
   status: "ok" | "empty";
   issuedAt: string | null;
@@ -127,4 +133,8 @@ export type PublicForecastResponse = {
   days: RolledDay[];
   defaultDay: number | null;
   message?: string;
+  /** Official BoM Thunderstorm Forecast sheets currently published (Day 1–2). */
+  availableCharts?: AvailableThunderstormChart[];
+  /** Preferred region when an official chart is available (e.g. "vic"). */
+  defaultRegion?: string | null;
 };

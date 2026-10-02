@@ -16,6 +16,7 @@ import {
   BOM_METEYE_IMAGE_BOUNDS,
   METEYE_THUNDERSTORM_CATEGORIES,
 } from "@/lib/weather/bom-meteye-constants";
+import { listAvailableThunderstormCharts } from "@/lib/weather/bom-thunderstorm-charts";
 
 export {
   BOM_METEYE_IMAGE_BOUNDS,
@@ -270,65 +271,6 @@ function decodePng(buf: Buffer): PNG {
   return PNG.sync.read(buf);
 }
 
-function compositeDay(frames: Buffer[]): DayComposite {
-  if (!frames.length) {
-    const empty = new PNG({ width: MAP_WIDTH, height: MAP_HEIGHT });
-    return {
-      png: PNG.sync.write(empty),
-      usedRanks: new Set(),
-      timesteps: [],
-    };
-  }
-
-  const base = decodePng(frames[0]!);
-  const width = base.width;
-  const height = base.height;
-  const out = new PNG({ width, height });
-  const ranks = new Uint8Array(width * height);
-  const usedRanks = new Set<number>();
-
-  const apply = (png: PNG) => {
-    if (png.width !== width || png.height !== height) return;
-    for (let i = 0, p = 0; i < ranks.length; i++, p += 4) {
-      const rank = rankPixel(
-        png.data[p]!,
-        png.data[p + 1]!,
-        png.data[p + 2]!,
-        png.data[p + 3]!,
-      );
-      if (rank > ranks[i]!) {
-        ranks[i] = rank;
-        out.data[p] = png.data[p]!;
-        out.data[p + 1] = png.data[p + 1]!;
-        out.data[p + 2] = png.data[p + 2]!;
-        // Slight transparency so basemap reads through.
-        out.data[p + 3] = Math.min(210, png.data[p + 3]!);
-        usedRanks.add(rank);
-      }
-    }
-  };
-
-  for (const frame of frames) {
-    apply(decodePng(frame));
-  }
-
-  // Ensure unused pixels stay transparent.
-  for (let i = 0, p = 0; i < ranks.length; i++, p += 4) {
-    if (!ranks[i]) {
-      out.data[p] = 0;
-      out.data[p + 1] = 0;
-      out.data[p + 2] = 0;
-      out.data[p + 3] = 0;
-    }
-  }
-
-  return {
-    png: PNG.sync.write(out),
-    usedRanks,
-    timesteps: [],
-  };
-}
-
 function meteyeLegend(usedRanks: Set<number>): DisplayLegendItem[] {
   return METEYE_THUNDERSTORM_CATEGORIES.map((c, order) => ({
     id: c.id,
@@ -346,6 +288,81 @@ function meteyeLegend(usedRanks: Set<number>): DisplayLegendItem[] {
   }));
 }
 
+/**
+ * Pick the MetEye TIMESTEP that matches what MetEye shows for that day —
+ * one 3-hourly frame, not a daily-max union (which overstates coverage).
+ *
+ * Day 1: the period containing "now" (else the next remaining step).
+ * Day 2–3: the step closest to 15:00 Australia/Sydney (peak heating).
+ */
+function pickRepresentativeTimestep(
+  basetime: string,
+  steps: number[],
+  day: 1 | 2 | 3,
+  dayStartMs: number,
+  nowMs = Date.now(),
+): number | null {
+  if (!steps.length) return null;
+  const baseMs = parseBomStamp(basetime).getTime();
+
+  if (day === 1) {
+    for (const ts of steps) {
+      const start = baseMs + ts * 3600_000;
+      const end = start + PERIOD_HOURS * 3600_000;
+      if (nowMs >= start && nowMs < end) return ts;
+    }
+    const upcoming = steps.find((ts) => baseMs + ts * 3600_000 >= nowMs);
+    return upcoming ?? steps[steps.length - 1]!;
+  }
+
+  // Target 15:00 Sydney on that civil day.
+  const targetLocal = dayStartMs + 15 * 3600_000;
+  let best = steps[0]!;
+  let bestDist = Infinity;
+  for (const ts of steps) {
+    const mid = baseMs + ts * 3600_000 + (PERIOD_HOURS * 3600_000) / 2;
+    const dist = Math.abs(mid - targetLocal);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = ts;
+    }
+  }
+  return best;
+}
+
+function frameToComposite(frame: Buffer, timestep: number): DayComposite {
+  const png = decodePng(frame);
+  const usedRanks = new Set<number>();
+  const out = new PNG({ width: png.width, height: png.height });
+
+  for (let i = 0, p = 0; i < png.width * png.height; i++, p += 4) {
+    const rank = rankPixel(
+      png.data[p]!,
+      png.data[p + 1]!,
+      png.data[p + 2]!,
+      png.data[p + 3]!,
+    );
+    if (!rank) {
+      out.data[p] = 0;
+      out.data[p + 1] = 0;
+      out.data[p + 2] = 0;
+      out.data[p + 3] = 0;
+      continue;
+    }
+    usedRanks.add(rank);
+    out.data[p] = png.data[p]!;
+    out.data[p + 1] = png.data[p + 1]!;
+    out.data[p + 2] = png.data[p + 2]!;
+    out.data[p + 3] = Math.min(210, png.data[p + 3]!);
+  }
+
+  return {
+    png: PNG.sync.write(out),
+    usedRanks,
+    timesteps: [timestep],
+  };
+}
+
 async function buildDayComposite(
   meta: GridMeta,
   day: 1 | 2 | 3,
@@ -355,23 +372,31 @@ async function buildDayComposite(
   const steps = timestepsForSydneyDay(meta.basetime, win.startMs, win.endMs);
   if (!steps.length) return null;
 
-  // Cap frames fetched per day — prefer afternoon-heavy coverage but keep all
-  // unique steps (max ~9 for a full day at 3-hourly).
-  const frames: Buffer[] = [];
-  const okSteps: number[] = [];
-  for (const ts of steps) {
-    try {
-      frames.push(await fetchTimestepPng(meta.issuetime, ts));
-      okSteps.push(ts);
-    } catch (err) {
-      console.warn(`[meteye] TIMESTEP ${ts} failed`, err);
-    }
-  }
-  if (!frames.length) return null;
+  const picked = pickRepresentativeTimestep(
+    meta.basetime,
+    steps,
+    day,
+    win.startMs,
+  );
+  if (picked == null) return null;
 
-  const composite = compositeDay(frames);
-  composite.timesteps = okSteps;
-  return composite;
+  try {
+    const frame = await fetchTimestepPng(meta.issuetime, picked);
+    return frameToComposite(frame, picked);
+  } catch (err) {
+    console.warn(`[meteye] TIMESTEP ${picked} failed`, err);
+    // Fall back through remaining steps for that day.
+    for (const ts of steps) {
+      if (ts === picked) continue;
+      try {
+        const frame = await fetchTimestepPng(meta.issuetime, ts);
+        return frameToComposite(frame, ts);
+      } catch {
+        /* try next */
+      }
+    }
+    return null;
+  }
 }
 
 async function buildBundle(): Promise<CacheBundle> {
@@ -409,15 +434,34 @@ async function buildBundle(): Promise<CacheBundle> {
 
   const any = rolled.some((d) => d.legend.some((l) => l.used));
 
+  const chartLists = await Promise.all(
+    ([1, 2] as const).map(async (day) =>
+      (await listAvailableThunderstormCharts(day)).map((c) => ({
+        day,
+        regionId: c.regionId,
+        productId: c.productId,
+      })),
+    ),
+  );
+  const availableCharts = chartLists.flat();
+  // Prefer an official Thunderstorm Forecast chart region when BoM has published one.
+  const defaultRegion =
+    availableCharts.find((c) => c.day === 1)?.regionId ??
+    availableCharts[0]?.regionId ??
+    null;
+
   const outlook: PublicForecastResponse = {
-    status: any ? "ok" : "empty",
+    status: any || availableCharts.length > 0 ? "ok" : "empty",
     issuedAt: issuedAtIso,
     mapView: { center: [-25.5, 134.5], zoom: 4.5 },
     days: rolled,
     defaultDay: 1,
-    message: any
-      ? undefined
-      : "No thunderstorm areas in the current BoM MetEye Day 1–3 forecast.",
+    availableCharts,
+    defaultRegion,
+    message:
+      any || availableCharts.length > 0
+        ? undefined
+        : "No thunderstorm areas in the current BoM MetEye Day 1–3 forecast.",
   };
 
   return {
