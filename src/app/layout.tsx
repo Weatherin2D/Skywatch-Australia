@@ -18,6 +18,11 @@ export const metadata: Metadata = {
   title: "SkyWatch Australia | Real weather. Deeper insight.",
   description:
     "Australian weather, observed and forecast — radar, warnings, outlooks, and deeper insight for a safer Australia.",
+  applicationName: "SkyWatch Australia",
+  icons: {
+    icon: [{ url: "/icon", type: "image/png" }],
+    apple: [{ url: "/apple-icon", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
