@@ -185,7 +185,11 @@ function SatelliteRadarOverlay({
           padding={0}
           isNational={false}
         />
-        <TileLayer url={tileUrl} opacity={0.72} />
+        <TileLayer
+          url={tileUrl}
+          opacity={0.85}
+          className="skywatch-radar-tiles"
+        />
       </MapContainer>
     </div>
   );
@@ -380,7 +384,13 @@ export function HomeMap({
         <MapModeEffect mode={mode} />
         <FitRegionBounds bounds={bounds} animate isNational={isNational} />
         <TileLayer url={basemapUrl} attribution="Esri" />
-        {radarTiles ? <TileLayer url={radarTiles} opacity={0.78} /> : null}
+        {radarTiles ? (
+          <TileLayer
+            url={radarTiles}
+            opacity={0.88}
+            className="skywatch-radar-tiles"
+          />
+        ) : null}
         <LeafletSynopticOverlay
           frames={synopticFrames}
           enabled={showSynoptic}

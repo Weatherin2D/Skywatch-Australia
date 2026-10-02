@@ -17,6 +17,7 @@ import * as weatherCapitals from "@/server/api/weather-capitals";
 import * as weatherStormActivity from "@/server/api/weather-storm-activity";
 import * as weatherModels from "@/server/api/weather-models";
 import * as weatherUpperAir from "@/server/api/weather-upper-air";
+import * as weatherRadarTile from "@/server/api/weather-radar-tile";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,6 +53,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/storm-activity": weatherStormActivity as RouteHandlers,
   "weather/models": weatherModels as RouteHandlers,
   "weather/upper-air": weatherUpperAir as RouteHandlers,
+  "weather/radar-tile": weatherRadarTile as RouteHandlers,
 };
 
 function resolve(

@@ -194,6 +194,13 @@
   isolation: isolate;
 }
 
+/* Keep RainViewer reflectivity blocks crisp (no browser bilinear blur). */
+.skywatch-radar-tiles img,
+.leaflet-tile-pane .skywatch-radar-tiles img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 .skywatch-map .leaflet-control-zoom {
   border: none !important;
   box-shadow: none !important;

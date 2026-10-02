@@ -339,7 +339,9 @@ export function rainviewerTileUrl(
 ): string {
   const base = `${host.replace(/\/$/, "")}${path}`;
   if (kind === "radar") {
-    return `${base}/256/{z}/{x}/{y}/2/1_1.png`;
+    // Same-origin proxy: unsmoothed RainViewer pixels remapped to SkyWatch dBZ.
+    const q = new URLSearchParams({ host, path });
+    return `/api/weather/radar-tile?${q.toString()}&z={z}&x={x}&y={y}`;
   }
   return `${base}/256/{z}/{x}/{y}/0/0_0.png`;
 }
