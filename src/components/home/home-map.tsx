@@ -117,7 +117,14 @@ function FitRegionBounds({
 }) {
   const map = useMap();
   const key = `${bounds[0][0]},${bounds[0][1]},${bounds[1][0]},${bounds[1][1]}`;
+  const lastKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
+    const regionChanged = lastKeyRef.current !== key;
+    if (regionChanged) {
+      lastKeyRef.current = key;
+    }
+
     const fit = (withAnimate: boolean) => {
       const pad =
         padding ??
@@ -132,12 +139,16 @@ function FitRegionBounds({
         maxZoom: isNational ? 6 : 9,
       });
     };
-    fit(animate);
+
+    // Only auto-fit when the region changes (or first mount). Resize / layout
+    // shifts must not yank a zoomed-in radar view back to national framing.
+    if (regionChanged) {
+      fit(animate);
+    }
+
     const onResize = () => {
       map.invalidateSize({ animate: false });
-      fit(false);
     };
-    map.whenReady(onResize);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [map, key, animate, padding, bounds, isNational]);
@@ -474,7 +485,7 @@ export function HomeMap({
         center={[-25.5, 134.5]}
         zoom={4}
         minZoom={3}
-        maxZoom={16}
+        maxZoom={18}
         className="h-full w-full"
         zoomControl={false}
         attributionControl

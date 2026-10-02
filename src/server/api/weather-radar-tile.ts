@@ -56,7 +56,8 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=600, stale-while-revalidate=3600, immutable",
+        "Cache-Control":
+          "public, max-age=1800, stale-while-revalidate=7200, immutable",
         "X-Radar-Cache": "HIT",
         "X-Radar-Source": "rainviewer-raw",
         "X-Radar-Palette": "skywatch-dbz",
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
       headers: { Accept: "image/png" },
       // Radar frame paths are content-addressed — safe to cache hard.
       cache: "force-cache",
-      next: { revalidate: 3600 },
+      next: { revalidate: 7200 },
     });
     if (!res.ok) {
       return NextResponse.json(
@@ -85,7 +86,8 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=600, stale-while-revalidate=3600, immutable",
+        "Cache-Control":
+          "public, max-age=1800, stale-while-revalidate=7200, immutable",
         "X-Radar-Cache": "MISS",
         "X-Radar-Source": "rainviewer-raw",
         "X-Radar-Palette": "skywatch-dbz",

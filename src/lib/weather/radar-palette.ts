@@ -102,21 +102,26 @@ const UB_ENTRIES = [...RECOLOUR_MAP.keys()].map((packed) => ({
   out: RECOLOUR_MAP.get(packed)!,
 }));
 
+/** Squared distance threshold — beyond this, treat as non-radar (transparent). */
+const NEAREST_MAX_DIST2 = 36 * 36;
+
 function nearestRecolour(r: number, g: number, b: number, a: number): number {
   let best = 0;
   let bestDist = Infinity;
+  // Exact / near-exact palette hits dominate; bail early once close enough.
   for (const entry of UB_ENTRIES) {
-    const dist =
-      (r - entry.r) ** 2 +
-      (g - entry.g) ** 2 +
-      (b - entry.b) ** 2 +
-      (a - entry.a) ** 2 * 2;
+    const dr = r - entry.r;
+    const dg = g - entry.g;
+    const db = b - entry.b;
+    const da = a - entry.a;
+    const dist = dr * dr + dg * dg + db * db + da * da * 2;
     if (dist < bestDist) {
       bestDist = dist;
       best = entry.out;
+      if (dist <= 4) return best;
     }
   }
-  return bestDist > 48 * 48 ? 0 : best;
+  return bestDist > NEAREST_MAX_DIST2 ? 0 : best;
 }
 
 /**
@@ -170,27 +175,92 @@ export function rainviewerRawTileUrl(
   return `${base}/${size}/${z}/${x}/${y}/2/0_0.png`;
 }
 
-/** Expand a Leaflet tile template for AU national coverage warm-up. */
+const DEG2RAD = Math.PI / 180;
+
+/** Web-mercator tile X for longitude at zoom z. */
+function lonToTileX(lon: number, z: number): number {
+  const n = 2 ** z;
+  return ((lon + 180) / 360) * n;
+}
+
+/** Web-mercator tile Y for latitude at zoom z. */
+function latToTileY(lat: number, z: number): number {
+  const n = 2 ** z;
+  const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  const rad = clamped * DEG2RAD;
+  return (
+    (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n
+  );
+}
+
+export type RadarWarmupBounds = {
+  /** South, west, north, east in degrees. */
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
+/** Default Australia-ish mercator window used when no bounds are supplied. */
+const AU_WARMUP_BOUNDS: RadarWarmupBounds = {
+  south: -45,
+  west: 110,
+  north: -8,
+  east: 155,
+};
+
+function expandTemplate(
+  template: string,
+  z: number,
+  x: number,
+  y: number,
+): string {
+  return template
+    .replace(/\{z\}/g, String(z))
+    .replace(/\{x\}/g, String(x))
+    .replace(/\{y\}/g, String(y));
+}
+
+/**
+ * Expand a Leaflet tile template for warm-up over a lat/lng window
+ * (defaults to Australia). Caps tiles per zoom so high zooms stay cheap.
+ */
 export function radarWarmupTileUrls(
   template: string,
-  zooms: number[] = [4, 5],
+  zooms: number[] = [4, 5, 6],
+  bounds: RadarWarmupBounds = AU_WARMUP_BOUNDS,
+  maxTilesPerZoom = 64,
 ): string[] {
   const urls: string[] = [];
   for (const z of zooms) {
+    if (z < 0 || z > 12) continue;
     const n = 2 ** z;
-    // Australia-ish mercator window with pad.
-    const x0 = Math.floor(n * 0.38);
-    const x1 = Math.ceil(n * 0.52);
-    const y0 = Math.floor(n * 0.52);
-    const y1 = Math.ceil(n * 0.68);
+    let x0 = Math.floor(lonToTileX(bounds.west, z)) - 1;
+    let x1 = Math.ceil(lonToTileX(bounds.east, z)) + 1;
+    let y0 = Math.floor(latToTileY(bounds.north, z)) - 1;
+    let y1 = Math.ceil(latToTileY(bounds.south, z)) + 1;
+    x0 = Math.max(0, x0);
+    x1 = Math.min(n - 1, x1);
+    y0 = Math.max(0, y0);
+    y1 = Math.min(n - 1, y1);
+
+    const width = x1 - x0 + 1;
+    const height = y1 - y0 + 1;
+    if (width * height > maxTilesPerZoom) {
+      // Shrink to a centred window so we still hit the viewport core.
+      const maxSide = Math.max(1, Math.floor(Math.sqrt(maxTilesPerZoom)));
+      const cx = Math.floor((x0 + x1) / 2);
+      const cy = Math.floor((y0 + y1) / 2);
+      const half = Math.floor(maxSide / 2);
+      x0 = Math.max(0, cx - half);
+      x1 = Math.min(n - 1, x0 + maxSide - 1);
+      y0 = Math.max(0, cy - half);
+      y1 = Math.min(n - 1, y0 + maxSide - 1);
+    }
+
     for (let x = x0; x <= x1; x++) {
       for (let y = y0; y <= y1; y++) {
-        urls.push(
-          template
-            .replace(/\{z\}/g, String(z))
-            .replace(/\{x\}/g, String(x))
-            .replace(/\{y\}/g, String(y)),
-        );
+        urls.push(expandTemplate(template, z, x, y));
       }
     }
   }

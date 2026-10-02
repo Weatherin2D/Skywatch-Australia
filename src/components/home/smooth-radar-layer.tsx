@@ -10,12 +10,13 @@ function createBufferLayer(zIndex: number): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
     className: "skywatch-radar-tiles",
-    keepBuffer: 8,
+    keepBuffer: 12,
     updateWhenIdle: false,
     updateWhenZooming: false,
     zIndex,
-    // Max native zoom RainViewer serves for these tiles.
-    maxZoom: 12,
+    // RainViewer only serves up to z12 — overzoom past that so tight zooms
+    // still show scaled radar instead of vanishing.
+    maxZoom: 18,
     maxNativeZoom: 12,
   });
 }
@@ -155,29 +156,60 @@ export function useRadarFramePreloader(
 
     let cancelled = false;
     const queue: string[] = [];
-    const pushFrame = (idx: number) => {
-      const tpl = templates[idx];
-      if (!tpl || warmed.current.has(tpl)) return;
-      warmed.current.add(tpl);
-      let z = 4;
+
+    const viewportBounds = () => {
       try {
-        z = Math.max(3, Math.min(7, Math.round(map.getZoom())));
+        const b = map.getBounds();
+        return {
+          south: b.getSouth(),
+          west: b.getWest(),
+          north: b.getNorth(),
+          east: b.getEast(),
+        };
+      } catch {
+        return undefined;
+      }
+    };
+
+    const zoomLevels = () => {
+      let z = 5;
+      try {
+        z = Math.round(map.getZoom());
       } catch {
         /* map may be tearing down */
       }
-      for (const url of radarWarmupTileUrls(tpl, [z, Math.max(3, z - 1)])) {
+      // Clamp to RainViewer native range; overzoom uses z12 tiles scaled up.
+      const native = Math.max(3, Math.min(12, z));
+      const levels = new Set<number>([
+        native,
+        Math.max(3, native - 1),
+        Math.min(12, native + 1),
+      ]);
+      return [...levels];
+    };
+
+    const pushFrame = (idx: number, force = false) => {
+      const tpl = templates[idx];
+      if (!tpl) return;
+      const zooms = zoomLevels();
+      const cacheKey = `${tpl}|${zooms.join(",")}`;
+      if (!force && warmed.current.has(cacheKey)) return;
+      warmed.current.add(cacheKey);
+      const bounds = viewportBounds();
+      for (const url of radarWarmupTileUrls(tpl, zooms, bounds, 48)) {
         queue.push(url);
       }
     };
 
     const n = templates.length;
-    for (let step = 0; step <= 4; step++) {
-      pushFrame((activeIndex + step) % n);
+    // Current + next frames first (playback path), then a wider look-ahead.
+    for (let step = 0; step <= 6; step++) {
+      pushFrame((activeIndex + step) % n, step === 0);
     }
     pushFrame((activeIndex - 1 + n) % n);
 
     let active = 0;
-    const CONCURRENCY = 10;
+    const CONCURRENCY = 16;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -195,8 +227,25 @@ export function useRadarFramePreloader(
     };
     pump();
 
+    // Re-warm when the user pans/zooms into a new viewport.
+    let moveTimer: number | null = null;
+    const onViewChange = () => {
+      if (moveTimer != null) window.clearTimeout(moveTimer);
+      moveTimer = window.setTimeout(() => {
+        if (cancelled) return;
+        pushFrame(activeIndex % n, true);
+        pushFrame((activeIndex + 1) % n, true);
+        pump();
+      }, 120);
+    };
+    map.on("moveend", onViewChange);
+    map.on("zoomend", onViewChange);
+
     return () => {
       cancelled = true;
+      if (moveTimer != null) window.clearTimeout(moveTimer);
+      map.off("moveend", onViewChange);
+      map.off("zoomend", onViewChange);
     };
   }, [enabled, templates, activeIndex, map]);
 }

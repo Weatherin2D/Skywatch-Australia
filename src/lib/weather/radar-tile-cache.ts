@@ -14,8 +14,8 @@ function store(): Map<string, CacheEntry> {
   return g.__skywatchRadarTileCache;
 }
 
-const MAX_ENTRIES = 800;
-const TTL_MS = 45 * 60 * 1000;
+const MAX_ENTRIES = 1600;
+const TTL_MS = 60 * 60 * 1000;
 
 export function radarTileCacheKey(
   host: string,

@@ -644,15 +644,21 @@ function HomeDashboardInner({
     const n = radarFrames.length;
     const start = useRadarLoop ? frameIndex : Math.max(0, n - 1);
     const templates: string[] = [];
-    for (let step = 0; step <= 5; step++) {
+    for (let step = 0; step <= 6; step++) {
       const tpl = radarFrames[(start + step) % n]?.tileUrlTemplate;
       if (tpl) templates.push(tpl);
     }
-    const urls = templates.flatMap((tpl) => radarWarmupTileUrls(tpl, [4, 5]));
+    const [[south, west], [north, east]] = region.bounds;
+    const warmBounds = { south, west, north, east };
+    // Cover national framing plus typical state / city zooms up front.
+    const zooms = regionId === "national" ? [4, 5, 6] : [5, 6, 7, 8];
+    const urls = templates.flatMap((tpl) =>
+      radarWarmupTileUrls(tpl, zooms, warmBounds, 48),
+    );
     let active = 0;
     const queue = [...urls];
     const pump = () => {
-      while (!cancelled && active < 12 && queue.length > 0) {
+      while (!cancelled && active < 18 && queue.length > 0) {
         const url = queue.shift()!;
         active += 1;
         const img = new window.Image();
@@ -670,7 +676,14 @@ function HomeDashboardInner({
     return () => {
       cancelled = true;
     };
-  }, [showRadarOverlay, radarFrames, useRadarLoop, frameIndex]);
+  }, [
+    showRadarOverlay,
+    radarFrames,
+    useRadarLoop,
+    frameIndex,
+    region.bounds,
+    regionId,
+  ]);
 
   useEffect(() => {
     if (!satMenuOpen && !regionMenuOpen) return;
