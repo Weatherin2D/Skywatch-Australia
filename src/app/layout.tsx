@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, Syne } from "next/font/google";
+import { ServiceWorkerRegister } from "@/components/site/sw-register";
 import "./globals.css";
 
 const sans = DM_Sans({
@@ -19,10 +20,20 @@ export const metadata: Metadata = {
   description:
     "Australian weather, observed and forecast — radar, warnings, outlooks, and deeper insight for a safer Australia.",
   applicationName: "SkyWatch Australia",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SkyWatch",
+  },
   icons: {
     icon: [{ url: "/icon", type: "image/png" }],
     apple: [{ url: "/apple-icon", type: "image/png" }],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#070b16",
 };
 
 export default function RootLayout({
@@ -37,6 +48,7 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-[var(--page)] font-sans text-foreground antialiased">
         {children}
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

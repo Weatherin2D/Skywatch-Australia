@@ -7,6 +7,8 @@ import {
   useStormActivity,
   useUpperAir,
 } from "@/hooks/use-home-insight";
+import { useSavedPlace } from "@/hooks/use-saved-place";
+import { STATE_CAPITALS } from "@/lib/weather/location-forecast";
 
 function PanelShell({
   title,
@@ -144,10 +146,14 @@ export function HomeStormTrackerPanel() {
 }
 
 export function HomeModelComparisonPanel() {
-  const { data, loading, error } = useModelComparison();
+  const { place } = useSavedPlace();
+  const lat = place?.lat ?? -33.87;
+  const lon = place?.lon ?? 151.21;
+  const name = place?.name ?? STATE_CAPITALS.nsw.name;
+  const { data, loading, error } = useModelComparison(lat, lon, name);
 
   return (
-    <PanelShell title="Model comparison — Sydney">
+    <PanelShell title={`Model comparison — ${name}`}>
       {loading && !data ? (
         <p className="text-sm text-white/70">Loading model guidance…</p>
       ) : null}
@@ -195,7 +201,11 @@ export function HomeModelComparisonPanel() {
 }
 
 export function HomeUpperAirPanel() {
-  const { data, loading, error } = useUpperAir();
+  const { place } = useSavedPlace();
+  const lat = place?.lat ?? -33.87;
+  const lon = place?.lon ?? 151.21;
+  const name = place?.name ?? STATE_CAPITALS.nsw.name;
+  const { data, loading, error } = useUpperAir(lat, lon, name);
 
   const path = useMemo(() => {
     if (!data?.profile?.length) return "";
@@ -218,7 +228,7 @@ export function HomeUpperAirPanel() {
   }, [data]);
 
   return (
-    <PanelShell title="Upper air — Sydney">
+    <PanelShell title={`Upper air — ${name}`}>
       {loading && !data ? (
         <p className="text-sm text-white/70">Loading upper-air profile…</p>
       ) : null}

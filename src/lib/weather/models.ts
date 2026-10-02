@@ -10,11 +10,8 @@ export type ModelDayMetrics = {
   windMaxKmh: number | null;
 };
 
-export type ModelComparisonPayload = {
-  latitude: number;
-  longitude: number;
-  placeLabel: string;
-  date: string | null;
+export type ModelDaySlice = {
+  date: string;
   models: Record<ModelId, { label: string; metrics: ModelDayMetrics }>;
   rows: {
     metric: string;
@@ -22,6 +19,18 @@ export type ModelComparisonPayload = {
     icon: string;
     gfs: string;
   }[];
+};
+
+export type ModelComparisonPayload = {
+  latitude: number;
+  longitude: number;
+  placeLabel: string;
+  /** First day (compat with home panel). */
+  date: string | null;
+  models: Record<ModelId, { label: string; metrics: ModelDayMetrics }>;
+  rows: ModelDaySlice["rows"];
+  /** Multi-day slices (1–7). */
+  days: ModelDaySlice[];
   attribution: string;
 };
 
@@ -51,49 +60,10 @@ function fmtWind(v: number | null): string {
   return v == null ? "—" : `${Math.round(v)}`;
 }
 
-export async function fetchModelComparison(options: {
-  latitude: number;
-  longitude: number;
-  placeLabel?: string;
-}): Promise<ModelComparisonPayload> {
-  const { latitude, longitude, placeLabel = "Sydney" } = options;
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    daily:
-      "temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max",
-    forecast_days: "1",
-    timezone: "Australia/Sydney",
-    models: "ecmwf_ifs025,icon_seamless,gfs_seamless",
-  });
-
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) throw new Error(`Model comparison unavailable (${res.status})`);
-  const json = (await res.json()) as {
-    daily?: Record<string, unknown[]>;
-  };
-  const daily = json.daily || {};
-  const date = typeof daily.time?.[0] === "string" ? daily.time[0] : null;
-
-  const models = {} as ModelComparisonPayload["models"];
-  for (const m of MODEL_KEYS) {
-    const metrics: ModelDayMetrics = {
-      maxTempC: num(daily[`temperature_2m_max_${m.suffix}`]?.[0]),
-      minTempC: num(daily[`temperature_2m_min_${m.suffix}`]?.[0]),
-      rainMm: num(daily[`precipitation_sum_${m.suffix}`]?.[0]),
-      rainChancePct: num(
-        daily[`precipitation_probability_max_${m.suffix}`]?.[0],
-      ),
-      windMaxKmh: num(daily[`wind_speed_10m_max_${m.suffix}`]?.[0]),
-    };
-    models[m.id] = { label: m.label, metrics };
-  }
-
-  const rows = [
+function buildRows(
+  models: Record<ModelId, { label: string; metrics: ModelDayMetrics }>,
+): ModelDaySlice["rows"] {
+  return [
     {
       metric: "Max Temp",
       ecmwf: fmtTemp(models.ecmwf.metrics.maxTempC),
@@ -125,14 +95,95 @@ export async function fetchModelComparison(options: {
       gfs: fmtWind(models.gfs.metrics.windMaxKmh),
     },
   ];
+}
+
+function metricsAt(
+  daily: Record<string, unknown[]>,
+  index: number,
+  suffix: string,
+): ModelDayMetrics {
+  return {
+    maxTempC: num(daily[`temperature_2m_max_${suffix}`]?.[index]),
+    minTempC: num(daily[`temperature_2m_min_${suffix}`]?.[index]),
+    rainMm: num(daily[`precipitation_sum_${suffix}`]?.[index]),
+    rainChancePct: num(
+      daily[`precipitation_probability_max_${suffix}`]?.[index],
+    ),
+    windMaxKmh: num(daily[`wind_speed_10m_max_${suffix}`]?.[index]),
+  };
+}
+
+export async function fetchModelComparison(options: {
+  latitude: number;
+  longitude: number;
+  placeLabel?: string;
+  days?: number;
+}): Promise<ModelComparisonPayload> {
+  const {
+    latitude,
+    longitude,
+    placeLabel = "Sydney",
+    days: daysIn = 1,
+  } = options;
+  const forecastDays = Math.max(1, Math.min(7, Math.round(daysIn)));
+
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    daily:
+      "temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max",
+    forecast_days: String(forecastDays),
+    timezone: "Australia/Sydney",
+    models: "ecmwf_ifs025,icon_seamless,gfs_seamless",
+  });
+
+  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`Model comparison unavailable (${res.status})`);
+  const json = (await res.json()) as {
+    daily?: Record<string, unknown[]>;
+  };
+  const daily = json.daily || {};
+  const times = (daily.time || []).filter(
+    (t): t is string => typeof t === "string",
+  );
+
+  const daySlices: ModelDaySlice[] = times.map((date, index) => {
+    const models = {} as ModelDaySlice["models"];
+    for (const m of MODEL_KEYS) {
+      models[m.id] = {
+        label: m.label,
+        metrics: metricsAt(daily, index, m.suffix),
+      };
+    }
+    return { date, models, rows: buildRows(models) };
+  });
+
+  const first = daySlices[0] ?? {
+    date: null as unknown as string,
+    models: {
+      ecmwf: { label: "ECMWF", metrics: metricsAt(daily, 0, "ecmwf_ifs025") },
+      icon: { label: "ICON", metrics: metricsAt(daily, 0, "icon_seamless") },
+      gfs: { label: "GFS", metrics: metricsAt(daily, 0, "gfs_seamless") },
+    },
+    rows: [],
+  };
+
+  if (!daySlices.length) {
+    first.rows = buildRows(first.models);
+  }
 
   return {
     latitude,
     longitude,
     placeLabel,
-    date,
-    models,
-    rows,
+    date: daySlices[0]?.date ?? null,
+    models: first.models,
+    rows: first.rows.length ? first.rows : buildRows(first.models),
+    days: daySlices,
     attribution: "Open-Meteo · ECMWF IFS · DWD ICON · NCEP GFS",
   };
 }

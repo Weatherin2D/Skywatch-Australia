@@ -28,6 +28,7 @@ export const MORE_NAV = [
   { href: "/models", label: "Models" },
   { href: "/climate", label: "Climate" },
   { href: "/risk", label: "Risk outlook" },
+  { href: "/hazards", label: "Hazards (UV · Fire · Marine)" },
 ] as const;
 
 export const MOBILE_NAV = [

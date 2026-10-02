@@ -10,6 +10,7 @@ import {
   warningSeverityClasses,
 } from "@/components/warnings/warning-severity";
 import { useWarnings } from "@/hooks/use-warnings";
+import { WarningAlertSettings } from "@/components/warnings/alert-settings";
 import {
   WARNING_CATEGORIES,
   formatWarningTime,
@@ -137,6 +138,8 @@ export function WarningsListPage() {
             Moderate, and Minor.
           </p>
         </div>
+
+        <WarningAlertSettings />
 
         <div className="mb-4 space-y-3">
           <div>

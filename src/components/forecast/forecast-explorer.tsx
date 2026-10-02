@@ -79,6 +79,18 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
   const tz = data?.location.timezone || "Australia/Sydney";
   const today = data?.daily[0] ?? null;
   const hourly = useMemo(() => data?.hourly.slice(0, 24) ?? [], [data]);
+  const rainTimeline = useMemo(
+    () => data?.hourly.slice(0, 48) ?? [],
+    [data],
+  );
+  const maxRainMm = useMemo(() => {
+    let max = 1;
+    for (const h of rainTimeline) {
+      const mm = h.rainMaxMm ?? h.rainMinMm ?? 0;
+      if (mm > max) max = mm;
+    }
+    return max;
+  }, [rainTimeline]);
 
   return (
     <SiteShell>
@@ -334,6 +346,76 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
                     </div>
                   ))}
                 </div>
+              </section>
+            ) : null}
+
+            {loading && !data ? null : rainTimeline.length > 0 ? (
+              <section className="sw-panel p-4">
+                <h3 className="mb-1 text-sm font-bold uppercase tracking-wide text-[var(--cyan)]">
+                  Rain timeline
+                </h3>
+                <p className="mb-3 text-xs text-white/55">
+                  Next {rainTimeline.length} hours — chance bars with optional
+                  mm range from BoM hourly.
+                </p>
+                <div className="sw-chip-row items-end sm:gap-1">
+                  {rainTimeline.map((h) => {
+                    const chance = h.rainChance ?? 0;
+                    const barH = 8 + (chance / 100) * 56;
+                    const mmLabel =
+                      h.rainMinMm != null || h.rainMaxMm != null
+                        ? h.rainMinMm != null &&
+                          h.rainMaxMm != null &&
+                          h.rainMinMm !== h.rainMaxMm
+                          ? `${h.rainMinMm}–${h.rainMaxMm}`
+                          : `${h.rainMaxMm ?? h.rainMinMm}`
+                        : null;
+                    const mmFrac =
+                      (h.rainMaxMm ?? h.rainMinMm ?? 0) / maxRainMm;
+                    return (
+                      <div
+                        key={`rain-${h.time}`}
+                        className="flex w-[2.35rem] shrink-0 flex-col items-center gap-1 sm:w-10"
+                      >
+                        <span className="text-[9px] font-semibold text-sky-200">
+                          {h.rainChance != null ? `${h.rainChance}%` : "—"}
+                        </span>
+                        <div className="relative flex h-16 w-full items-end justify-center">
+                          <div
+                            className="w-[70%] rounded-t-sm bg-sky-400/35"
+                            style={{ height: `${barH}px` }}
+                          />
+                          {mmFrac > 0 ? (
+                            <div
+                              className="absolute bottom-0 w-[40%] rounded-t-sm bg-sky-300/90"
+                              style={{
+                                height: `${Math.max(3, mmFrac * 40)}px`,
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        <span className="text-[9px] text-white/45">
+                          {formatForecastHour(h.time, tz)}
+                        </span>
+                        <span className="h-3 text-[8px] text-white/40">
+                          {mmLabel ? `${mmLabel}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[10px] text-white/40">
+                  Tall bars = rain chance · thin core = relative mm range
+                </p>
+              </section>
+            ) : !loading && data ? (
+              <section className="sw-panel p-4">
+                <h3 className="mb-1 text-sm font-bold uppercase tracking-wide text-[var(--cyan)]">
+                  Rain timeline
+                </h3>
+                <p className="text-sm text-white/65">
+                  No hourly rain guidance for this location right now.
+                </p>
               </section>
             ) : null}
 

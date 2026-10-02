@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronDown, Pause, Play } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Link2, Pause, Play } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
@@ -12,6 +13,7 @@ import {
   HomeNowPanel,
   HomeSydneyForecastProvider,
   HomeWeekPanel,
+  usePreferSavedRegion,
 } from "@/components/home/home-live-panels";
 import {
   HomeModelComparisonPanel,
@@ -33,8 +35,6 @@ import {
   type MapSettingId,
   type MapSettingsState,
 } from "@/components/home/mock-data";
-
-export type HomeDashboardFocus = "radar" | "satellite";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import { useLightning } from "@/hooks/use-lightning";
@@ -59,6 +59,8 @@ import {
 } from "@/lib/weather/maps";
 import { radarWarmupTileUrls } from "@/lib/weather/radar-palette";
 import { cn } from "@/lib/utils";
+
+export type HomeDashboardFocus = "radar" | "satellite";
 
 function Toggle({
   on,
@@ -195,11 +197,43 @@ function OverlayControls({
   );
 }
 
+function parseBoolParam(v: string | null): boolean | null {
+  if (v == null) return null;
+  if (v === "1" || v === "true" || v === "on") return true;
+  if (v === "0" || v === "false" || v === "off") return false;
+  return null;
+}
+
+function isMapRegionId(v: string): v is MapRegionId {
+  return MAP_REGIONS.some((r) => r.id === v);
+}
+
+function isMapMode(v: string): v is MapMode {
+  return (MAP_MODES as readonly string[]).includes(v);
+}
+
 export function HomeDashboard({
   focus,
 }: {
   focus?: HomeDashboardFocus;
 } = {}) {
+  return (
+    <Suspense fallback={<div className="px-4 py-6 text-sm text-white/60">Loading map…</div>}>
+      <HomeDashboardInner focus={focus} />
+    </Suspense>
+  );
+}
+
+function HomeDashboardInner({
+  focus,
+}: {
+  focus?: HomeDashboardFocus;
+} = {}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlHydratedRef = useRef(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
     if (focus === "radar") {
       return { ...DEFAULT_WEATHER_LAYERS, radar: true, lightning: true };
@@ -212,6 +246,51 @@ export function HomeDashboard({
     focus === "radar" ? "Map" : "Satellite",
   );
   const [regionId, setRegionId] = useState<MapRegionId>(DEFAULT_MAP_REGION);
+  const [satProduct, setSatProduct] = useState<SatelliteProductId>(
+    DEFAULT_SATELLITE_PRODUCT,
+  );
+
+  // Hydrate map state from shareable query params once.
+  useEffect(() => {
+    if (urlHydratedRef.current) return;
+    urlHydratedRef.current = true;
+    const region = searchParams.get("region");
+    if (region && isMapRegionId(region)) setRegionId(region);
+    const modeParam = searchParams.get("mode");
+    if (modeParam) {
+      const normalized =
+        modeParam.toLowerCase() === "map"
+          ? "Map"
+          : modeParam.toLowerCase() === "satellite"
+            ? "Satellite"
+            : modeParam;
+      if (isMapMode(normalized)) setMode(normalized);
+    }
+    const radar = parseBoolParam(searchParams.get("radar"));
+    const lightning = parseBoolParam(searchParams.get("lightning"));
+    const synoptic = parseBoolParam(searchParams.get("synoptic"));
+    if (radar != null || lightning != null || synoptic != null) {
+      setLayers((prev) => ({
+        ...prev,
+        ...(radar != null ? { radar } : {}),
+        ...(lightning != null ? { lightning } : {}),
+        ...(synoptic != null ? { synoptic } : {}),
+      }));
+    }
+    const product = searchParams.get("product");
+    if (
+      product &&
+      SATELLITE_PRODUCTS.some((p) => p.id === product)
+    ) {
+      setSatProduct(product as SatelliteProductId);
+    }
+  }, [searchParams]);
+
+  // Prefer saved place region when URL did not specify one.
+  usePreferSavedRegion(
+    setRegionId,
+    !searchParams.get("region") && !focus,
+  );
 
   useEffect(() => {
     if (focus === "radar") {
@@ -221,9 +300,43 @@ export function HomeDashboard({
       setMode("Satellite");
     }
   }, [focus]);
-  const [satProduct, setSatProduct] = useState<SatelliteProductId>(
-    DEFAULT_SATELLITE_PRODUCT,
-  );
+
+  // Sync shareable map state into the URL (replace, no remount).
+  useEffect(() => {
+    if (!urlHydratedRef.current) return;
+    const params = new URLSearchParams();
+    if (regionId !== DEFAULT_MAP_REGION) params.set("region", regionId);
+    const defaultMode: MapMode =
+      focus === "radar" ? "Map" : "Satellite";
+    if (mode !== defaultMode) params.set("mode", mode.toLowerCase());
+    if (layers.radar !== (focus === "radar")) {
+      params.set("radar", layers.radar ? "1" : "0");
+    }
+    if (!layers.lightning) params.set("lightning", "0");
+    if (layers.synoptic) params.set("synoptic", "1");
+    if (satProduct !== DEFAULT_SATELLITE_PRODUCT) {
+      params.set("product", satProduct);
+    }
+    const qs = params.toString();
+    const path =
+      focus === "radar" ? "/radar" : focus === "satellite" ? "/satellite" : "/";
+    const next = qs ? `${path}?${qs}` : path;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== next) {
+      router.replace(next, { scroll: false });
+    }
+  }, [regionId, mode, layers, satProduct, focus, router]);
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const [satMenuOpen, setSatMenuOpen] = useState(false);
   const [regionMenuOpen, setRegionMenuOpen] = useState(false);
   const satMenuRef = useRef<HTMLDivElement>(null);
@@ -832,6 +945,16 @@ export function HomeDashboard({
                 </ul>
               ) : null}
             </div>
+
+            <button
+              type="button"
+              onClick={() => void copyShareLink()}
+              className="sw-chip sw-chip-idle inline-flex items-center gap-1"
+              title="Copy shareable map link"
+            >
+              <Link2 className="h-3.5 w-3.5" aria-hidden />
+              {linkCopied ? "Copied" : "Copy link"}
+            </button>
           </div>
 
           <div

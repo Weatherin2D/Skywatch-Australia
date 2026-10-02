@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const lon = Number(url.searchParams.get("lon") || 151.21);
     const placeLabel =
       url.searchParams.get("place") || sydney.name || "Sydney";
+    const days = Number(url.searchParams.get("days") || "1");
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 });
     }
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
       latitude: lat,
       longitude: lon,
       placeLabel,
+      days: Number.isFinite(days) ? days : 1,
     });
     return NextResponse.json(payload, {
       headers: {

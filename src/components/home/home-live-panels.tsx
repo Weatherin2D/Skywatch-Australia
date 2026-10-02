@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useMemo } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { LocateFixed, MapPin } from "lucide-react";
 import { WeatherIcon } from "@/components/forecast/weather-icon";
+import { LocationSearch } from "@/components/forecast/location-search";
 import { useCapitals } from "@/hooks/use-capitals";
 import { useLocationForecast } from "@/hooks/use-location-forecast";
+import { useSavedPlace } from "@/hooks/use-saved-place";
 import {
   STATE_CAPITALS,
   formatClockLabel,
@@ -12,48 +21,154 @@ import {
   rainLabel,
   type LocationForecastPayload,
 } from "@/lib/weather/location-forecast";
+import type { SavedPlace } from "@/lib/prefs/location";
 
-const SYDNEY = STATE_CAPITALS.nsw;
+const FALLBACK = STATE_CAPITALS.nsw;
 
-type SydneyCtx = {
+type PlaceCtx = {
+  place: SavedPlace | null;
+  ready: boolean;
+  geohash: string;
+  label: string;
   forecast: LocationForecastPayload | null;
   loading: boolean;
   error: string | null;
+  saveFromGeolocation: () => Promise<SavedPlace>;
+  saveFromBomLocation: (
+    loc: Parameters<
+      ReturnType<typeof useSavedPlace>["saveFromBomLocation"]
+    >[0],
+  ) => Promise<SavedPlace>;
 };
 
-const SydneyForecastContext = createContext<SydneyCtx>({
-  forecast: null,
-  loading: true,
-  error: null,
-});
+const HomePlaceContext = createContext<PlaceCtx | null>(null);
 
-export function HomeSydneyForecastProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { forecast, loading, error } = useLocationForecast(SYDNEY.geohash);
+export function HomePlaceProvider({ children }: { children: React.ReactNode }) {
+  const {
+    place,
+    ready,
+    saveFromBomLocation,
+    saveFromGeolocation,
+  } = useSavedPlace();
+  const geohash = place?.geohash || FALLBACK.geohash;
+  const { forecast, loading, error } = useLocationForecast(geohash);
+  const label = place
+    ? `${place.name}, ${place.state}`
+    : `${FALLBACK.name}, ${FALLBACK.state}`;
+
   const value = useMemo(
-    () => ({ forecast, loading, error }),
-    [forecast, loading, error],
+    () => ({
+      place,
+      ready,
+      geohash,
+      label,
+      forecast,
+      loading,
+      error,
+      saveFromGeolocation,
+      saveFromBomLocation,
+    }),
+    [
+      place,
+      ready,
+      geohash,
+      label,
+      forecast,
+      loading,
+      error,
+      saveFromGeolocation,
+      saveFromBomLocation,
+    ],
   );
+
   return (
-    <SydneyForecastContext.Provider value={value}>
+    <HomePlaceContext.Provider value={value}>
       {children}
-    </SydneyForecastContext.Provider>
+    </HomePlaceContext.Provider>
   );
 }
 
-function useSydneyForecast() {
-  return useContext(SydneyForecastContext);
+/** @deprecated Use HomePlaceProvider */
+export const HomeSydneyForecastProvider = HomePlaceProvider;
+
+function useHomePlace() {
+  const ctx = useContext(HomePlaceContext);
+  if (!ctx) {
+    throw new Error("Home place panels require HomePlaceProvider");
+  }
+  return ctx;
+}
+
+export function useHomeSavedPlace() {
+  return useHomePlace();
 }
 
 export function HomeDateHeading() {
-  return <>{formatDateHeading("Australia/Sydney")}</>;
+  const { forecast } = useHomePlace();
+  const tz = forecast?.location.timezone || "Australia/Sydney";
+  return <>{formatDateHeading(tz)}</>;
+}
+
+function PlaceControls() {
+  const { saveFromBomLocation, saveFromGeolocation, place, ready } =
+    useHomePlace();
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          disabled={geoBusy}
+          onClick={() => {
+            setGeoBusy(true);
+            setGeoError(null);
+            void saveFromGeolocation()
+              .catch((err) =>
+                setGeoError(
+                  err instanceof Error ? err.message : "Location failed",
+                ),
+              )
+              .finally(() => setGeoBusy(false));
+          }}
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--ink)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--ink)] hover:bg-[var(--ink)]/18 disabled:opacity-50"
+        >
+          <LocateFixed className="h-3 w-3" aria-hidden />
+          {geoBusy ? "Locating…" : "Use my location"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSearch((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--ink)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--ink)] hover:bg-[var(--ink)]/18"
+        >
+          <MapPin className="h-3 w-3" aria-hidden />
+          {showSearch ? "Hide search" : "Change place"}
+        </button>
+      </div>
+      {ready && !place ? (
+        <p className="text-[10px] text-[var(--ink)]/60">
+          Showing Sydney until you set a place.
+        </p>
+      ) : null}
+      {geoError ? (
+        <p className="text-[10px] text-amber-200/90">{geoError}</p>
+      ) : null}
+      {showSearch ? (
+        <LocationSearch
+          className="w-full"
+          onSelect={(loc) => {
+            void saveFromBomLocation(loc).then(() => setShowSearch(false));
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export function HomeNowPanel() {
-  const { forecast, loading, error } = useSydneyForecast();
+  const { forecast, loading, error, geohash, label } = useHomePlace();
   const loc = forecast?.location;
   const obs = forecast?.observation;
   const today = forecast?.daily[0] ?? null;
@@ -66,10 +181,7 @@ export function HomeNowPanel() {
         ? Math.round(today.tempNow)
         : null;
 
-  const place = loc
-    ? `${loc.name}, ${loc.state}`
-    : `${SYDNEY.name}, ${SYDNEY.state}`;
-
+  const place = loc ? `${loc.name}, ${loc.state}` : label;
   const clock = formatClockLabel(obs?.observationTime ?? null, tz);
   const condition = today?.shortText || (loading ? "Loading…" : "—");
 
@@ -78,7 +190,7 @@ export function HomeNowPanel() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <Link
-            href={`/forecast/${SYDNEY.geohash}`}
+            href={`/forecast/${geohash}`}
             className="block truncate text-base font-bold text-[var(--ink)] hover:underline sm:text-lg"
           >
             {place}
@@ -93,6 +205,8 @@ export function HomeNowPanel() {
           className="h-9 w-9 shrink-0 sm:h-10 sm:w-10"
         />
       </div>
+
+      <PlaceControls />
 
       {error && !forecast ? (
         <p className="mt-2 text-sm text-white/75">{error}</p>
@@ -172,10 +286,10 @@ export function HomeNowPanel() {
             ) : null}
           </div>
           <Link
-            href={`/forecast/${SYDNEY.geohash}`}
+            href={`/forecast/${geohash}`}
             className="mt-2 inline-block text-xs font-semibold text-[var(--cyan)] hover:underline"
           >
-            Full Sydney forecast →
+            Full forecast →
           </Link>
         </>
       )}
@@ -229,13 +343,14 @@ export function HomeCapitalsPanel() {
 }
 
 export function HomeWeekPanel() {
-  const { forecast, loading, error } = useSydneyForecast();
+  const { forecast, loading, error, geohash, label } = useHomePlace();
   const days = forecast?.daily ?? [];
   const tz = forecast?.location.timezone || "Australia/Sydney";
+  const shortName = forecast?.location.name || label.split(",")[0] || "Local";
 
   return (
     <section className="sw-panel p-3 text-[var(--ink)] sm:p-3.5">
-      <h2 className="sw-panel-title">7-day forecast — Sydney</h2>
+      <h2 className="sw-panel-title">7-day forecast — {shortName}</h2>
       {loading && days.length === 0 ? (
         <p className="text-sm text-white/70">Loading…</p>
       ) : null}
@@ -245,7 +360,7 @@ export function HomeWeekPanel() {
       {days.length > 0 ? (
         <div className="flex justify-between gap-1 overflow-x-auto">
           {days.slice(0, 7).map((d, idx) => {
-            const label =
+            const dayLabel =
               idx === 0
                 ? "Today"
                 : new Intl.DateTimeFormat("en-AU", {
@@ -257,7 +372,7 @@ export function HomeWeekPanel() {
                 key={d.date}
                 className="flex min-w-[2.75rem] flex-col items-center gap-1 text-center text-xs"
               >
-                <span className="text-[var(--ink)]/65">{label}</span>
+                <span className="text-[var(--ink)]/65">{dayLabel}</span>
                 <WeatherIcon
                   icon={d.icon}
                   night={d.isNight}
@@ -275,7 +390,7 @@ export function HomeWeekPanel() {
         </div>
       ) : null}
       <Link
-        href={`/forecast/${SYDNEY.geohash}`}
+        href={`/forecast/${geohash}`}
         className="mt-2.5 inline-block text-xs font-semibold text-[var(--cyan)] hover:underline"
       >
         Open full forecast →
@@ -285,7 +400,7 @@ export function HomeWeekPanel() {
 }
 
 export function HomeBriefingPanel() {
-  const { forecast, loading } = useSydneyForecast();
+  const { forecast, loading } = useHomePlace();
   const today = forecast?.daily[0];
   const notes: string[] = [];
   if (today?.extendedText) notes.push(today.extendedText);
@@ -309,7 +424,10 @@ export function HomeBriefingPanel() {
       ) : (
         <ul className="space-y-2">
           {notes.map((item) => (
-            <li key={item} className="flex gap-2 text-sm leading-snug text-[var(--ink)]/85">
+            <li
+              key={item}
+              className="flex gap-2 text-sm leading-snug text-[var(--ink)]/85"
+            >
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--cyan)]" />
               <span className="line-clamp-4 sm:line-clamp-none">{item}</span>
             </li>
@@ -318,4 +436,20 @@ export function HomeBriefingPanel() {
       )}
     </section>
   );
+}
+
+/** Sync map region to saved place once when a place is first available. */
+export function usePreferSavedRegion(
+  setRegionId: (id: import("@/components/home/mock-data").MapRegionId) => void,
+  enabled = true,
+) {
+  const { place, ready } = useSavedPlace();
+  const [applied, setApplied] = useState(false);
+  useEffect(() => {
+    if (!enabled || !ready || applied || !place?.regionId) return;
+    if (place.regionId !== "national") {
+      setRegionId(place.regionId);
+    }
+    setApplied(true);
+  }, [enabled, ready, place, applied, setRegionId]);
 }

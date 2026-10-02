@@ -1,10 +1,5 @@
-import ComingSoonPage from "@/components/site/coming-soon";
+import { ClimateDashboard } from "@/components/climate/climate-dashboard";
 
 export default function ClimatePage() {
-  return (
-    <ComingSoonPage
-      title="Climate"
-      blurb="Longer-range climate context and seasonal outlooks for Australia will land here soon."
-    />
-  );
+  return <ClimateDashboard />;
 }

@@ -10,20 +10,24 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — hero, live BoM forecasts/warnings, Himawari loops, overlays, storm activity, model comparison, upper air |
-| `/radar` | National map focused on rain radar + lightning overlays |
+| `/` | SkyWatch homepage — hero, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
+| `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
 | `/satellite` | Himawari satellite loops (infrared / visible / air mass) |
-| `/models` | Models workspace stub (coming soon) |
-| `/climate` | Climate outlook stub (coming soon) |
+| `/models` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
+| `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
+| `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
-| `/forecast/[geohash]` | Direct forecast for a BoM location |
-| `/warnings` | Live BoM warnings by severity and state |
-| `/risk` | Day 1–3 convective risk map, updated live from BoM |
+| `/forecast/[geohash]` | Direct forecast for a BoM location (incl. 24–48h rain timeline) |
+| `/warnings` | Live BoM warnings + optional browser Notification alerts (client-side) |
+| `/risk` | MetEye thunderstorm risk map for the full MetEye horizon |
+| `/more` | Secondary tools + mobile install hint (PWA) |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/storm-activity` | Lightning hotspot summary for Storm Tracker |
-| `/api/weather/models` | Multi-model day comparison (ECMWF / ICON / GFS via Open-Meteo) |
+| `/api/weather/models` | Multi-model comparison (`days=1..7`) via Open-Meteo |
+| `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
+| `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | CAPE/CIN/shear + temp profile (Open-Meteo pressure levels) |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
@@ -37,6 +41,10 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 `/risk` uses only the official BoM MetEye thunderstorm layer (`IDZ73094`) — Chance (teal) / Likely (red) — for the full MetEye horizon (~7 days). Each day shows the same 3-hourly frame MetEye displays for that period.
 
 **Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
+
+**Local preferences (no auth/DB):** saved place and warning-alert settings live in `localStorage`. Map view is shareable via query params (`region`, `mode`, `radar`, `lightning`, `synoptic`, `product`).
+
+**PWA:** web manifest + light service worker caches the shell and last successful radar/satellite frame responses for an offline “last view”.
 
 ## Run locally
 
