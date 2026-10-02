@@ -16,11 +16,13 @@ type Props = {
 function pathStyle(feature: DisplayFeature): PathOptions {
   const bom = styleForBomRiskLabel(feature.title) ?? feature.style;
   return {
-    color: bom.strokeColor || "#111111",
-    weight: bom.strokeWidth ?? 1.5,
-    opacity: bom.strokeOpacity ?? 0.95,
+    color: bom.strokeColor || "#1a1a1a",
+    weight: 1,
+    opacity: 0.35,
     fillColor: bom.fillColor || "#64748b",
-    fillOpacity: bom.fillOpacity ?? 0.55,
+    fillOpacity: bom.fillOpacity ?? 0.58,
+    lineJoin: "round",
+    lineCap: "round",
   };
 }
 

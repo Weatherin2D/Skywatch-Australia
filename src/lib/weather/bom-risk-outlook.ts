@@ -8,7 +8,6 @@
 import type {
   DisplayFeature,
   DisplayLegendItem,
-  GeoJsonGeometry,
   PublicForecastResponse,
 } from "@/lib/forecast/types";
 import {
@@ -18,6 +17,10 @@ import {
   type BomRiskCategoryId,
 } from "@/lib/weather/bom-thunderstorm";
 import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
+import {
+  buildSmoothRiskFeatures,
+  type RiskSamplePoint,
+} from "@/lib/weather/bom-risk-smooth";
 
 const BOM_API = "https://api.weather.bom.gov.au/v1";
 const FETCH_UA =
@@ -30,8 +33,13 @@ const WAVE_CONCURRENCY = 10;
 const WAVE_PAUSE_MS = 1100;
 const FETCH_TIMEOUT_MS = 10_000;
 const FETCH_RETRIES = 1;
-/** Half-width of each sample cell in degrees (lon scaled by cos(lat)). */
-const CELL_HALF_DEG = 1.05;
+
+const RANK_BY_CATEGORY: Record<BomRiskCategoryId, number> = {
+  tstm_possible: 1,
+  tstm_likely: 2,
+  severe_possible: 3,
+  severe_likely: 4,
+};
 
 const CATEGORY_RANK: Record<BomRiskCategoryId, number> = {
   tstm_possible: 1,
@@ -196,19 +204,6 @@ function haversineKm(
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-function cellPolygon(lat: number, lon: number): GeoJsonGeometry {
-  const dLat = CELL_HALF_DEG;
-  const dLon = CELL_HALF_DEG / Math.max(0.35, Math.cos((lat * Math.PI) / 180));
-  const ring: number[][] = [
-    [lon - dLon, lat - dLat],
-    [lon + dLon, lat - dLat],
-    [lon + dLon, lat + dLat],
-    [lon - dLon, lat + dLat],
-    [lon - dLon, lat - dLat],
-  ];
-  return { type: "Polygon", coordinates: [ring] };
-}
-
 async function bomGetJson<T>(url: string): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= FETCH_RETRIES; attempt++) {
@@ -292,12 +287,9 @@ type SiteDayRisk = {
 async function fetchSiteRisk(
   site: BomRiskSite,
 ): Promise<SiteDayRisk & { ok: boolean }> {
-  // Prefer 6-char grid hash — matches BoM forecast grid keys more reliably.
-  const geohash =
-    site.geohash.length > 6 ? site.geohash.slice(0, 6) : site.geohash;
   try {
     const payload = await bomGetJson<{ data?: DailyRow[] }>(
-      `${BOM_API}/locations/${encodeURIComponent(geohash)}/forecasts/daily`,
+      `${BOM_API}/locations/${encodeURIComponent(site.geohash)}/forecasts/daily`,
     );
     const rows = payload.data ?? [];
     if (!rows.length) {
@@ -474,7 +466,7 @@ function buildDayFeatures(
     radiusKm: number;
   }>,
 ): DisplayFeature[] {
-  const features: DisplayFeature[] = [];
+  const points: RiskSamplePoint[] = [];
 
   for (const sample of samples) {
     let category = sample.days[dayIndex]?.category ?? null;
@@ -482,19 +474,26 @@ function buildDayFeatures(
       category = applySevereTargets(category, sample.site, severeTargets);
     }
     if (!category) continue;
-
-    features.push({
-      id: `bom-${sample.site.geohash}-d${dayIndex + 1}-${category}`,
-      geometry: cellPolygon(sample.site.lat, sample.site.lon),
-      title: CATEGORY_LABEL[category],
-      categoryId: category,
-      order: CATEGORY_ORDER[category],
-      style: styleForCategory(category),
+    points.push({
+      lat: sample.site.lat,
+      lon: sample.site.lon,
+      rank: RANK_BY_CATEGORY[category],
     });
   }
 
-  features.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-  return features;
+  if (dayIndex === 0) {
+    for (const t of severeTargets) {
+      points.push({ lat: t.lat, lon: t.lon, rank: 4 });
+    }
+  }
+
+  return buildSmoothRiskFeatures({
+    day: dayIndex + 1,
+    points,
+    categoryLabel: CATEGORY_LABEL,
+    categoryOrder: CATEGORY_ORDER,
+    styleFor: styleForCategory,
+  });
 }
 
 function legendFor(features: DisplayFeature[]): DisplayLegendItem[] {
