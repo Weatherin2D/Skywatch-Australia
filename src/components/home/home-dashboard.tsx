@@ -268,19 +268,37 @@ export function HomeDashboard({
   const showSatelliteLoop = mode === "Satellite";
   /** Himawari IR on the pannable Map when Satellite imagery is enabled. */
   const himawariOnMap = mode === "Map" && mapSettings.satelliteBasemap;
-  /** Shared loop / preload / timeline for either satellite surface. */
+  /** Satellite drives the timeline (Satellite view, or Map + satellite imagery). */
   const useSatelliteFrames = showSatelliteLoop || himawariOnMap;
+  /**
+   * Radar drives the timeline on open Map when rain radar is on and satellite
+   * imagery is not already owning the loop (same play/scrub UX as Himawari).
+   */
+  const useRadarLoop =
+    showRadarOverlay && mode === "Map" && !himawariOnMap;
+  const useTimeline = useSatelliteFrames || useRadarLoop;
 
   const loopFrames = useMemo(() => {
-    if (!useSatelliteFrames) return [];
-    return satelliteFrames.map((frame) => ({
-      ...frame,
-      imageUrl: satelliteFrameProxyUrl(satProduct, frame.time, {
-        region: regionId,
-      }),
-      imageBounds: region.bounds,
-    }));
-  }, [useSatelliteFrames, satelliteFrames, satProduct, regionId, region.bounds]);
+    if (useSatelliteFrames) {
+      return satelliteFrames.map((frame) => ({
+        ...frame,
+        imageUrl: satelliteFrameProxyUrl(satProduct, frame.time, {
+          region: regionId,
+        }),
+        imageBounds: region.bounds,
+      }));
+    }
+    if (useRadarLoop) return radarFrames;
+    return [];
+  }, [
+    useSatelliteFrames,
+    useRadarLoop,
+    satelliteFrames,
+    radarFrames,
+    satProduct,
+    regionId,
+    region.bounds,
+  ]);
 
   const activeFrame = loopFrames[frameIndex] ?? null;
   const scrub =
@@ -292,29 +310,63 @@ export function HomeDashboard({
     if (activeFrame?.time != null) activeTimeRef.current = activeFrame.time;
   }, [activeFrame?.time]);
 
-  /** Rain radar overlay frame: time-matched on Satellite, latest on Map. */
+  /**
+   * Rain radar tile: time-matched to the satellite timeline when that drives
+   * the loop; otherwise the active radar-loop frame (or latest).
+   */
   const overlayRadarFrame = useMemo(() => {
     if (!showRadarOverlay || radarFrames.length === 0) return null;
     if (useSatelliteFrames && activeFrame) {
       return pickWeatherFrame(radarFrames, activeFrame.time, 15 * 60);
     }
+    if (useRadarLoop) {
+      return activeFrame ?? radarFrames[radarFrames.length - 1] ?? null;
+    }
     return radarFrames[radarFrames.length - 1] ?? null;
-  }, [showRadarOverlay, useSatelliteFrames, activeFrame, radarFrames]);
+  }, [
+    showRadarOverlay,
+    useSatelliteFrames,
+    useRadarLoop,
+    activeFrame,
+    radarFrames,
+  ]);
 
   const {
-    readyCount,
-    total: preloadTotal,
-    allReady,
-    isIndexReady,
+    readyCount: satReadyCount,
+    total: satPreloadTotal,
+    allReady: satAllReady,
+    isIndexReady: satIsIndexReady,
   } = useFramePreloader(loopFrames, useSatelliteFrames);
 
-  const hardLoopKey = `${satProduct}:${regionId}`;
+  // Radar tiles stream via Leaflet — treat the catalog as ready immediately.
+  const readyCount = useSatelliteFrames
+    ? satReadyCount
+    : useRadarLoop
+      ? loopFrames.length
+      : 0;
+  const preloadTotal = useSatelliteFrames
+    ? satPreloadTotal
+    : useRadarLoop
+      ? loopFrames.length
+      : 0;
+  const allReady = useSatelliteFrames
+    ? satAllReady
+    : useRadarLoop && loopFrames.length > 0;
+  const isIndexReady = useSatelliteFrames
+    ? satIsIndexReady
+    : () => true;
+
+  const hardLoopKey = useSatelliteFrames
+    ? `sat:${satProduct}:${regionId}`
+    : useRadarLoop
+      ? `radar:${regionId}`
+      : "none";
   const tipTime = loopFrames[loopFrames.length - 1]?.time ?? 0;
 
   // Prefetch synoptic analyses that cover the satellite loop into the shared
   // memory cache so play-from-start never waits on the network.
   useEffect(() => {
-    if (!showSynoptic || !useSatelliteFrames) return;
+    if (!showSynoptic || !useTimeline) return;
     if (synopticFrames.length === 0 || loopFrames.length === 0) return;
     const urls = new Set<string>();
     for (const sat of loopFrames) {
@@ -326,12 +378,12 @@ export function HomeDashboard({
       if (syn.geojsonUrl) urls.add(syn.geojsonUrl);
     }
     void prefetchSynopticGeoJson(urls);
-  }, [showSynoptic, useSatelliteFrames, loopFrames, synopticFrames]);
+  }, [showSynoptic, useTimeline, loopFrames, synopticFrames]);
 
-  // Soft live tip updates: keep the same wall-clock frame when a new 10-minute
-  // Himawari stamp arrives. Hard-reset only when product/region changes.
+  // Soft live tip updates: keep the same wall-clock frame when a new tip
+  // arrives. Hard-reset only when product/region (or radar loop) changes.
   useEffect(() => {
-    if (!useSatelliteFrames) return;
+    if (!useTimeline) return;
     if (loopFrames.length === 0) {
       setPlaying(false);
       setFrameIndex(0);
@@ -371,11 +423,11 @@ export function HomeDashboard({
       // Length/order tweaks without a newer tip — clamp index.
       setFrameIndex((prev) => Math.min(prev, loopFrames.length - 1));
     }
-  }, [hardLoopKey, tipTime, loopFrames, useSatelliteFrames]);
+  }, [hardLoopKey, tipTime, loopFrames, useTimeline]);
 
   // Auto-start once a usable buffer is warm (or the whole loop is ready).
   useEffect(() => {
-    if (!useSatelliteFrames || loopFrames.length === 0) return;
+    if (!useTimeline || loopFrames.length === 0) return;
     if (userPausedRef.current) return;
     if (autoPlayKeyRef.current === hardLoopKey && playing) return;
 
@@ -391,7 +443,7 @@ export function HomeDashboard({
     }
     setPlaying(true);
   }, [
-    useSatelliteFrames,
+    useTimeline,
     loopFrames.length,
     hardLoopKey,
     readyCount,
@@ -404,7 +456,7 @@ export function HomeDashboard({
   // loading, hold briefly then advance to the nearest ready neighbour so the
   // loop never freezes or visually jumps over missing stamps.
   useEffect(() => {
-    if (!playing || !useSatelliteFrames || loopFrames.length === 0) return;
+    if (!playing || !useTimeline || loopFrames.length === 0) return;
     const n = loopFrames.length;
     playbackHoldMsRef.current = 0;
     const id = window.setInterval(() => {
@@ -429,7 +481,7 @@ export function HomeDashboard({
     return () => window.clearInterval(id);
   }, [
     playing,
-    useSatelliteFrames,
+    useTimeline,
     loopFrames.length,
     playback.msPerFrame,
     isIndexReady,
@@ -437,11 +489,11 @@ export function HomeDashboard({
   ]);
 
   useEffect(() => {
-    if (!useSatelliteFrames) {
+    if (!useTimeline) {
       setPlaying(false);
       userPausedRef.current = false;
     }
-  }, [useSatelliteFrames]);
+  }, [useTimeline]);
 
   useEffect(() => {
     if (!satMenuOpen && !regionMenuOpen) return;
@@ -474,15 +526,18 @@ export function HomeDashboard({
   }, [satMenuOpen, regionMenuOpen]);
 
   const scrubLabel = useMemo(() => {
-    if (!useSatelliteFrames) return "";
+    if (!useTimeline) return "";
     if (mapsLoading && loopFrames.length === 0) return "Loading…";
     if (mapsError && loopFrames.length === 0) return "Unavailable";
     if (!activeFrame) {
-      if (satProductMeta.daytimeOnly) return "No daytime frames";
+      if (useSatelliteFrames && satProductMeta.daytimeOnly) {
+        return "No daytime frames";
+      }
       return "No frames";
     }
     return formatFrameTimeAEST(activeFrame.time);
   }, [
+    useTimeline,
     useSatelliteFrames,
     mapsLoading,
     mapsError,
@@ -497,6 +552,13 @@ export function HomeDashboard({
   );
 
   const loopStatusLabel = useMemo(() => {
+    if (useRadarLoop) {
+      if (mapsLoading && loopFrames.length === 0) return "Loading radar frames…";
+      if (loopFrames.length === 0) {
+        return mapsError ? "Radar loop unavailable" : "No radar frames available";
+      }
+      return "Rain radar · live ~10 min";
+    }
     if (mapsLoading && loopFrames.length === 0) return "Loading satellite frames…";
     if (loopFrames.length === 0) {
       if (satProductMeta.daytimeOnly) {
@@ -509,6 +571,7 @@ export function HomeDashboard({
     }
     return `${satProductMeta.loopLabel} · live 10 min`;
   }, [
+    useRadarLoop,
     mapsLoading,
     mapsError,
     loopFrames.length,
@@ -519,11 +582,17 @@ export function HomeDashboard({
   ]);
 
   const liveTipLabel = useMemo(() => {
+    if (useRadarLoop) {
+      const tip = loopFrames[loopFrames.length - 1]?.time;
+      return tip != null ? formatFrameTimeAEST(tip) : null;
+    }
     if (!lastTipAt) return null;
     return formatFrameTimeAEST(lastTipAt);
-  }, [lastTipAt]);
+  }, [useRadarLoop, loopFrames, lastTipAt]);
 
-  const liveFresh = tipSeenAtMs != null && Date.now() - tipSeenAtMs < 2 * 60_000;
+  const liveFresh = useRadarLoop
+    ? tipTime > 0 && Date.now() / 1000 - tipTime < 15 * 60
+    : tipSeenAtMs != null && Date.now() - tipSeenAtMs < 2 * 60_000;
 
   function setLayer(id: LayerId, on: boolean) {
     setLayers((prev) => ({ ...prev, [id]: on }));
@@ -758,14 +827,16 @@ export function HomeDashboard({
                 useSatelliteFrames && activeFrame
                   ? `${satProduct}-${regionId}-${activeFrame.time}`
                   : showRadarOverlay && overlayRadarFrame
-                    ? `radar-overlay-${overlayRadarFrame.time}`
+                    ? `radar-${overlayRadarFrame.time}`
                     : undefined
               }
               frameOpacity={1}
               frameAlt={
                 useSatelliteFrames
                   ? `${satProductMeta.label} · ${region.label}`
-                  : "Map frame"
+                  : useRadarLoop
+                    ? `Rain radar · ${region.label}`
+                    : "Map frame"
               }
               mapSatelliteImageUrl={
                 himawariOnMap ? (activeFrame?.imageUrl ?? null) : null
@@ -777,22 +848,22 @@ export function HomeDashboard({
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}
               lightningReferenceTime={
-                useSatelliteFrames ? (activeFrame?.time ?? null) : null
+                useTimeline ? (activeFrame?.time ?? null) : null
               }
               lightningTimelineStart={
-                useSatelliteFrames && loopFrames.length > 0
+                useTimeline && loopFrames.length > 0
                   ? (loopFrames[0]?.time ?? null)
                   : null
               }
               lightningTimelineEnd={
-                useSatelliteFrames && loopFrames.length > 0
+                useTimeline && loopFrames.length > 0
                   ? (loopFrames[loopFrames.length - 1]?.time ?? null)
                   : null
               }
-              lightningPlaying={useSatelliteFrames && playing}
+              lightningPlaying={useTimeline && playing}
               lightningMsPerFrame={playback.msPerFrame}
               lightningNextFrameTime={
-                useSatelliteFrames && loopFrames.length > 1
+                useTimeline && loopFrames.length > 1
                   ? (loopFrames[(frameIndex + 1) % loopFrames.length]?.time ??
                     null)
                   : null
@@ -802,12 +873,12 @@ export function HomeDashboard({
               synopticGeoJson={synopticGeoJson}
               synopticValidTime={synopticValidTime}
               synopticReferenceTime={
-                useSatelliteFrames ? (activeFrame?.time ?? null) : null
+                useTimeline ? (activeFrame?.time ?? null) : null
               }
             />
           </div>
 
-          {useSatelliteFrames ? (
+          {useTimeline ? (
             <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-2.5 py-2 text-white backdrop-blur-xl sm:gap-3 sm:px-3 sm:py-2.5">
               <button
                 type="button"
@@ -825,7 +896,9 @@ export function HomeDashboard({
                 }}
                 disabled={
                   loopFrames.length === 0 ||
-                  (readyCount === 0 && preloadTotal > 0)
+                  (useSatelliteFrames &&
+                    readyCount === 0 &&
+                    preloadTotal > 0)
                 }
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--cyan)] text-[#041018] shadow-[0_0_20px_rgba(34,211,238,0.3)] disabled:opacity-40"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
@@ -850,8 +923,10 @@ export function HomeDashboard({
                         )}
                         title={
                           liveTipLabel
-                            ? `Latest frame ${liveTipLabel} · checks for a new 10-minute frame every minute`
-                            : "Live Himawari updates"
+                            ? `Latest frame ${liveTipLabel} · checks for a new frame regularly`
+                            : useRadarLoop
+                              ? "Live rain radar updates"
+                              : "Live Himawari updates"
                         }
                       >
                         <span
@@ -900,9 +975,11 @@ export function HomeDashboard({
                   <p className="text-xs text-white/85">{mapsError}</p>
                 ) : loopFrames.length === 0 && !mapsLoading ? (
                   <p className="text-xs text-white/65">
-                    {satProductMeta.daytimeOnly
-                      ? "Visible imagery needs daylight over Australia — try Infrared or Air Mass."
-                      : "No frames for this product right now."}
+                    {useRadarLoop
+                      ? "No radar frames right now — try again shortly."
+                      : satProductMeta.daytimeOnly
+                        ? "Visible imagery needs daylight over Australia — try Infrared or Air Mass."
+                        : "No frames for this product right now."}
                   </p>
                 ) : (
                   <>
@@ -922,7 +999,11 @@ export function HomeDashboard({
                         setFrameIndex(next);
                       }}
                       className="w-full accent-[var(--cyan)] disabled:opacity-40"
-                      aria-label={`${satProductMeta.label} satellite timeline`}
+                      aria-label={
+                        useRadarLoop
+                          ? "Rain radar timeline"
+                          : `${satProductMeta.label} satellite timeline`
+                      }
                     />
                     <div className="mt-1 flex justify-between text-[10px] text-white/55">
                       <span>{edgeLabels.start}</span>
@@ -937,9 +1018,10 @@ export function HomeDashboard({
             <p className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/75">
               <span className="font-semibold text-white">Map</span> view with
               live overlays. Enable{" "}
+              <span className="font-semibold text-white">Rain radar</span> for a
+              radar animation timeline,{" "}
               <span className="font-semibold text-white">Satellite imagery</span>{" "}
-              in Map settings for optical basemap + Himawari IR (with timeline),
-              or switch to the{" "}
+              for Himawari on the open map, or switch to the{" "}
               <span className="font-semibold text-white">Satellite</span> view
               for the full-frame loop.
             </p>
