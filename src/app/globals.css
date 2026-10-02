@@ -216,7 +216,6 @@
 .leaflet-tile-pane .skywatch-radar-tiles img {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  transition: opacity 70ms linear;
 }
 
 .skywatch-map .leaflet-control-zoom {

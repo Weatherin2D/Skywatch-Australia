@@ -1,13 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { TileLayer, useMap } from "react-leaflet";
+import { useEffect, useMemo, useRef } from "react";
+import { useMap } from "react-leaflet";
+import L from "leaflet";
 import { radarWarmupTileUrls } from "@/lib/weather/radar-palette";
 import type { WeatherFrame } from "@/lib/weather/maps";
 
+function createBufferLayer(zIndex: number): L.TileLayer {
+  return L.tileLayer("", {
+    opacity: 0,
+    className: "skywatch-radar-tiles",
+    keepBuffer: 8,
+    updateWhenIdle: false,
+    updateWhenZooming: false,
+    zIndex,
+    // Max native zoom RainViewer serves for these tiles.
+    maxZoom: 12,
+    maxNativeZoom: 12,
+  });
+}
+
 /**
- * Dual-buffer radar TileLayer: keep the previous frame visible until the next
- * frame's visible tiles have loaded, then crossfade. Avoids blank flashes.
+ * Dual-buffer radar tiles: keep the current frame fully visible until the next
+ * frame's visible tiles have loaded, then snap instantly. Never remounts layers
+ * on frame change (remounting was the blank-flash source).
  */
 export function SmoothRadarLayer({
   url,
@@ -16,79 +32,102 @@ export function SmoothRadarLayer({
   url: string | null;
   opacity?: number;
 }) {
-  const [shown, setShown] = useState<string | null>(url);
-  const [incoming, setIncoming] = useState<string | null>(null);
-  const [incomingReady, setIncomingReady] = useState(false);
-  const fadeTimer = useRef<number>(0);
+  const map = useMap();
+  const buffersRef = useRef<[L.TileLayer, L.TileLayer] | null>(null);
+  const frontRef = useRef(0);
+  const displayedUrlRef = useRef<string | null>(null);
+  const pendingUrlRef = useRef<string | null>(null);
+  const loadGenRef = useRef(0);
+  const opacityRef = useRef(opacity);
+  opacityRef.current = opacity;
 
-  // Always chase the latest requested URL; keep `shown` until that URL's
-  // visible tiles report load so playback never blanks the map.
   useEffect(() => {
+    const a = createBufferLayer(450);
+    const b = createBufferLayer(451);
+    buffersRef.current = [a, b];
+    a.addTo(map);
+    b.addTo(map);
+    return () => {
+      loadGenRef.current += 1;
+      a.off();
+      b.off();
+      map.removeLayer(a);
+      map.removeLayer(b);
+      buffersRef.current = null;
+      displayedUrlRef.current = null;
+      pendingUrlRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const buffers = buffersRef.current;
+    if (!buffers || !displayedUrlRef.current) return;
+    buffers[frontRef.current]!.setOpacity(opacity);
+  }, [opacity]);
+
+  useEffect(() => {
+    const buffers = buffersRef.current;
+    if (!buffers) return;
+
     if (!url) {
-      setShown(null);
-      setIncoming(null);
-      setIncomingReady(false);
+      loadGenRef.current += 1;
+      pendingUrlRef.current = null;
+      displayedUrlRef.current = null;
+      buffers[0]!.setOpacity(0);
+      buffers[1]!.setOpacity(0);
       return;
     }
-    if (url === shown) {
-      setIncoming(null);
-      setIncomingReady(false);
+
+    if (url === displayedUrlRef.current) {
+      // Cancel any stale in-flight load for an older target.
+      if (pendingUrlRef.current && pendingUrlRef.current !== url) {
+        loadGenRef.current += 1;
+        pendingUrlRef.current = null;
+      }
       return;
     }
-    if (!shown) {
-      setShown(url);
+
+    if (url === pendingUrlRef.current) return;
+
+    const frontIdx = frontRef.current;
+    const backIdx = 1 - frontIdx;
+    const front = buffers[frontIdx]!;
+    const back = buffers[backIdx]!;
+    const gen = ++loadGenRef.current;
+    pendingUrlRef.current = url;
+
+    const reveal = (layer: L.TileLayer, hide: L.TileLayer, newFront: number) => {
+      if (gen !== loadGenRef.current) return;
+      if (pendingUrlRef.current !== url) return;
+      layer.setOpacity(opacityRef.current);
+      layer.setZIndex(451);
+      hide.setOpacity(0);
+      hide.setZIndex(450);
+      frontRef.current = newFront;
+      displayedUrlRef.current = url;
+      pendingUrlRef.current = null;
+    };
+
+    // Force redraw even when the buffer already holds this URL (loop wrap),
+    // otherwise Leaflet's setUrl no-ops and `load` never fires.
+    const loadInto = (layer: L.TileLayer, onReady: () => void) => {
+      layer.off("load");
+      layer.once("load", onReady);
+      layer.setOpacity(0);
+      layer.setUrl(url, false);
+    };
+
+    // First paint: load into the front buffer and show when ready.
+    if (!displayedUrlRef.current) {
+      loadInto(front, () => reveal(front, back, frontIdx));
       return;
     }
-    if (url !== incoming) {
-      setIncoming(url);
-      setIncomingReady(false);
-    }
-  }, [url, shown, incoming]);
 
-  useEffect(() => {
-    if (!incoming || !incomingReady) return;
-    window.clearTimeout(fadeTimer.current);
-    fadeTimer.current = window.setTimeout(() => {
-      setShown(incoming);
-      setIncoming(null);
-      setIncomingReady(false);
-    }, 30);
-    return () => window.clearTimeout(fadeTimer.current);
-  }, [incoming, incomingReady]);
+    // Subsequent frames: load into the hidden back buffer, then snap.
+    loadInto(back, () => reveal(back, front, backIdx));
+  }, [url]);
 
-  if (!shown && !incoming) return null;
-
-  return (
-    <>
-      {shown ? (
-        <TileLayer
-          key={`radar-a-${shown}`}
-          url={shown}
-          opacity={opacity}
-          className="skywatch-radar-tiles"
-          keepBuffer={6}
-          updateWhenIdle={false}
-          updateWhenZooming={false}
-          zIndex={450}
-        />
-      ) : null}
-      {incoming ? (
-        <TileLayer
-          key={`radar-b-${incoming}`}
-          url={incoming}
-          opacity={incomingReady ? opacity : 0.01}
-          className="skywatch-radar-tiles"
-          keepBuffer={6}
-          updateWhenIdle={false}
-          updateWhenZooming={false}
-          zIndex={451}
-          eventHandlers={{
-            load: () => setIncomingReady(true),
-          }}
-        />
-      ) : null}
-    </>
-  );
+  return null;
 }
 
 /**
@@ -120,7 +159,6 @@ export function useRadarFramePreloader(
       const tpl = templates[idx];
       if (!tpl || warmed.current.has(tpl)) return;
       warmed.current.add(tpl);
-      // Prefer current map zoom band + national warm set.
       let z = 4;
       try {
         z = Math.max(3, Math.min(7, Math.round(map.getZoom())));
@@ -132,7 +170,6 @@ export function useRadarFramePreloader(
       }
     };
 
-    // Warm active + next few + a couple behind (loop wrap).
     const n = templates.length;
     for (let step = 0; step <= 4; step++) {
       pushFrame((activeIndex + step) % n);
