@@ -36,9 +36,10 @@ export function HomeHero() {
         <p className="animate-fade-up font-[family-name:var(--font-display)] text-xs font-bold uppercase tracking-[0.28em] text-[var(--cyan)] drop-shadow-[0_0_18px_rgba(34,211,238,0.45)]">
           SkyWatch Australia
         </p>
-        <div className="animate-fade-up-delay max-w-2xl space-y-3">
-          <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[2.15rem] font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-[2.75rem] lg:text-[3.5rem]">
-            Live weather across the continent
+        <div className="animate-fade-up-delay max-w-xl space-y-3">
+          <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[2.65rem] font-extrabold leading-[0.95] sm:text-[3.35rem] lg:text-[4.15rem]">
+            <span className="block">Live weather</span>
+            <span className="block">across the continent</span>
           </h1>
           <p className="max-w-xl text-sm text-white/80 sm:text-base">
             Radar, lightning, satellite loops and forecasts — built for a safer

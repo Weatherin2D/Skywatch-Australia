@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Syne } from "next/font/google";
+import { Barlow_Condensed, DM_Sans } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/site/sw-register";
 import "./globals.css";
 
@@ -9,7 +9,8 @@ const sans = DM_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
-const display = Syne({
+/** Tall condensed display — reads less wide than Syne. */
+const display = Barlow_Condensed({
   variable: "--font-display",
   subsets: ["latin"],
   weight: ["600", "700", "800"],
