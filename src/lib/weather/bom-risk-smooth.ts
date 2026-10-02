@@ -22,10 +22,10 @@ const AU = {
 };
 
 /** Working raster size (upscaled for the final PNG). */
-const WORK_WIDTH = 360;
-const OUT_WIDTH = 720;
-const SIGMA_KM = 270;
-const CUTOFF_SIGMA = 2.5;
+const WORK_WIDTH = 420;
+const OUT_WIDTH = 840;
+const SIGMA_KM = 280;
+const CUTOFF_SIGMA = 2.55;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {
   1: [46, 125, 50, 150], // Thunderstorms possible
@@ -159,37 +159,73 @@ function quantizeField(
   return field;
 }
 
-function upsampleNearest(
-  field: Uint8Array,
+function upsampleBilinear(
+  src: Float32Array,
   srcW: number,
   srcH: number,
   dstW: number,
   dstH: number,
-): Uint8Array {
-  const out = new Uint8Array(dstW * dstH);
+): Float32Array {
+  const out = new Float32Array(dstW * dstH);
   for (let y = 0; y < dstH; y++) {
-    const sy = Math.min(srcH - 1, Math.floor((y * srcH) / dstH));
+    const fy = ((y + 0.5) * srcH) / dstH - 0.5;
+    const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(fy)));
+    const y1 = Math.max(0, Math.min(srcH - 1, y0 + 1));
+    const ty = Math.max(0, Math.min(1, fy - y0));
     for (let x = 0; x < dstW; x++) {
-      const sx = Math.min(srcW - 1, Math.floor((x * srcW) / dstW));
-      out[y * dstW + x] = field[sy * srcW + sx]!;
+      const fx = ((x + 0.5) * srcW) / dstW - 0.5;
+      const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(fx)));
+      const x1 = Math.max(0, Math.min(srcW - 1, x0 + 1));
+      const tx = Math.max(0, Math.min(1, fx - x0));
+      const v00 = src[y0 * srcW + x0]!;
+      const v10 = src[y0 * srcW + x1]!;
+      const v01 = src[y1 * srcW + x0]!;
+      const v11 = src[y1 * srcW + x1]!;
+      const v0 = v00 * (1 - tx) + v10 * tx;
+      const v1 = v01 * (1 - tx) + v11 * tx;
+      out[y * dstW + x] = v0 * (1 - ty) + v1 * ty;
     }
   }
   return out;
+}
+
+function blurField(
+  soft: Float32Array,
+  width: number,
+  height: number,
+  passes: number,
+) {
+  for (let pass = 0; pass < passes; pass++) {
+    const src = Float32Array.from(soft);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let sum = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            sum += src[(y + dy) * width + (x + dx)]!;
+          }
+        }
+        soft[y * width + x] = sum / 9;
+      }
+    }
+  }
 }
 
 /** Georeferenced PNG of nested BoM risk bands for Leaflet ImageOverlay. */
 export function renderBomRiskPng(points: RiskSamplePoint[]): Buffer {
   const work = sizeFor(WORK_WIDTH);
   const out = sizeFor(OUT_WIDTH);
-  const soft = buildSoftField(points, work.width, work.height);
-  const workField = quantizeField(soft, work.width, work.height);
-  const field = upsampleNearest(
-    workField,
+  const softWork = buildSoftField(points, work.width, work.height);
+  // Upsample the soft field first, then quantize — keeps carved edges smooth.
+  const soft = upsampleBilinear(
+    softWork,
     work.width,
     work.height,
     out.width,
     out.height,
   );
+  blurField(soft, out.width, out.height, 2);
+  const field = quantizeField(soft, out.width, out.height);
   const { width, height } = out;
   const png = new PNG({ width, height });
 
