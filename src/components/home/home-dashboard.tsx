@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Link2, Pause, Play } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
@@ -328,9 +328,12 @@ function HomeDashboardInner({
     const next = qs ? `${path}?${qs}` : path;
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== next) {
-      router.replace(next, { scroll: false });
+      // Prefer history.replaceState over router.replace so syncing shareable
+      // params does not remount the Suspense tree / restart the map dynamic
+      // import (that was leaving the radar pane stuck on “Loading map…”).
+      window.history.replaceState(window.history.state, "", next);
     }
-  }, [urlReady, regionId, mode, layers, satProduct, focus, router]);
+  }, [urlReady, regionId, mode, layers, satProduct, focus]);
 
   async function copyShareLink() {
     try {
