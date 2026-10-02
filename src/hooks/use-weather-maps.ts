@@ -19,6 +19,9 @@ type State = {
   tipSeenAtMs: number | null;
 };
 
+/** Stable empty list — avoid `?? []` allocating a new array every render. */
+const EMPTY_FRAMES: WeatherFrame[] = [];
+
 /** Poll often enough to catch each new 10-minute Himawari publish promptly. */
 const LIVE_POLL_MS = 45_000;
 /**
@@ -132,9 +135,8 @@ export function useWeatherMaps(
     state.data?.satellite.products?.[product]?.frames ??
     (state.data?.satellite.product === product
       ? state.data.satellite.frames
-      : []) ??
-    [];
-  const radarFrames: WeatherFrame[] = state.data?.radar.past ?? [];
+      : EMPTY_FRAMES);
+  const radarFrames: WeatherFrame[] = state.data?.radar.past ?? EMPTY_FRAMES;
 
   return {
     ...state,

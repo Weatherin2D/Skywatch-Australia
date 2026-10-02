@@ -231,7 +231,8 @@ function HomeDashboardInner({
 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const urlHydratedRef = useRef(false);
+  /** False until URL params have been applied — sync must wait for this render. */
+  const [urlReady, setUrlReady] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
   const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
@@ -250,10 +251,11 @@ function HomeDashboardInner({
     DEFAULT_SATELLITE_PRODUCT,
   );
 
-  // Hydrate map state from shareable query params once.
+  // Hydrate map state from shareable query params once, then allow URL sync.
+  // Sync must not run in the same effect flush with stale regionId — that was
+  // stripping ?region= and yanking the map back to national framing.
   useEffect(() => {
-    if (urlHydratedRef.current) return;
-    urlHydratedRef.current = true;
+    if (urlReady) return;
     const region = searchParams.get("region");
     if (region && isMapRegionId(region)) setRegionId(region);
     const modeParam = searchParams.get("mode");
@@ -284,18 +286,19 @@ function HomeDashboardInner({
     ) {
       setSatProduct(product as SatelliteProductId);
     }
-  }, [searchParams]);
+    setUrlReady(true);
+  }, [searchParams, urlReady]);
 
   // Prefer saved place region when URL did not specify one.
   usePreferSavedRegion(
     setRegionId,
-    !searchParams.get("region") && !focus,
+    urlReady && !searchParams.get("region") && !focus,
   );
 
   useEffect(() => {
     if (focus === "radar") {
       setMode("Map");
-      setLayers((prev) => ({ ...prev, radar: true }));
+      setLayers((prev) => (prev.radar ? prev : { ...prev, radar: true }));
     } else if (focus === "satellite") {
       setMode("Satellite");
     }
@@ -303,7 +306,7 @@ function HomeDashboardInner({
 
   // Sync shareable map state into the URL (replace, no remount).
   useEffect(() => {
-    if (!urlHydratedRef.current) return;
+    if (!urlReady) return;
     const params = new URLSearchParams();
     if (regionId !== DEFAULT_MAP_REGION) params.set("region", regionId);
     const defaultMode: MapMode =
@@ -327,7 +330,7 @@ function HomeDashboardInner({
     if (current !== next) {
       router.replace(next, { scroll: false });
     }
-  }, [regionId, mode, layers, satProduct, focus, router]);
+  }, [urlReady, regionId, mode, layers, satProduct, focus, router]);
 
   async function copyShareLink() {
     try {
@@ -1044,7 +1047,7 @@ function HomeDashboardInner({
               mapSatelliteImageBounds={
                 himawariOnMap ? (activeFrame?.imageBounds ?? null) : null
               }
-              radarLoopFrames={showRadarOverlay ? radarFrames : []}
+              radarLoopFrames={showRadarOverlay ? radarFrames : undefined}
               radarFrameIndex={
                 useRadarLoop
                   ? frameIndex
