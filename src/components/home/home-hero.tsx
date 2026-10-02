@@ -17,18 +17,18 @@ export function HomeHero() {
   return (
     <section className="relative isolate overflow-hidden rounded-3xl border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
       <div
-        className="animate-hero-drift absolute inset-0 bg-cover bg-[center_40%]"
+        className="animate-hero-drift absolute inset-0 bg-cover bg-[center_35%]"
         style={{
           backgroundImage: "url('/images/hero-storm.jpg')",
         }}
         aria-hidden
       />
       <div
-        className="absolute inset-0 bg-gradient-to-r from-[#070b16]/95 via-[#070b16]/72 to-[#070b16]/20"
+        className="absolute inset-0 bg-gradient-to-r from-[#070b16]/88 via-[#070b16]/55 to-transparent"
         aria-hidden
       />
       <div
-        className="absolute inset-0 bg-gradient-to-t from-[#070b16] via-[#070b16]/25 to-transparent"
+        className="absolute inset-0 bg-gradient-to-t from-[#070b16] via-[#070b16]/30 to-[#070b16]/15"
         aria-hidden
       />
 
@@ -37,7 +37,7 @@ export function HomeHero() {
           SkyWatch Australia
         </p>
         <div className="animate-fade-up-delay max-w-2xl space-y-3">
-          <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[2.05rem] font-extrabold leading-[1.05] tracking-[-0.03em] sm:text-4xl lg:text-[3.35rem]">
+          <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[2.15rem] font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-[2.75rem] lg:text-[3.5rem]">
             Live weather across the continent
           </h1>
           <p className="max-w-xl text-sm text-white/80 sm:text-base">
