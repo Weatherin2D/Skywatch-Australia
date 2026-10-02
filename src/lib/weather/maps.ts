@@ -20,9 +20,8 @@ export type SatelliteProductId =
   | "shortwave"
   | "airmass"
   | "dust"
-  | "convection"
-  | "ash"
-  | "nightmicro";
+  | "nightmicro"
+  | "daymicro";
 
 export type SatelliteProvider = "gibs" | "realearth";
 
@@ -80,25 +79,19 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     realearthProduct: "HIMAWARI-dust",
   },
   {
-    id: "convection",
-    label: "Convection RGB",
-    loopLabel: "Convection RGB loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-convection",
-  },
-  {
-    id: "ash",
-    label: "Ash RGB",
-    loopLabel: "Ash RGB loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-ash",
-  },
-  {
     id: "nightmicro",
     label: "Night microphysics",
     loopLabel: "Night microphysics loop",
     provider: "realearth",
     realearthProduct: "HIMAWARI-night-microphysics",
+  },
+  {
+    id: "daymicro",
+    label: "Day microphysics",
+    loopLabel: "Day microphysics loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-day-microphysics-ahi",
+    daytimeOnly: true,
   },
 ] as const;
 

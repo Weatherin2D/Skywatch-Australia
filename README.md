@@ -12,7 +12,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 |-------|--------|
 | `/` | SkyWatch homepage — hero, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
 | `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
-| `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, convection, ash, night microphysics) |
+| `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
 | `/models` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
