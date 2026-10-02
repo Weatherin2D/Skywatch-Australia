@@ -75,6 +75,12 @@ type Props = {
   /** Radar timeline frames for prefetch / smooth playback. */
   radarLoopFrames?: WeatherFrame[];
   radarFrameIndex?: number;
+  /** Official BoM thunderstorm forecast chart (risk page). */
+  riskImageUrl?: string | null;
+  riskImageBounds?: [[number, number], [number, number]] | null;
+  /** sheet = product graphic over map; geo = georeferenced plate */
+  riskImageDisplay?: "sheet" | "geo";
+  riskImageOpacity?: number;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -338,6 +344,10 @@ export function HomeMap({
   mapSatelliteImageBounds = null,
   radarLoopFrames = [],
   radarFrameIndex = 0,
+  riskImageUrl = null,
+  riskImageBounds = null,
+  riskImageDisplay = "sheet",
+  riskImageOpacity = 0.92,
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -451,6 +461,18 @@ export function HomeMap({
             className="skywatch-map-himawari"
           />
         ) : null}
+        {riskImageUrl &&
+        riskImageDisplay === "geo" &&
+        riskImageBounds ? (
+          <ImageOverlay
+            key={riskImageUrl}
+            url={riskImageUrl}
+            bounds={riskImageBounds}
+            opacity={riskImageOpacity}
+            zIndex={420}
+            className="skywatch-risk-chart"
+          />
+        ) : null}
         {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.9} /> : null}
         {showRadarOverlay && radarLoopFrames.length > 0 ? (
           <RadarFramePreloader
@@ -484,6 +506,17 @@ export function HomeMap({
           fullscreenTarget={fullscreenTarget}
         />
       </MapContainer>
+      {riskImageUrl && riskImageDisplay === "sheet" ? (
+        <div className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center bg-[#070b16]/55 p-3 sm:p-5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={riskImageUrl}
+            alt="BoM thunderstorm forecast"
+            className="max-h-full max-w-full object-contain shadow-[0_12px_48px_rgba(0,0,0,0.55)]"
+            draggable={false}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

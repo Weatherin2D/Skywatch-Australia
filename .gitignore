@@ -43,6 +43,7 @@ next-env.d.ts
 
 # uploaded forecasts
 /data/current-forecast.json
+/data/bom-risk/
 /agent-tools/
 
 # local agent / QA artifacts

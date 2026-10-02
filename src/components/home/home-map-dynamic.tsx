@@ -51,6 +51,10 @@ export function HomeMapDynamic({
   mapSatelliteImageBounds,
   radarLoopFrames,
   radarFrameIndex,
+  riskImageUrl,
+  riskImageBounds,
+  riskImageDisplay,
+  riskImageOpacity,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -79,6 +83,10 @@ export function HomeMapDynamic({
   mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
   radarLoopFrames?: WeatherFrame[];
   radarFrameIndex?: number;
+  riskImageUrl?: string | null;
+  riskImageBounds?: [[number, number], [number, number]] | null;
+  riskImageDisplay?: "sheet" | "geo";
+  riskImageOpacity?: number;
 }) {
   return (
     <HomeMap
@@ -109,6 +117,10 @@ export function HomeMapDynamic({
       mapSatelliteImageBounds={mapSatelliteImageBounds}
       radarLoopFrames={radarLoopFrames}
       radarFrameIndex={radarFrameIndex}
+      riskImageUrl={riskImageUrl}
+      riskImageBounds={riskImageBounds}
+      riskImageDisplay={riskImageDisplay}
+      riskImageOpacity={riskImageOpacity}
     />
   );
 }

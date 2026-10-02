@@ -30,10 +30,12 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/locations` | BoM location search (`?q=`) |
 | `/api/weather/forecast` | BoM daily + hourly + observations (`?geohash=` / `/:geohash` / `?region=`) |
 | `/api/weather/capitals` | Capital-city observation/forecast snapshots |
-| `/risk` | Preserved convective outlook (former AusRisk public map) |
-| `/risk/admin` | Preserved outlook admin upload |
+| `/risk` | BoM thunderstorm forecast charts (Day 1–3) on the national map |
+| `/risk/admin` | Upload official BoM Day 1–3 thunderstorm graphics |
+| `/api/weather/risk` | Day 1–3 chart catalog + BoM legend |
+| `/api/weather/risk-image` | Proxied BoM chart image (`?day=1\|2\|3`) |
 
-Forecast APIs under `/api/forecast` and `/api/admin/*` still power `/risk`.
+BoM does not expose a public CDN for categorical thunderstorm forecast sheets (they go to registered / emergency-service channels). `/risk` displays those official graphics via admin upload (a sample NSW Day 1 chart is seeded for local demo).
 
 **Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (moderate/minor flood warnings; major/moderate flood watches) · Minor (minor flood watches; marine wind warnings).
 

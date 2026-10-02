@@ -18,6 +18,9 @@ import * as weatherStormActivity from "@/server/api/weather-storm-activity";
 import * as weatherModels from "@/server/api/weather-models";
 import * as weatherUpperAir from "@/server/api/weather-upper-air";
 import * as weatherRadarTile from "@/server/api/weather-radar-tile";
+import * as weatherRisk from "@/server/api/weather-risk";
+import * as weatherRiskImage from "@/server/api/weather-risk-image";
+import * as adminRiskUpload from "@/server/api/admin-risk-upload";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,6 +43,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "admin/logout": adminLogout as RouteHandlers,
   "admin/session": adminSession as RouteHandlers,
   "admin/upload": adminUpload as RouteHandlers,
+  "admin/risk-upload": adminRiskUpload as RouteHandlers,
   forecast: forecast as RouteHandlers,
   "weather/frame": weatherFrame as RouteHandlers,
   "weather/lightning": weatherLightning as RouteHandlers,
@@ -54,6 +58,8 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/models": weatherModels as RouteHandlers,
   "weather/upper-air": weatherUpperAir as RouteHandlers,
   "weather/radar-tile": weatherRadarTile as RouteHandlers,
+  "weather/risk": weatherRisk as RouteHandlers,
+  "weather/risk-image": weatherRiskImage as RouteHandlers,
 };
 
 function resolve(
