@@ -15,7 +15,21 @@ import {
   BOM_METEYE_IMAGE_BOUNDS,
   METEYE_THUNDERSTORM_CATEGORIES,
 } from "@/lib/weather/bom-meteye-constants";
+import {
+  BOM_THUNDERSTORM_CATEGORIES,
+  bomLegendItems,
+} from "@/lib/weather/bom-thunderstorm";
 import { cn } from "@/lib/utils";
+
+const STATE_CHART_REGIONS = new Set<MapRegionId>([
+  "nsw",
+  "vic",
+  "qld",
+  "wa",
+  "sa",
+  "tas",
+  "nt",
+]);
 
 const RISK_MAP_SETTINGS: MapSettingsState = {
   ...DEFAULT_MAP_SETTINGS,
@@ -30,11 +44,31 @@ function dayChipLabel(day: RolledDay): string {
   return `Day ${day.effectiveDay}`;
 }
 
-function BomRiskLegend({ usedIds }: { usedIds: Set<string> }) {
+function BomRiskLegend({
+  usedIds,
+  mode,
+}: {
+  usedIds: Set<string>;
+  mode: "meteye" | "sheet";
+}) {
+  const items =
+    mode === "sheet"
+      ? bomLegendItems().map((item) => ({
+          id: item.id,
+          label: item.label,
+          color: item.style.fillColor,
+        }))
+      : METEYE_THUNDERSTORM_CATEGORIES.map((item) => ({
+          id: item.id,
+          label: item.label,
+          color: item.color,
+        }));
+
   return (
     <ul className="flex flex-col gap-2.5">
-      {METEYE_THUNDERSTORM_CATEGORIES.map((item) => {
-        const used = usedIds.size === 0 ? true : usedIds.has(item.id);
+      {items.map((item) => {
+        const used =
+          mode === "sheet" || usedIds.size === 0 ? true : usedIds.has(item.id);
         return (
           <li
             key={item.id}
@@ -70,6 +104,8 @@ export function RiskDashboard() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [regionId, setRegionId] = useState<MapRegionId>("national");
   const [regionMenuOpen, setRegionMenuOpen] = useState(false);
+  const [riskDisplay, setRiskDisplay] = useState<"geo" | "sheet">("geo");
+  const [sheetAvailable, setSheetAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,14 +166,55 @@ export function RiskDashboard() {
   const dayHasRisk = (day: RolledDay | null | undefined) =>
     Boolean(day?.legend?.some((item) => item.used));
 
+  const preferStateSheet =
+    STATE_CHART_REGIONS.has(regionId) &&
+    selectedDay != null &&
+    selectedDay <= 2;
+
   const riskImageUrl =
-    selectedDay != null && dayHasRisk(active)
-      ? `/api/weather/risk-image?day=${selectedDay}&t=${encodeURIComponent(
-          data?.issuedAt ?? String(selectedDay),
-        )}`
+    selectedDay != null && (dayHasRisk(active) || preferStateSheet)
+      ? `/api/weather/risk-image?day=${selectedDay}&region=${encodeURIComponent(
+          regionId,
+        )}&t=${encodeURIComponent(data?.issuedAt ?? String(selectedDay))}`
       : null;
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!riskImageUrl) {
+      setRiskDisplay("geo");
+      setSheetAvailable(false);
+      return;
+    }
+    async function probe() {
+      try {
+        const res = await fetch(riskImageUrl!, {
+          method: "GET",
+          cache: "no-store",
+          headers: { Accept: "image/png" },
+        });
+        if (cancelled) return;
+        const mode =
+          res.headers.get("X-Risk-Display") === "sheet" ? "sheet" : "geo";
+        const len = Number(res.headers.get("Content-Length") || "0");
+        // Tiny transparent placeholder ≈ empty.
+        const empty = !res.ok || (len > 0 && len < 200);
+        setRiskDisplay(mode);
+        setSheetAvailable(mode === "sheet" && !empty);
+      } catch {
+        if (!cancelled) {
+          setRiskDisplay("geo");
+          setSheetAvailable(false);
+        }
+      }
+    }
+    void probe();
+    return () => {
+      cancelled = true;
+    };
+  }, [riskImageUrl]);
+
   const region = getMapRegion(regionId);
+  const legendMode = sheetAvailable ? "sheet" : "meteye";
   const daySlots = [1, 2, 3].map((n) => {
     const hit = data?.days.find((d) => d.effectiveDay === n) ?? null;
     return { day: n, rolled: hit };
@@ -151,8 +228,9 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            Official Bureau of Meteorology MetEye thunderstorm forecast —
-            Chance of and Likely areas for Day 1–3.
+            Official Bureau of Meteorology thunderstorm outlook — national
+            MetEye Chance/Likely for Day 1–3, plus state Thunderstorm Forecast
+            charts when BoM publishes them.
           </p>
         </div>
       </div>
@@ -259,10 +337,12 @@ export function RiskDashboard() {
                   showLightning={false}
                   showSynoptic={false}
                   riskFeatures={[]}
-                  riskImageUrl={riskImageUrl}
+                  riskImageUrl={
+                    sheetAvailable || dayHasRisk(active) ? riskImageUrl : null
+                  }
                   riskImageBounds={BOM_METEYE_IMAGE_BOUNDS}
-                  riskImageDisplay="geo"
-                  riskImageOpacity={0.82}
+                  riskImageDisplay={riskDisplay}
+                  riskImageOpacity={riskDisplay === "sheet" ? 0.97 : 0.82}
                 />
                 {!loading && data?.status === "empty" ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
@@ -287,7 +367,9 @@ export function RiskDashboard() {
           </div>
 
           <p className="text-xs text-white/45">
-            Source: BoM MetEye thunderstorm layer (IDZ73094)
+            {sheetAvailable
+              ? `Source: BoM Thunderstorm Forecast chart for ${region.short}`
+              : "Source: BoM MetEye thunderstorm layer (IDZ73094)"}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",
@@ -295,7 +377,9 @@ export function RiskDashboard() {
                   timeStyle: "short",
                 })} (AEST/AEDT)`
               : ""}
-            . Day maps are daily maxima of BoM’s 3-hourly thunderstorm areas.
+            {sheetAvailable
+              ? "."
+              : ". Day maps are daily maxima of BoM’s 3-hourly thunderstorm areas."}
           </p>
         </section>
 
@@ -305,13 +389,15 @@ export function RiskDashboard() {
               Key
             </p>
             <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-bold text-white">
-              Thunderstorms
+              {legendMode === "sheet" ? "Convective risk" : "Thunderstorms"}
             </h2>
           </div>
-          <BomRiskLegend usedIds={usedCategoryIds} />
+          <BomRiskLegend usedIds={usedCategoryIds} mode={legendMode} />
           <p className="text-xs leading-relaxed text-white/50">
-            Same Chance / Likely colours as MetEye. Areas show where BoM
-            forecasts at least a low chance of thunderstorms in the period.
+            {legendMode === "sheet"
+              ? BOM_THUNDERSTORM_CATEGORIES.map((c) => c.label).join(" · ") +
+                "."
+              : "Same Chance / Likely colours as MetEye. Areas show where BoM forecasts at least a low chance of thunderstorms in the period."}
           </p>
         </aside>
       </div>
