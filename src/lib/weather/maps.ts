@@ -17,11 +17,11 @@ export type WeatherFrame = {
 export type SatelliteProductId =
   | "infrared"
   | "visible"
-  | "truecolor"
   | "shortwave"
-  | "watervapor"
   | "airmass"
   | "dust"
+  | "convection"
+  | "ash"
   | "nightmicro";
 
 export type SatelliteProvider = "gibs" | "realearth";
@@ -58,27 +58,11 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     daytimeOnly: true,
   },
   {
-    id: "truecolor",
-    label: "True colour",
-    loopLabel: "True colour loop",
-    provider: "realearth",
-    realearthProduct: "HIMAWARI-true-color",
-    daytimeOnly: true,
-  },
-  {
     id: "shortwave",
     label: "Shortwave IR",
     loopLabel: "Shortwave IR loop",
     provider: "realearth",
     realearthProduct: "HIMAWARI-B07",
-  },
-  {
-    id: "watervapor",
-    label: "Water vapour",
-    loopLabel: "Water vapour loop",
-    provider: "realearth",
-    // Band 8 upper-level WV — same reliable single-band path as IR/Visible.
-    realearthProduct: "HIMAWARI-B08",
   },
   {
     id: "airmass",
@@ -94,6 +78,20 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
     loopLabel: "Dust RGB loop",
     provider: "realearth",
     realearthProduct: "HIMAWARI-dust",
+  },
+  {
+    id: "convection",
+    label: "Convection RGB",
+    loopLabel: "Convection RGB loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-convection",
+  },
+  {
+    id: "ash",
+    label: "Ash RGB",
+    loopLabel: "Ash RGB loop",
+    provider: "realearth",
+    realearthProduct: "HIMAWARI-ash",
   },
   {
     id: "nightmicro",
