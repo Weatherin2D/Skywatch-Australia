@@ -218,6 +218,14 @@
   image-rendering: crisp-edges;
 }
 
+/* BoM risk bands — keep carved edges smooth when Leaflet scales the overlay. */
+.skywatch-risk-chart,
+.leaflet-overlay-pane img.skywatch-risk-chart,
+.leaflet-image-layer.skywatch-risk-chart {
+  image-rendering: auto !important;
+  image-rendering: smooth !important;
+}
+
 .skywatch-map .leaflet-control-zoom {
   border: none !important;
   box-shadow: none !important;
