@@ -51,7 +51,9 @@ function lerp(a: number, b: number, t: number): number {
 
 export function colourForDbz(dbz: number): Rgba {
   const stops = RADAR_DBZ_STOPS;
-  if (dbz <= stops[0]!.dbz) return stops[0]!.rgba;
+  // Keep sub-0 reflectivity fully clear so raw tiles stay hard-edged
+  // (no soft alpha wash between −10 and 0).
+  if (dbz < 0) return [0, 0, 0, 0];
   const last = stops[stops.length - 1]!;
   if (dbz >= last.dbz) return last.rgba;
 
@@ -59,12 +61,13 @@ export function colourForDbz(dbz: number): Rgba {
     const a = stops[i]!;
     const b = stops[i + 1]!;
     if (dbz >= a.dbz && dbz <= b.dbz) {
-      const t = (dbz - a.dbz) / (b.dbz - a.dbz);
+      const t = (dbz - a.dbz) / (b.dbz - a.dbz || 1);
       return [
         clampByte(lerp(a.rgba[0], b.rgba[0], t)),
         clampByte(lerp(a.rgba[1], b.rgba[1], t)),
         clampByte(lerp(a.rgba[2], b.rgba[2], t)),
-        clampByte(lerp(a.rgba[3], b.rgba[3], t)),
+        // Opaque once reflectivity is on-scale — avoid feathered edges.
+        255,
       ];
     }
   }
