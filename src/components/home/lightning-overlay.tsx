@@ -12,7 +12,6 @@ import type { LightningStrike } from "@/lib/weather/lightning";
 import {
   LIGHTNING_MAX_VISIBLE,
   LIGHTNING_MAX_VISIBLE_DOM,
-  LIGHTNING_VISIBLE_WINDOW_SEC,
   strikeAgeColor,
   strikeAgeRgb,
   strikeAgeSeconds,
@@ -22,6 +21,8 @@ import {
   strikesForAnimation,
 } from "@/lib/weather/lightning";
 import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
+
+export type LightningIconStyle = "crosshair" | "bolt";
 
 type LightningAnimProps = {
   strikes: LightningStrike[];
@@ -34,6 +35,7 @@ type LightningAnimProps = {
   nextFrameTime?: number | null;
   /** Image georeference; defaults to national AU Himawari crop. */
   bounds?: LonLatBounds;
+  iconStyle?: LightningIconStyle;
 };
 
 function useNowTick(enabled: boolean) {
@@ -78,25 +80,52 @@ function drawCrosshair(
   ctx.lineWidth = thick;
   ctx.lineCap = "butt";
 
-  // Top
   ctx.beginPath();
   ctx.moveTo(cx, cy - half);
   ctx.lineTo(cx, cy - gap);
   ctx.stroke();
-  // Bottom
   ctx.beginPath();
   ctx.moveTo(cx, cy + gap);
   ctx.lineTo(cx, cy + half);
   ctx.stroke();
-  // Left
   ctx.beginPath();
   ctx.moveTo(cx - half, cy);
   ctx.lineTo(cx - gap, cy);
   ctx.stroke();
-  // Right
   ctx.beginPath();
   ctx.moveTo(cx + gap, cy);
   ctx.lineTo(cx + half, cy);
+  ctx.stroke();
+}
+
+/** Classic filled lightning bolt glyph, centred on (cx, cy). */
+function drawBolt(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  r: number,
+  g: number,
+  b: number,
+  opacity: number,
+) {
+  const s = size;
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.beginPath();
+  // Pointy bolt — top tip → mid notch → bottom tip → back up
+  ctx.moveTo(cx - s * 0.08, cy - s * 0.52);
+  ctx.lineTo(cx + s * 0.22, cy - s * 0.08);
+  ctx.lineTo(cx + s * 0.02, cy - s * 0.08);
+  ctx.lineTo(cx + s * 0.28, cy + s * 0.52);
+  ctx.lineTo(cx - s * 0.12, cy + s * 0.02);
+  ctx.lineTo(cx + s * 0.06, cy + s * 0.02);
+  ctx.closePath();
+  ctx.fill();
+  // Thin dark edge so bolts read on bright cloud tops
+  ctx.globalAlpha = opacity * 0.55;
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
+  ctx.lineWidth = Math.max(0.6, s * 0.06);
   ctx.stroke();
 }
 
@@ -115,6 +144,7 @@ export function SatelliteLightningOverlay({
   msPerFrame = 500,
   nextFrameTime = null,
   bounds,
+  iconStyle = "crosshair",
 }: LightningAnimProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -124,10 +154,12 @@ export function SatelliteLightningOverlay({
   const timelineStartRef = useRef(timelineStart);
   const timelineEndRef = useRef(timelineEnd);
   const boundsRef = useRef(bounds);
+  const iconStyleRef = useRef(iconStyle);
   strikesRef.current = strikes;
   timelineStartRef.current = timelineStart;
   timelineEndRef.current = timelineEnd;
   boundsRef.current = bounds;
+  iconStyleRef.current = iconStyle;
 
   const paint = useRef((animTime: number) => {
     const canvas = canvasRef.current;
@@ -161,6 +193,9 @@ export function SatelliteLightningOverlay({
       LIGHTNING_MAX_VISIBLE,
     );
 
+    const draw =
+      iconStyleRef.current === "bolt" ? drawBolt : drawCrosshair;
+
     // Oldest first so fresh flashes paint on top.
     for (let i = visible.length - 1; i >= 0; i--) {
       const strike = visible[i]!;
@@ -178,7 +213,7 @@ export function SatelliteLightningOverlay({
       const size = strikeAgeSize(age);
       const fresh = strikeIsFresh(age);
       const pulse = fresh ? 1 + 0.12 * Math.sin(animTime * 8 + i) : 1;
-      drawCrosshair(
+      draw(
         ctx,
         (x / 100) * cssW,
         (y / 100) * cssH,
@@ -209,10 +244,19 @@ export function SatelliteLightningOverlay({
     if (playing) return;
     const t = referenceTime ?? Math.floor(Date.now() / 1000);
     setCount(paint(t));
-  }, [enabled, playing, referenceTime, strikes, timelineStart, timelineEnd, paint, bounds]);
+  }, [
+    enabled,
+    playing,
+    referenceTime,
+    strikes,
+    timelineStart,
+    timelineEnd,
+    paint,
+    bounds,
+    iconStyle,
+  ]);
 
   // Play: interpolate clock in rAF and paint — zero React commits per tick.
-  // Strikes are read from refs so live buffer updates don't restart the clock.
   useEffect(() => {
     if (!enabled || !playing || referenceTime == null) return;
 
@@ -243,7 +287,6 @@ export function SatelliteLightningOverlay({
     return () => cancelAnimationFrame(raf);
   }, [enabled, playing, referenceTime, nextFrameTime, msPerFrame, paint]);
 
-  // Keep canvas sized with the map.
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap || !enabled) return;
@@ -264,8 +307,6 @@ export function SatelliteLightningOverlay({
       className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      {/* Hidden count bridge for legend via custom event would be overkill —
-          legend computes its own from referenceTime. */}
       <span className="sr-only" aria-live="polite">
         {count} lightning strikes
       </span>
@@ -281,20 +322,38 @@ function crosshairHtml(color: string, size: number, opacity: number) {
   return `<span class="skywatch-lightning-crosshair" style="width:${size}px;height:${size}px;color:${color};opacity:${opacity};--lg-gap:${gap}px;--lg-thick:${thick}px"><i></i><b></b></span>`;
 }
 
-function cachedCrosshairIcon(color: string, size: number, opacity: number) {
-  // Quantize to keep cache small.
+function boltHtml(color: string, size: number, opacity: number) {
+  const w = Math.max(10, size);
+  const h = Math.max(14, Math.round(size * 1.25));
+  return `<span class="skywatch-lightning-bolt" style="width:${w}px;height:${h}px;color:${color};opacity:${opacity}"><svg viewBox="0 0 24 32" width="${w}" height="${h}" aria-hidden="true"><path fill="currentColor" stroke="rgba(0,0,0,0.45)" stroke-width="1.2" stroke-linejoin="round" d="M13.2 1.2 4.6 17.4h6.1L8.8 30.8l11.6-18.2h-6.4L13.2 1.2z"/></svg></span>`;
+}
+
+function cachedLightningIcon(
+  style: LightningIconStyle,
+  color: string,
+  size: number,
+  opacity: number,
+) {
   const op = Math.round(opacity * 10) / 10;
-  const key = `${color}|${size}|${op}`;
+  const key = `${style}|${color}|${size}|${op}`;
   let icon = iconCache.get(key);
   if (!icon) {
+    const html =
+      style === "bolt"
+        ? boltHtml(color, size, op)
+        : crosshairHtml(color, size, op);
+    const box =
+      style === "bolt"
+        ? [Math.max(10, size), Math.max(14, Math.round(size * 1.25))]
+        : [size, size];
     icon = L.divIcon({
       className: "skywatch-lightning-marker",
-      html: crosshairHtml(color, size, op),
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2],
+      html,
+      iconSize: box as [number, number],
+      iconAnchor: [box[0]! / 2, box[1]! / 2],
     });
     iconCache.set(key, icon);
-    if (iconCache.size > 200) {
+    if (iconCache.size > 240) {
       const first = iconCache.keys().next().value;
       if (first) iconCache.delete(first);
     }
@@ -309,6 +368,7 @@ export function LeafletLightningOverlay({
   referenceTime = null,
   timelineStart = null,
   timelineEnd = null,
+  iconStyle = "crosshair",
 }: LightningAnimProps) {
   const animTime = useFrameAnimTime(enabled, referenceTime);
   const visible = useMemo(() => {
@@ -337,7 +397,7 @@ export function LeafletLightningOverlay({
             key={strike.id}
             position={[strike.lat, strike.lon]}
             opacity={opacity}
-            icon={cachedCrosshairIcon(color, size, opacity)}
+            icon={cachedLightningIcon(iconStyle, color, size, opacity)}
             interactive={false}
           />
         );

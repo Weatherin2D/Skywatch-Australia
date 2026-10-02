@@ -15,6 +15,8 @@ export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
 
 /** Cartographic toggles for the national map (below weather overlays). */
 export const MAP_SETTINGS = [
+  { id: "satelliteBasemap", label: "Satellite imagery" },
+  { id: "lightningBolts", label: "Lightning bolt icons" },
   { id: "cityLabels", label: "City labels" },
   { id: "stateOutlines", label: "State outlines" },
   { id: "stateLabels", label: "State labels" },
@@ -27,6 +29,10 @@ export type MapSettingId = (typeof MAP_SETTINGS)[number]["id"];
 export type MapSettingsState = Record<MapSettingId, boolean>;
 
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
+  /** Esri World Imagery under the open Map (pan/zoom) */
+  satelliteBasemap: false,
+  /** Bolt glyphs instead of crosshair markers */
+  lightningBolts: false,
   cityLabels: false,
   stateOutlines: false,
   stateLabels: false,

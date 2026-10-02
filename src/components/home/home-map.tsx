@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  ImageOverlay,
   MapContainer,
   TileLayer,
   useMap,
@@ -62,6 +63,9 @@ type Props = {
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
   synopticReferenceTime?: number | null;
+  /** Latest Himawari frame for Map-mode satellite overlay (optional). */
+  mapSatelliteImageUrl?: string | null;
+  mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
 };
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
@@ -309,6 +313,8 @@ export function HomeMap({
   synopticGeoJson = null,
   synopticValidTime = null,
   synopticReferenceTime = null,
+  mapSatelliteImageUrl = null,
+  mapSatelliteImageBounds = null,
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -318,9 +324,17 @@ export function HomeMap({
   const satAspect = isNational
     ? GIBS_AU_ASPECT
     : boundsMercatorAspect(bounds);
+  const useSatelliteBasemap = mapSettings.satelliteBasemap;
+  const lightningIconStyle = mapSettings.lightningBolts
+    ? ("bolt" as const)
+    : ("crosshair" as const);
 
-  const basemapUrl =
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+  const basemapUrl = useSatelliteBasemap
+    ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+  const basemapAttr = useSatelliteBasemap
+    ? "Esri World Imagery"
+    : "Esri";
 
   // Satellite: full-bleed region crop (national or state) — image is already
   // georeferenced to `bounds`, so CSS overlays use the same projection.
@@ -365,6 +379,7 @@ export function HomeMap({
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
           bounds={bounds}
+          iconStyle={lightningIconStyle}
         />
       </div>
     );
@@ -383,7 +398,21 @@ export function HomeMap({
       >
         <MapModeEffect mode={mode} />
         <FitRegionBounds bounds={bounds} animate isNational={isNational} />
-        <TileLayer url={basemapUrl} attribution="Esri" />
+        <TileLayer
+          key={useSatelliteBasemap ? "sat" : "dark"}
+          url={basemapUrl}
+          attribution={basemapAttr}
+        />
+        {mapSatelliteImageUrl && mapSatelliteImageBounds ? (
+          <ImageOverlay
+            key={mapSatelliteImageUrl}
+            url={mapSatelliteImageUrl}
+            bounds={mapSatelliteImageBounds}
+            opacity={useSatelliteBasemap ? 0.55 : 0.82}
+            zIndex={350}
+            className="skywatch-map-himawari"
+          />
+        ) : null}
         {radarTiles ? (
           <TileLayer
             url={radarTiles}
@@ -408,6 +437,7 @@ export function HomeMap({
           playing={lightningPlaying}
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
+          iconStyle={lightningIconStyle}
         />
         <MapTools bounds={bounds} isNational={isNational} />
       </MapContainer>

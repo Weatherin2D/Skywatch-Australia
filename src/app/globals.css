@@ -346,6 +346,19 @@
   border: none !important;
 }
 
+.skywatch-lightning-bolt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.65));
+}
+
+.skywatch-lightning-bolt svg {
+  display: block;
+  overflow: visible;
+}
+
 @keyframes skywatch-lightning-crosshair-pulse {
   0%,
   100% {

@@ -46,6 +46,8 @@ export function HomeMapDynamic({
   synopticGeoJson,
   synopticValidTime,
   synopticReferenceTime,
+  mapSatelliteImageUrl,
+  mapSatelliteImageBounds,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -70,6 +72,8 @@ export function HomeMapDynamic({
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
   synopticReferenceTime?: number | null;
+  mapSatelliteImageUrl?: string | null;
+  mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
 }) {
   return (
     <HomeMap
@@ -96,6 +100,8 @@ export function HomeMapDynamic({
       synopticGeoJson={synopticGeoJson}
       synopticValidTime={synopticValidTime}
       synopticReferenceTime={synopticReferenceTime}
+      mapSatelliteImageUrl={mapSatelliteImageUrl}
+      mapSatelliteImageBounds={mapSatelliteImageBounds}
     />
   );
 }
