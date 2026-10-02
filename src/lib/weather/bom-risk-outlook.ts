@@ -25,9 +25,9 @@ const FETCH_UA =
 
 const CACHE_MS = 15 * 60_000;
 /** BoM rate-limits Vercel datacenter bursts — pace national sampling in waves. */
-const WAVE_SIZE = 28;
-const WAVE_CONCURRENCY = 12;
-const WAVE_PAUSE_MS = 900;
+const WAVE_SIZE = 20;
+const WAVE_CONCURRENCY = 10;
+const WAVE_PAUSE_MS = 1100;
 const FETCH_TIMEOUT_MS = 10_000;
 const FETCH_RETRIES = 1;
 /** Half-width of each sample cell in degrees (lon scaled by cos(lat)). */
@@ -292,9 +292,12 @@ type SiteDayRisk = {
 async function fetchSiteRisk(
   site: BomRiskSite,
 ): Promise<SiteDayRisk & { ok: boolean }> {
+  // Prefer 6-char grid hash — matches BoM forecast grid keys more reliably.
+  const geohash =
+    site.geohash.length > 6 ? site.geohash.slice(0, 6) : site.geohash;
   try {
     const payload = await bomGetJson<{ data?: DailyRow[] }>(
-      `${BOM_API}/locations/${encodeURIComponent(site.geohash)}/forecasts/daily`,
+      `${BOM_API}/locations/${encodeURIComponent(geohash)}/forecasts/daily`,
     );
     const rows = payload.data ?? [];
     if (!rows.length) {
