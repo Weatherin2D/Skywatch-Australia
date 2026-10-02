@@ -22,10 +22,11 @@ const AU = {
 };
 
 /** Working raster size (upscaled for the final PNG). */
-const WORK_WIDTH = 420;
-const OUT_WIDTH = 840;
-const SIGMA_KM = 280;
-const CUTOFF_SIGMA = 2.55;
+const WORK_WIDTH = 400;
+const OUT_WIDTH = 900;
+/** Large sigma merges town samples into continuous BoM-like carved bands. */
+const SIGMA_KM = 380;
+const CUTOFF_SIGMA = 2.35;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {
   1: [46, 125, 50, 150], // Thunderstorms possible
