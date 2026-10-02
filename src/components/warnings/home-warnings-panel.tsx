@@ -149,7 +149,7 @@ export function HomeWarningsPanel() {
 
       <Link
         href="/warnings"
-        className="mt-3 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
+        className="mt-3 inline-block text-xs font-semibold text-[var(--cyan)] hover:underline"
       >
         All warnings →
       </Link>

@@ -136,7 +136,7 @@ export function WarningDetailPage({ id }: { id: string }) {
 
             {warning.images.length > 0 ? (
               <section className="space-y-3">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--bom-yellow)]">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--cyan)]">
                   Warning maps
                 </h2>
                 {warning.images.map((img, i) => (
@@ -162,7 +162,7 @@ export function WarningDetailPage({ id }: { id: string }) {
             ) : null}
 
             <section className="sw-panel p-4 sm:p-5">
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--bom-yellow)]">
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--cyan)]">
                 Warning text
               </h2>
               <div

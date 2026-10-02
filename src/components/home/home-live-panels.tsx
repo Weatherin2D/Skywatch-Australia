@@ -147,7 +147,7 @@ export function HomeNowPanel() {
             </span>
             <span>
               Max{" "}
-              <strong className="text-[var(--bom-yellow)]">
+              <strong className="text-[var(--cyan)]">
                 {today?.tempMax != null ? `${today.tempMax}°` : "—"}
               </strong>
             </span>
@@ -173,7 +173,7 @@ export function HomeNowPanel() {
           </div>
           <Link
             href={`/forecast/${SYDNEY.geohash}`}
-            className="mt-2 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
+            className="mt-2 inline-block text-xs font-semibold text-[var(--cyan)] hover:underline"
           >
             Full Sydney forecast →
           </Link>
@@ -263,7 +263,7 @@ export function HomeWeekPanel() {
                   night={d.isNight}
                   className="h-5 w-5"
                 />
-                <span className="font-bold text-[var(--bom-yellow)]">
+                <span className="font-bold text-[var(--cyan)]">
                   {d.tempMax != null ? `${d.tempMax}°` : "—"}
                 </span>
                 <span className="text-[var(--ink)]/75">
@@ -276,7 +276,7 @@ export function HomeWeekPanel() {
       ) : null}
       <Link
         href={`/forecast/${SYDNEY.geohash}`}
-        className="mt-2.5 inline-block text-xs font-semibold text-[var(--bom-yellow)] hover:underline"
+        className="mt-2.5 inline-block text-xs font-semibold text-[var(--cyan)] hover:underline"
       >
         Open full forecast →
       </Link>
@@ -310,7 +310,7 @@ export function HomeBriefingPanel() {
         <ul className="space-y-2">
           {notes.map((item) => (
             <li key={item} className="flex gap-2 text-sm leading-snug text-[var(--ink)]/85">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--bom-yellow)]" />
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--cyan)]" />
               <span className="line-clamp-4 sm:line-clamp-none">{item}</span>
             </li>
           ))}

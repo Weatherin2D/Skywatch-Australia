@@ -85,10 +85,10 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
       <div className="mx-auto w-full max-w-[960px] px-3 py-5 sm:px-4 sm:py-6">
         <div className="mb-5 space-y-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--bom-yellow)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cyan)]">
               Bureau of Meteorology
             </p>
-            <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+            <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-white sm:text-3xl">
               Location forecast
             </h1>
             <p className="mt-1.5 max-w-xl text-sm text-white/70">
@@ -246,7 +246,7 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-white/65">
                   <span>
                     Max{" "}
-                    <strong className="text-[var(--bom-yellow)]">
+                    <strong className="text-[var(--cyan)]">
                       {today.tempMax != null ? `${today.tempMax}°` : "—"}
                     </strong>
                   </span>
@@ -308,7 +308,7 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
 
             {hourly.length > 0 ? (
               <section className="sw-panel p-4">
-                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--bom-yellow)]">
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--cyan)]">
                   Next 24 hours
                 </h3>
                 <div className="sw-chip-row sm:gap-2">
@@ -339,7 +339,7 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
 
             {data.daily.length > 0 ? (
               <section className="sw-panel p-4">
-                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--bom-yellow)]">
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--cyan)]">
                   7-day forecast
                 </h3>
                 <ul className="divide-y divide-white/10">
@@ -371,7 +371,7 @@ export function ForecastExplorer({ geohash = null, region = null }: Props) {
                           {day.tempMin != null ? `${day.tempMin}°` : "—"}
                         </span>
                         {" / "}
-                        <span className="text-[var(--bom-yellow)]">
+                        <span className="text-[var(--cyan)]">
                           {day.tempMax != null ? `${day.tempMax}°` : "—"}
                         </span>
                       </p>

@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
-import { Source_Sans_3 } from "next/font/google";
+import { DM_Sans, Syne } from "next/font/google";
 import "./globals.css";
 
-const sans = Source_Sans_3({
+const sans = DM_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+});
+
+const display = Syne({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -22,8 +28,7 @@ export default function RootLayout({
   return (
     <html
       lang="en-AU"
-      className={`${sans.variable} h-full`}
-      style={{ ["--font-display" as string]: "var(--font-sans)" }}
+      className={`${sans.variable} ${display.variable} h-full dark`}
     >
       <body className="min-h-full bg-[var(--page)] font-sans text-foreground antialiased">
         {children}

@@ -1,72 +1,118 @@
 "use client";
 
 import Link from "next/link";
-import { Settings } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ChevronDown, MapPin } from "lucide-react";
+import { useState } from "react";
 import { SkyWatchLogo } from "@/components/site/skywatch-logo";
 import { LocationSearch } from "@/components/forecast/location-search";
+import { MORE_NAV, PRIMARY_NAV, STATE_PILLS } from "@/components/site/nav-config";
 import { STATE_CAPITALS } from "@/lib/weather/location-forecast";
-
-const STATES = [
-  "NSW",
-  "VIC",
-  "QLD",
-  "WA",
-  "SA",
-  "TAS",
-  "ACT",
-  "NT",
-  "AUSTRALIA",
-] as const;
+import { cn } from "@/lib/utils";
 
 export function SiteHeader() {
-  return (
-    <header className="sticky top-0 z-40 border-b border-[var(--brand)]/10 bg-[var(--bom-blue)] text-[var(--brand)]">
-      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 sm:gap-4 sm:px-4">
-        <div className="flex min-w-0 shrink-0 items-center gap-3">
-          <SkyWatchLogo size="sm" inverted />
-          <p className="hidden text-xs leading-snug text-[var(--brand)]/70 xl:block">
-            Real weather. Deeper insight.
-            <br />A safer Australia.
-          </p>
-        </div>
+  const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
 
-        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
+  return (
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b16]/80 text-white backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2.5 px-3 py-2.5 sm:px-4 lg:px-5">
+        <div className="flex items-center gap-3 lg:gap-5">
+          <div className="flex min-w-0 shrink-0 items-center gap-3">
+            <Link href="/" className="min-w-0">
+              <SkyWatchLogo size="sm" />
+            </Link>
+            <p className="hidden max-w-[11rem] text-[11px] leading-snug text-white/55 xl:block">
+              Real weather. Deeper insight. A safer Australia.
+            </p>
+          </div>
+
           <nav
-            aria-label="Regions"
-            className="hidden items-center gap-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--brand)]/85 2xl:flex"
+            aria-label="Primary"
+            className="mx-auto hidden items-center gap-1 lg:flex"
           >
-            {STATES.map((state, i) => {
-              const key = state.toLowerCase();
-              const capital = STATE_CAPITALS[key];
-              const href = capital
-                ? `/forecast/${capital.geohash}`
-                : `/forecast?region=${key}`;
+            {PRIMARY_NAV.map(({ href, label, icon: Icon }) => {
+              const active =
+                href === "/"
+                  ? pathname === "/"
+                  : pathname === href || pathname.startsWith(`${href}/`);
               return (
-                <span key={state} className="flex items-center">
-                  {i > 0 ? (
-                    <span className="px-1 text-[var(--brand)]/30" aria-hidden>
-                      |
-                    </span>
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "relative flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition",
+                    active
+                      ? "bg-[var(--cyan)]/12 text-[var(--cyan)]"
+                      : "text-white/70 hover:bg-white/5 hover:text-white",
+                  )}
+                >
+                  <Icon className="h-4 w-4 opacity-90" aria-hidden />
+                  {label}
+                  {active ? (
+                    <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-[var(--cyan)]" />
                   ) : null}
-                  <Link href={href} className="hover:underline">
-                    {state}
-                  </Link>
-                </span>
+                </Link>
               );
             })}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMoreOpen((v) => !v)}
+                className="flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold text-white/70 transition hover:bg-white/5 hover:text-white"
+                aria-expanded={moreOpen}
+              >
+                More
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              {moreOpen ? (
+                <ul className="absolute right-0 top-full z-50 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 shadow-xl backdrop-blur-xl">
+                  {MORE_NAV.map((item) => (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={() => setMoreOpen(false)}
+                        className="block px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/5 hover:text-white"
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </nav>
-          <LocationSearch
-            compact
-            className="w-full max-w-[min(100%,280px)] sm:max-w-[240px]"
-          />
-          <button
-            type="button"
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--brand)]/8 text-[var(--brand)] transition hover:bg-[var(--brand)]/12 sm:inline-flex"
-            aria-label="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
+
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 lg:max-w-md lg:flex-none">
+            <LocationSearch
+              compact
+              className="w-full max-w-[min(100%,280px)] sm:max-w-[240px]"
+            />
+          </div>
         </div>
+
+        <nav
+          aria-label="States"
+          className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {STATE_PILLS.map((state) => {
+            const key = state.toLowerCase();
+            const capital = STATE_CAPITALS[key];
+            const href = capital
+              ? `/forecast/${capital.geohash}`
+              : `/forecast?region=${key}`;
+            return (
+              <Link
+                key={state}
+                href={href}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold tracking-wide text-white/75 transition hover:border-[var(--cyan)]/40 hover:bg-[var(--cyan)]/10 hover:text-[var(--cyan)]"
+              >
+                <MapPin className="h-3 w-3 opacity-70" aria-hidden />
+                {state}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </header>
   );

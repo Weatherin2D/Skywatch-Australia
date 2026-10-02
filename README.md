@@ -10,9 +10,14 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — live BoM forecasts/warnings, Himawari loops, overlays, storm activity, model comparison, upper air |
+| `/` | SkyWatch homepage — hero, live BoM forecasts/warnings, Himawari loops, overlays, storm activity, model comparison, upper air |
+| `/radar` | National map focused on rain radar + lightning overlays |
+| `/satellite` | Himawari satellite loops (infrared / visible / air mass) |
+| `/models` | Models workspace stub (coming soon) |
+| `/climate` | Climate outlook stub (coming soon) |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
 | `/forecast/[geohash]` | Direct forecast for a BoM location |
+| `/warnings` | Live BoM warnings by severity and state |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |

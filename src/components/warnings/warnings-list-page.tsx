@@ -126,10 +126,10 @@ export function WarningsListPage() {
     <SiteShell>
       <div className="mx-auto w-full max-w-[960px] px-3 py-5 sm:px-4 sm:py-6">
         <div className="mb-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--bom-yellow)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cyan)]">
             Bureau of Meteorology
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+          <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-white sm:text-3xl">
             Current warnings
           </h1>
           <p className="mt-1.5 max-w-xl text-sm text-white/70">
@@ -182,9 +182,7 @@ export function WarningsListPage() {
                 href={categoryHref(categoryFilter, "")}
                 className={cn(
                   "sw-chip",
-                  !stateFilter
-                    ? "border-white/40 bg-white/15 text-white"
-                    : "sw-chip-idle",
+                  !stateFilter ? "sw-chip-active" : "sw-chip-idle",
                 )}
               >
                 National
@@ -195,9 +193,7 @@ export function WarningsListPage() {
                   href={categoryHref(categoryFilter, s)}
                   className={cn(
                     "sw-chip",
-                    stateFilter === s
-                      ? "border-white/40 bg-white/15 text-white"
-                      : "sw-chip-idle",
+                    stateFilter === s ? "sw-chip-active" : "sw-chip-idle",
                   )}
                 >
                   {s}
@@ -211,12 +207,10 @@ export function WarningsListPage() {
           <p className="text-sm text-white/70">Loading warnings…</p>
         ) : null}
         {error && groups.length === 0 ? (
-          <p className="rounded-lg border border-white/15 bg-[var(--bom-blue-mid)] p-4 text-sm text-white/80">
-            {error}
-          </p>
+          <p className="sw-panel p-4 text-sm text-white/80">{error}</p>
         ) : null}
         {!loading && !error && groups.length === 0 && cancelled.length === 0 ? (
-          <p className="rounded-lg border border-white/15 bg-[var(--bom-blue-mid)] p-4 text-sm text-white/80">
+          <p className="sw-panel p-4 text-sm text-white/80">
             No warnings
             {categoryFilter ? ` in ${severityLabel(categoryFilter)}` : ""}
             {stateFilter ? ` for ${stateFilter}` : ""} right now.

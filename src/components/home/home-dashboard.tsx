@@ -1,12 +1,8 @@
 "use client";
 
-import {
-  ChevronDown,
-  ChevronRight,
-  Pause,
-  Play,
-} from "lucide-react";
+import { ChevronDown, Pause, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
 import {
@@ -37,6 +33,8 @@ import {
   type MapSettingId,
   type MapSettingsState,
 } from "@/components/home/mock-data";
+
+export type HomeDashboardFocus = "radar" | "satellite";
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import { useLightning } from "@/hooks/use-lightning";
@@ -78,13 +76,13 @@ function Toggle({
       aria-label={label}
       onClick={() => onChange(!on)}
       className={cn(
-        "relative h-5 w-9 shrink-0 rounded-sm transition",
-        on ? "bg-[var(--bom-yellow)]" : "bg-white/25",
+        "relative h-5 w-9 shrink-0 rounded-full transition",
+        on ? "bg-[var(--cyan)]" : "bg-white/20",
       )}
     >
       <span
         className={cn(
-          "absolute top-0.5 left-0.5 h-4 w-4 rounded-sm bg-white transition",
+          "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition",
           on && "translate-x-4",
         )}
       />
@@ -179,8 +177,8 @@ function OverlayControls({
         </ul>
       </Panel>
 
-      <div className="rounded-lg border border-white/15 bg-[var(--bom-blue)] px-3 py-3 text-xs text-[var(--brand)]/85">
-        <p className="font-bold text-[var(--brand)]">
+      <div className="rounded-2xl border border-[var(--cyan)]/25 bg-[var(--cyan)]/10 px-3 py-3 text-xs text-white/80">
+        <p className="font-bold text-[var(--cyan)]">
           {regionId === "national"
             ? "Australia-wide coverage"
             : `${regionLabel} focus`}
@@ -195,13 +193,32 @@ function OverlayControls({
   );
 }
 
-export function HomeDashboard() {
-  const [layers, setLayers] =
-    useState<Record<LayerId, boolean>>(DEFAULT_WEATHER_LAYERS);
+export function HomeDashboard({
+  focus,
+}: {
+  focus?: HomeDashboardFocus;
+} = {}) {
+  const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
+    if (focus === "radar") {
+      return { ...DEFAULT_WEATHER_LAYERS, radar: true, lightning: true };
+    }
+    return DEFAULT_WEATHER_LAYERS;
+  });
   const [mapSettings, setMapSettings] =
     useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
-  const [mode, setMode] = useState<MapMode>("Satellite");
+  const [mode, setMode] = useState<MapMode>(() =>
+    focus === "radar" ? "Map" : "Satellite",
+  );
   const [regionId, setRegionId] = useState<MapRegionId>(DEFAULT_MAP_REGION);
+
+  useEffect(() => {
+    if (focus === "radar") {
+      setMode("Map");
+      setLayers((prev) => ({ ...prev, radar: true }));
+    } else if (focus === "satellite") {
+      setMode("Satellite");
+    }
+  }, [focus]);
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     DEFAULT_SATELLITE_PRODUCT,
   );
@@ -510,15 +527,34 @@ export function HomeDashboard() {
     setMapSettings((prev) => ({ ...prev, [id]: on }));
   }
 
+  const pageTitle =
+    focus === "radar"
+      ? "Radar"
+      : focus === "satellite"
+        ? "Satellite"
+        : "National overview";
+  const pageSubtitle =
+    focus === "radar"
+      ? "Live rain radar with lightning and national map overlays."
+      : focus === "satellite"
+        ? "Himawari loops across Australia — infrared, visible and air mass."
+        : null;
+
   return (
     <HomeSydneyForecastProvider>
     <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-6 pt-3 sm:px-4 sm:pb-8 sm:pt-4">
+      {!focus ? <HomeHero /> : null}
+
       <div className="animate-fade-up space-y-0.5">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
-          National overview
+        <h1 className="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-white sm:text-3xl lg:text-4xl">
+          {pageTitle}
         </h1>
         <p className="text-sm text-white/70 sm:text-base">
-          <HomeDateHeading /> — observed and forecast across Australia.
+          {pageSubtitle ?? (
+            <>
+              <HomeDateHeading /> — observed and forecast across Australia.
+            </>
+          )}
         </p>
       </div>
 
@@ -536,8 +572,8 @@ export function HomeDashboard() {
         </div>
 
         <div className="order-1 flex min-h-0 flex-col gap-2 lg:order-none">
-          <div className="relative z-[60] flex flex-wrap items-center gap-1">
-            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/80">
+          <div className="relative z-[60] flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/55">
               View
             </span>
             {MAP_MODES.map((m) => {
@@ -558,16 +594,10 @@ export function HomeDashboard() {
                         }
                       }}
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
-                        mode === "Satellite"
-                          ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
-                          : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
+                        "sw-chip inline-flex items-center gap-1",
+                        mode === "Satellite" ? "sw-chip-active" : "sw-chip-idle",
                       )}
                     >
-                      <ChevronRight
-                        className="h-3.5 w-3.5 opacity-80"
-                        aria-hidden
-                      />
                       Satellite
                       <span className="hidden font-normal opacity-80 sm:inline">
                         · {satProductMeta.label}
@@ -584,17 +614,17 @@ export function HomeDashboard() {
                       <ul
                         role="listbox"
                         aria-label="Satellite product"
-                        className="absolute left-0 top-full z-[70] mt-1 max-h-72 min-w-[13rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                        className="absolute left-0 top-full z-[70] mt-1 max-h-72 min-w-[13rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
                       >
                         {SATELLITE_PRODUCTS.map((p) => (
                           <li key={p.id} role="option" aria-selected={satProduct === p.id}>
                             <button
                               type="button"
                               className={cn(
-                                "flex w-full items-center px-3 py-2 text-left text-sm font-semibold text-[var(--brand)] transition",
+                                "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
                                 satProduct === p.id
-                                  ? "bg-[var(--bom-yellow)]"
-                                  : "hover:bg-[var(--navy-deep)]",
+                                  ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                                  : "text-white/80 hover:bg-white/5 hover:text-white",
                               )}
                               onClick={() => {
                                 setSatProduct(p.id);
@@ -622,13 +652,10 @@ export function HomeDashboard() {
                     setRegionMenuOpen(false);
                   }}
                   className={cn(
-                    "inline-flex items-center gap-0.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
-                    mode === m
-                      ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
-                      : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
+                    "sw-chip inline-flex items-center gap-0.5",
+                    mode === m ? "sw-chip-active" : "sw-chip-idle",
                   )}
                 >
-                  <ChevronRight className="h-3.5 w-3.5 opacity-80" aria-hidden />
                   {m}
                 </button>
               );
@@ -646,13 +673,10 @@ export function HomeDashboard() {
                   setRegionMenuOpen((open) => !open);
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
-                  regionId !== "national"
-                    ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
-                    : "bg-[var(--bom-blue)] text-[var(--brand)] hover:bg-[var(--navy-deep)]",
+                  "sw-chip inline-flex items-center gap-1",
+                  regionId !== "national" ? "sw-chip-active" : "sw-chip-idle",
                 )}
               >
-                <ChevronRight className="h-3.5 w-3.5 opacity-80" aria-hidden />
                 Region
                 <span className="font-normal opacity-80">
                   · {region.short}
@@ -669,7 +693,7 @@ export function HomeDashboard() {
                 <ul
                   role="listbox"
                   aria-label="Map region"
-                  className="absolute left-0 top-full z-[80] mt-1 max-h-80 min-w-[14rem] overflow-y-auto border border-[var(--brand)]/15 bg-[var(--bom-blue)] py-1 text-[var(--brand)] shadow-lg"
+                  className="absolute left-0 top-full z-[80] mt-1 max-h-80 min-w-[14rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   {MAP_REGIONS.map((r) => (
@@ -679,8 +703,8 @@ export function HomeDashboard() {
                         className={cn(
                           "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-semibold transition",
                           regionId === r.id
-                            ? "bg-[var(--bom-yellow)]"
-                            : "hover:bg-[var(--navy-deep)]",
+                            ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                            : "text-white/80 hover:bg-white/5 hover:text-white",
                         )}
                         onClick={() => {
                           setRegionId(r.id);
@@ -701,7 +725,7 @@ export function HomeDashboard() {
 
           <div
             className={cn(
-              "relative z-0 overflow-hidden rounded-lg border border-white/20 bg-black",
+              "relative z-0 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_12px_40px_rgba(0,0,0,0.35)]",
               // Satellite: let the region crop's mercator aspect drive height so
               // tall states (WA/QLD/NT/…) are not clipped by a fixed 4:3 box.
               showSatelliteLoop
@@ -772,7 +796,7 @@ export function HomeDashboard() {
           </div>
 
           {showSatelliteLoop ? (
-            <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-[var(--bom-blue)] px-2.5 py-2 text-[var(--brand)] sm:gap-3 sm:px-3 sm:py-2.5">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-2.5 py-2 text-white backdrop-blur-xl sm:gap-3 sm:px-3 sm:py-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -791,7 +815,7 @@ export function HomeDashboard() {
                   loopFrames.length === 0 ||
                   (readyCount === 0 && preloadTotal > 0)
                 }
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--bom-yellow)] text-[var(--brand)] disabled:opacity-40"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--cyan)] text-[#041018] shadow-[0_0_20px_rgba(34,211,238,0.3)] disabled:opacity-40"
                 aria-label={playing ? "Pause timeline" : "Play timeline"}
               >
                 {playing ? (
@@ -801,16 +825,16 @@ export function HomeDashboard() {
                 )}
               </button>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--brand)]/80">
-                  <span className="inline-flex flex-wrap items-center gap-2 font-semibold text-[var(--brand)]">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-white/70">
+                  <span className="inline-flex flex-wrap items-center gap-2 font-semibold text-white">
                     {scrubLabel}
                     {loopFrames.length > 0 ? (
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                          "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
                           liveFresh
-                            ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
-                            : "bg-[var(--brand)]/10 text-[var(--brand)]/80",
+                            ? "bg-[var(--cyan)] text-[#041018]"
+                            : "bg-white/10 text-white/80",
                         )}
                         title={
                           liveTipLabel
@@ -821,9 +845,7 @@ export function HomeDashboard() {
                         <span
                           className={cn(
                             "h-1.5 w-1.5 rounded-full",
-                            liveFresh
-                              ? "bg-[var(--brand)]"
-                              : "bg-emerald-500",
+                            liveFresh ? "bg-[#041018]" : "bg-emerald-400",
                           )}
                           aria-hidden
                         />
@@ -834,7 +856,7 @@ export function HomeDashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="hidden sm:inline">{loopStatusLabel}</span>
                     {loopFrames.length > 0 ? (
-                      <span className="text-[10px] text-[var(--brand)]/65">
+                      <span className="text-[10px] text-white/55">
                         Frame {frameIndex + 1}/{loopFrames.length}
                       </span>
                     ) : null}
@@ -849,10 +871,10 @@ export function HomeDashboard() {
                           type="button"
                           onClick={() => setPlaybackSpeed(speed.id)}
                           className={cn(
-                            "rounded-sm px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
+                            "rounded-full px-1.5 py-0.5 text-[10px] font-bold transition sm:text-[11px]",
                             playbackSpeed === speed.id
-                              ? "bg-[var(--bom-yellow)] text-[var(--brand)]"
-                              : "bg-[var(--navy-deep)] text-[var(--brand)]/80 hover:bg-[var(--page)]/10",
+                              ? "bg-[var(--cyan)] text-[#041018]"
+                              : "bg-white/8 text-white/75 hover:bg-white/12",
                           )}
                           aria-pressed={playbackSpeed === speed.id}
                         >
@@ -863,9 +885,9 @@ export function HomeDashboard() {
                   </div>
                 </div>
                 {mapsError && loopFrames.length === 0 ? (
-                  <p className="text-xs text-[var(--brand)]">{mapsError}</p>
+                  <p className="text-xs text-white/85">{mapsError}</p>
                 ) : loopFrames.length === 0 && !mapsLoading ? (
-                  <p className="text-xs text-[var(--brand)]/75">
+                  <p className="text-xs text-white/65">
                     {satProductMeta.daytimeOnly
                       ? "Visible imagery needs daylight over Australia — try Infrared or Air Mass."
                       : "No frames for this product right now."}
@@ -887,10 +909,10 @@ export function HomeDashboard() {
                         );
                         setFrameIndex(next);
                       }}
-                      className="w-full accent-[var(--bom-yellow)] disabled:opacity-40"
+                      className="w-full accent-[var(--cyan)] disabled:opacity-40"
                       aria-label={`${satProductMeta.label} satellite timeline`}
                     />
-                    <div className="mt-1 flex justify-between text-[10px] text-[var(--brand)]/70">
+                    <div className="mt-1 flex justify-between text-[10px] text-white/55">
                       <span>{edgeLabels.start}</span>
                       <span className="hidden sm:inline">{edgeLabels.mid}</span>
                       <span>{edgeLabels.end}</span>
@@ -900,13 +922,13 @@ export function HomeDashboard() {
               </div>
             </div>
           ) : (
-            <p className="rounded-lg border border-white/15 bg-[var(--bom-blue-mid)] px-3 py-2 text-xs text-[var(--ink)]/80">
-              <span className="font-semibold text-[var(--ink)]">Map</span> view
-              with live overlays. Use{" "}
-              <span className="font-semibold text-[var(--ink)]">Region</span> to
-              zoom into a state, or{" "}
-              <span className="font-semibold text-[var(--ink)]">Satellite</span>{" "}
-              for Himawari loops. Rain radar stays available as an overlay.
+            <p className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/75">
+              <span className="font-semibold text-white">Map</span> view with
+              live overlays. Use{" "}
+              <span className="font-semibold text-white">Region</span> to zoom
+              into a state, or{" "}
+              <span className="font-semibold text-white">Satellite</span> for
+              Himawari loops. Rain radar stays available as an overlay.
             </p>
           )}
 

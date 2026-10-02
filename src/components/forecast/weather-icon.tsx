@@ -21,7 +21,7 @@ export function WeatherIcon({
   night?: boolean;
 }) {
   const key = icon.toLowerCase();
-  const cls = cn("h-6 w-6 shrink-0 text-[var(--bom-yellow)]", className);
+  const cls = cn("h-6 w-6 shrink-0 text-[var(--cyan)]", className);
 
   if (key.includes("thunder") || key.includes("storm") || key.includes("cyclone")) {
     return <CloudLightning className={cls} aria-hidden />;

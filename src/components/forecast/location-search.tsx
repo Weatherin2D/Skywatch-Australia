@@ -179,7 +179,7 @@ export function LocationSearch({
                   }}
                 >
                   <MapPin
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--bom-yellow)]"
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--cyan)]"
                     aria-hidden
                   />
                   <span>
@@ -258,8 +258,8 @@ export function LocationSearch({
           }}
           className={cn(
             compact
-              ? "h-8 w-full border-0 bg-[var(--page)] pl-8 pr-8 text-sm text-white outline-none placeholder:text-white/50"
-              : "h-11 w-full border border-white/20 bg-[var(--bom-blue-mid)] pl-10 pr-10 text-sm text-white outline-none placeholder:text-white/50 focus:border-[var(--bom-yellow)]",
+              ? "h-9 w-full rounded-full border border-white/10 bg-white/[0.06] pl-8 pr-8 text-sm text-white outline-none placeholder:text-white/45 focus:border-[var(--cyan)]/50"
+              : "h-11 w-full rounded-xl border border-white/15 bg-white/[0.04] pl-10 pr-10 text-sm text-white outline-none placeholder:text-white/50 focus:border-[var(--cyan)]",
             inputClassName,
           )}
         />

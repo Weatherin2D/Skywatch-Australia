@@ -8,9 +8,9 @@ export function WarningsBar() {
   const { states, activeCount, loading } = useWarnings();
 
   return (
-    <div className="border-b border-[var(--brand)]/15 bg-[var(--bom-yellow)] text-[var(--brand)]">
-      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-1.5 sm:gap-3 sm:px-4 sm:py-2">
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-[var(--brand)] text-[var(--bom-yellow)] sm:h-7 sm:w-7">
+    <div className="border-b border-amber-400/30 bg-gradient-to-r from-amber-500/95 via-amber-400 to-yellow-300 text-[#1a1200]">
+      <div className="mx-auto flex w-full max-w-[1680px] items-center gap-2 px-3 py-1.5 sm:gap-3 sm:px-4 sm:py-2">
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1a1200] text-amber-300 sm:h-7 sm:w-7">
           <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
         </span>
 
@@ -32,7 +32,7 @@ export function WarningsBar() {
                   <Link
                     key={state}
                     href={`/warnings?state=${state.toLowerCase()}`}
-                    className="shrink-0 rounded-sm bg-[var(--brand)]/10 px-1.5 py-0.5 hover:bg-[var(--brand)]/15"
+                    className="shrink-0 rounded-full bg-black/10 px-2 py-0.5 hover:bg-black/15"
                   >
                     {state}
                   </Link>
@@ -44,10 +44,9 @@ export function WarningsBar() {
 
         <Link
           href="/warnings"
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-sm border border-[var(--brand)]/25 bg-white/60 px-2 py-1 text-[11px] font-semibold sm:gap-1 sm:px-2.5 sm:text-xs"
+          className="inline-flex shrink-0 items-center gap-0.5 text-xs font-bold hover:underline sm:text-sm"
         >
-          <span className="hidden xs:inline sm:inline">All warnings</span>
-          <span className="sm:hidden">View</span>
+          All warnings
           <ChevronRight className="h-3.5 w-3.5" aria-hidden />
         </Link>
       </div>

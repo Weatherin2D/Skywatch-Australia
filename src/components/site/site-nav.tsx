@@ -33,7 +33,7 @@ export function SiteNav() {
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-t-md border-b-[3px] px-3.5 py-2.5 text-sm font-semibold transition",
                 active
-                  ? "border-[var(--bom-yellow)] bg-[var(--page)]/8 text-[var(--brand)]"
+                  ? "border-[var(--cyan)] bg-[var(--page)]/8 text-[var(--brand)]"
                   : "border-transparent text-[var(--brand)]/75 hover:bg-[var(--page)]/6 hover:text-[var(--brand)]",
               )}
             >

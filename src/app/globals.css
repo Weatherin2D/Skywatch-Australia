@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans), "Source Sans 3", Arial, Helvetica, sans-serif;
+  --font-sans: var(--font-sans), "DM Sans", Arial, Helvetica, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-display), "Source Sans 3", Arial, Helvetica, sans-serif;
+  --font-heading: var(--font-display), "Syne", Arial, Helvetica, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,6 +49,8 @@
   --color-ink: var(--ink);
   --color-brand: var(--brand);
   --color-page: var(--page);
+  --color-cyan: var(--cyan);
+  --color-cyan-soft: var(--cyan-soft);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -59,49 +61,51 @@
 }
 
 :root {
-  /* White ↔ dark-blue swap. --brand stays navy for text on light/yellow. */
-  --brand: #003087;
-  --ink: #ffffff;
-  --navy-deep: #f4f7fb;
-  --navy: #ffffff;
-  --bom-blue: #ffffff;
-  --bom-blue-mid: #002766;
-  --panel: #002766;
-  --sky: #ffe000;
-  --bom-yellow: #ffe000;
-  --page: #003087;
-  --background: #003087;
-  --foreground: #ffffff;
-  --card: #002766;
-  --card-foreground: #ffffff;
-  --popover: #ffffff;
-  --popover-foreground: #003087;
-  --primary: #ffffff;
-  --primary-foreground: #003087;
-  --secondary: #1a6bb5;
-  --secondary-foreground: #ffffff;
-  --muted: #1a4a8c;
-  --muted-foreground: #c5d4e8;
-  --accent: #ffe000;
-  --accent-foreground: #003087;
-  --destructive: #ff6b6b;
-  --border: #5a7ab0;
-  --input: #003087;
-  --ring: #ffe000;
-  --chart-1: #ffffff;
-  --chart-2: #1a6bb5;
-  --chart-3: #ffe000;
-  --chart-4: #ff6b6b;
-  --chart-5: #7dcea0;
-  --radius: 0.375rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #003087;
-  --sidebar-primary: #ffe000;
-  --sidebar-primary-foreground: #003087;
-  --sidebar-accent: #eef3f9;
-  --sidebar-accent-foreground: #003087;
-  --sidebar-border: #c5d4e8;
-  --sidebar-ring: #ffe000;
+  /* Dark glass dashboard — cyan accent (mockup) */
+  --brand: #f4f8ff;
+  --ink: #e8eef9;
+  --navy-deep: #070b16;
+  --navy: #0b1224;
+  --bom-blue: #0f172a;
+  --bom-blue-mid: #121c33;
+  --panel: rgba(18, 28, 51, 0.72);
+  --sky: #22d3ee;
+  --cyan: #22d3ee;
+  --cyan-soft: #67e8f9;
+  --bom-yellow: #fbbf24;
+  --page: #070b16;
+  --background: #070b16;
+  --foreground: #e8eef9;
+  --card: rgba(15, 23, 42, 0.78);
+  --card-foreground: #e8eef9;
+  --popover: #121c33;
+  --popover-foreground: #e8eef9;
+  --primary: #22d3ee;
+  --primary-foreground: #041018;
+  --secondary: #1e3a5f;
+  --secondary-foreground: #e8eef9;
+  --muted: #152038;
+  --muted-foreground: #94a3b8;
+  --accent: #22d3ee;
+  --accent-foreground: #041018;
+  --destructive: #f87171;
+  --border: rgba(148, 163, 184, 0.18);
+  --input: #0f172a;
+  --ring: #22d3ee;
+  --chart-1: #22d3ee;
+  --chart-2: #38bdf8;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #34d399;
+  --radius: 0.85rem;
+  --sidebar: rgba(10, 16, 32, 0.92);
+  --sidebar-foreground: #e8eef9;
+  --sidebar-primary: #22d3ee;
+  --sidebar-primary-foreground: #041018;
+  --sidebar-accent: rgba(34, 211, 238, 0.12);
+  --sidebar-accent-foreground: #e8eef9;
+  --sidebar-border: rgba(148, 163, 184, 0.14);
+  --sidebar-ring: #22d3ee;
 }
 
 @layer base {
@@ -110,9 +114,12 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-color: var(--page);
     background-image:
-      radial-gradient(ellipse 120% 80% at 50% -20%, rgba(26, 107, 181, 0.35), transparent 55%),
-      linear-gradient(180deg, #003087 0%, #00245f 100%);
+      radial-gradient(ellipse 90% 60% at 15% -10%, rgba(34, 211, 238, 0.16), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 90% 10%, rgba(56, 189, 248, 0.1), transparent 50%),
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(30, 58, 95, 0.45), transparent 55%),
+      linear-gradient(180deg, #070b16 0%, #0a1224 45%, #070b16 100%);
     background-attachment: fixed;
   }
   html {
@@ -122,28 +129,34 @@
 
 @layer components {
   .sw-panel {
-    @apply rounded-lg border border-white/12 bg-[var(--bom-blue-mid)]/95 text-[var(--ink)] shadow-[0_1px_0_rgba(255,255,255,0.04)];
+    @apply rounded-2xl border border-white/10 bg-[var(--panel)] text-[var(--ink)] shadow-[0_8px_32px_rgba(0,0,0,0.28)] backdrop-blur-xl;
   }
   .sw-panel-title {
-    @apply mb-2.5 border-b border-white/12 pb-1.5 text-sm font-bold tracking-wide text-[var(--ink)];
+    @apply mb-2.5 border-b border-white/10 pb-1.5 text-sm font-bold tracking-wide text-white;
   }
   .sw-chip {
-    @apply inline-flex shrink-0 items-center rounded-md border px-2.5 py-1.5 text-xs font-semibold transition;
+    @apply inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-semibold transition;
   }
   .sw-chip-active {
-    @apply border-[var(--bom-yellow)] bg-[var(--bom-yellow)] text-[var(--brand)];
+    @apply border-[var(--cyan)]/50 bg-[var(--cyan)] text-[var(--primary-foreground)] shadow-[0_0_20px_rgba(34,211,238,0.25)];
   }
   .sw-chip-idle {
-    @apply border-white/15 text-white/85 hover:bg-white/10;
+    @apply border-white/12 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10;
   }
   .sw-chip-row {
     @apply -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+  }
+  .sw-glass {
+    @apply border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+  }
+  .sw-nav-active {
+    @apply text-[var(--cyan)] after:absolute after:inset-x-2 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-[var(--cyan)];
   }
   .warning-body {
     @apply space-y-3 text-sm leading-relaxed text-white/90;
   }
   .warning-body a {
-    @apply text-[var(--bom-yellow)] underline;
+    @apply text-[var(--cyan)] underline;
   }
   .warning-body h1,
   .warning-body h2,
@@ -177,7 +190,6 @@
   height: 100%;
 }
 
-/* Keep map overlays (lightning, Leaflet panes) below page chrome / dropdowns. */
 .skywatch-map {
   isolation: isolate;
 }
@@ -190,24 +202,25 @@
 }
 
 .skywatch-map .leaflet-control-zoom a {
-  background: #ffffff !important;
-  color: #003087 !important;
-  border: 1px solid #c5d4e8 !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  color: #e8eef9 !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
   width: 34px !important;
   height: 34px !important;
   line-height: 34px !important;
   font-size: 16px !important;
-  border-radius: 0 !important;
+  border-radius: 10px !important;
+  margin-bottom: 4px !important;
 }
 
 .skywatch-map .leaflet-control-zoom a:hover {
-  background: #eef3f9 !important;
-  color: #003087 !important;
+  background: rgba(34, 211, 238, 0.18) !important;
+  color: #67e8f9 !important;
 }
 
 .skywatch-map .leaflet-control-attribution {
-  background: rgba(255, 255, 255, 0.9) !important;
-  color: #003087 !important;
+  background: rgba(7, 11, 22, 0.75) !important;
+  color: #94a3b8 !important;
   font-size: 10px !important;
 }
 
@@ -248,7 +261,7 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #ffe000;
+  background: #22d3ee;
   border: 1px solid #fff;
 }
 
@@ -263,13 +276,10 @@
   padding: 0;
 }
 
-/* Lightning crosshair: four solid arms (no currentColor gradients — those
-   silently fail in several engines and leave strikes invisible). */
 .skywatch-lightning-crosshair {
   position: relative;
   display: inline-block;
   flex-shrink: 0;
-  /* Avoid drop-shadow on Leaflet markers — major GPU cost when many are visible */
 }
 
 .skywatch-lightning-crosshair::before,
@@ -292,7 +302,6 @@
   font-weight: normal;
 }
 
-/* Top arm */
 .skywatch-lightning-crosshair::before {
   left: 50%;
   top: 0;
@@ -301,7 +310,6 @@
   transform: translateX(-50%);
 }
 
-/* Bottom arm */
 .skywatch-lightning-crosshair::after {
   left: 50%;
   bottom: 0;
@@ -310,7 +318,6 @@
   transform: translateX(-50%);
 }
 
-/* Left arm */
 .skywatch-lightning-crosshair > i {
   top: 50%;
   left: 0;
@@ -319,7 +326,6 @@
   transform: translateY(-50%);
 }
 
-/* Right arm */
 .skywatch-lightning-crosshair > b {
   top: 50%;
   right: 0;
@@ -356,7 +362,7 @@
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -364,10 +370,37 @@
   }
 }
 
+@keyframes hero-drift {
+  from {
+    transform: scale(1.06) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.12) translate3d(-1.5%, 1%, 0);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 28px 0 rgba(34, 211, 238, 0.28);
+  }
+}
+
 .animate-fade-up {
-  animation: fade-up 0.4s ease-out both;
+  animation: fade-up 0.45s ease-out both;
 }
 
 .animate-fade-up-delay {
-  animation: fade-up 0.5s ease-out 0.05s both;
+  animation: fade-up 0.55s ease-out 0.08s both;
+}
+
+.animate-hero-drift {
+  animation: hero-drift 18s ease-in-out infinite alternate;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 3.2s ease-in-out infinite;
 }

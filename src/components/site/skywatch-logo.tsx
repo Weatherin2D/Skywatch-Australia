@@ -16,7 +16,7 @@ export function SkyWatchLogo({
   inverted = false,
 }: LogoProps) {
   const markSize =
-    size === "lg" ? "h-10 w-10" : size === "sm" ? "h-7 w-7" : "h-8 w-8";
+    size === "lg" ? "h-11 w-11" : size === "sm" ? "h-8 w-8" : "h-9 w-9";
   const textSize =
     size === "lg" ? "text-2xl" : size === "sm" ? "text-base" : "text-lg";
 
@@ -24,7 +24,7 @@ export function SkyWatchLogo({
     <div className={cn("flex items-center gap-2.5", className)}>
       <span
         className={cn(
-          "relative inline-flex shrink-0 items-center justify-center rounded-sm bg-[var(--bom-yellow)] text-[var(--brand)]",
+          "relative inline-flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--cyan)] to-[#0ea5e9] text-[#041018] shadow-[0_0_24px_rgba(34,211,238,0.35)]",
           markSize,
           markClassName,
         )}
@@ -38,7 +38,7 @@ export function SkyWatchLogo({
           />
           <path
             d="M23 18l2.2 7.2H19l8 10-2.4-7.6H31L23 18z"
-            fill="#003087"
+            fill="#041018"
           />
         </svg>
       </span>
@@ -46,11 +46,13 @@ export function SkyWatchLogo({
         <span
           className={cn(
             "font-[family-name:var(--font-display)] font-bold tracking-tight",
-            inverted ? "text-[var(--brand)]" : "text-white",
             textSize,
           )}
         >
-          SkyWatch Australia
+          <span className={inverted ? "text-[var(--brand)]" : "text-white"}>
+            SkyWatch
+          </span>{" "}
+          <span className="text-[var(--cyan)]">Australia</span>
         </span>
       ) : null}
     </div>

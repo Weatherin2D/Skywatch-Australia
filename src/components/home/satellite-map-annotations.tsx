@@ -203,7 +203,7 @@ export function SatelliteMapAnnotations({
             className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
             style={{ left: `${x}%`, top: `${y}%` }}
           >
-            <span className="h-2 w-2 rounded-full border border-white bg-[var(--bom-yellow)]" />
+            <span className="h-2 w-2 rounded-full border border-white bg-[var(--cyan)]" />
             {settings.cityLabels ? (
               <span className="mt-0.5 whitespace-nowrap text-[9px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-[10px]">
                 {city.name}

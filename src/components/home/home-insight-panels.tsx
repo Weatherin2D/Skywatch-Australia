@@ -83,7 +83,7 @@ export function HomeStormTrackerPanel() {
             {top ? (
               <>
                 <p className="flex items-center gap-1.5 font-bold text-[var(--ink)]">
-                  <CloudLightning className="h-3.5 w-3.5 text-[var(--bom-yellow)]" />
+                  <CloudLightning className="h-3.5 w-3.5 text-[var(--cyan)]" />
                   Active · {top.label}
                 </p>
                 <div className="grid grid-cols-2 gap-1.5">
@@ -263,7 +263,7 @@ export function HomeUpperAirPanel() {
             </svg>
             <div className="absolute bottom-2 left-2 flex flex-wrap gap-3 text-[10px] text-[var(--ink)]/80">
               <span className="inline-flex items-center gap-1">
-                <Gauge className="h-3 w-3 text-[var(--bom-yellow)]" />
+                <Gauge className="h-3 w-3 text-[var(--cyan)]" />
                 CAPE {data.cape != null ? Math.round(data.cape) : "—"}
               </span>
               <span>CIN {data.cin != null ? Math.round(data.cin) : "—"}</span>
