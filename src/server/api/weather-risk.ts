@@ -16,14 +16,19 @@ export async function GET() {
       {
         status: outlook.status,
         updatedAt: outlook.issuedAt,
-        days: outlook.days.map((d) => ({
-          day: d.effectiveDay,
-          label: d.label,
-          dateLabel: d.dateLabel,
-          available: d.features.length > 0,
-          featureCount: d.features.length,
-          issuedAt: outlook.issuedAt,
-        })),
+        days: outlook.days.map((d) => {
+          const available = (d.legend ?? []).some((item) => item.used);
+          return {
+            day: d.effectiveDay,
+            label: d.label,
+            dateLabel: d.dateLabel,
+            available,
+            imageUrl: available
+              ? `/api/weather/risk-image?day=${d.effectiveDay}&t=${encodeURIComponent(outlook.issuedAt ?? "")}`
+              : null,
+            issuedAt: outlook.issuedAt,
+          };
+        }),
         legend: BOM_THUNDERSTORM_CATEGORIES,
         source:
           "Bureau of Meteorology daily forecasts + severe thunderstorm warnings",

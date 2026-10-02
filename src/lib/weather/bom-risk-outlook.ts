@@ -11,16 +11,12 @@ import type {
   PublicForecastResponse,
 } from "@/lib/forecast/types";
 import {
-  BOM_THUNDERSTORM_CATEGORIES,
   bomLegendItems,
   bomRiskDayLabels,
   type BomRiskCategoryId,
 } from "@/lib/weather/bom-thunderstorm";
 import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
-import {
-  buildSmoothRiskFeatures,
-  type RiskSamplePoint,
-} from "@/lib/weather/bom-risk-smooth";
+import type { RiskSamplePoint } from "@/lib/weather/bom-risk-smooth";
 
 const BOM_API = "https://api.weather.bom.gov.au/v1";
 const FETCH_UA =
@@ -48,14 +44,6 @@ const CATEGORY_RANK: Record<BomRiskCategoryId, number> = {
   severe_likely: 4,
 };
 
-const CATEGORY_LABEL: Record<BomRiskCategoryId, string> = Object.fromEntries(
-  BOM_THUNDERSTORM_CATEGORIES.map((c) => [c.id, c.label]),
-) as Record<BomRiskCategoryId, string>;
-
-const CATEGORY_ORDER: Record<BomRiskCategoryId, number> = Object.fromEntries(
-  BOM_THUNDERSTORM_CATEGORIES.map((c, i) => [c.id, i]),
-) as Record<BomRiskCategoryId, number>;
-
 type DailyRow = {
   date?: string;
   icon_descriptor?: string;
@@ -80,6 +68,17 @@ type CacheEntry = {
 
 let cache: CacheEntry | null = null;
 let inflight: Promise<PublicForecastResponse> | null = null;
+
+/** Sample points used to paint the georeferenced risk PNG for each day. */
+let dayPointsCache: Record<1 | 2 | 3, RiskSamplePoint[]> = {
+  1: [],
+  2: [],
+  3: [],
+};
+
+export function getBomRiskDayPoints(day: 1 | 2 | 3): RiskSamplePoint[] {
+  return dayPointsCache[day] ?? [];
+}
 
 /** Approximate centres for common BoM forecast districts (severe warning titles). */
 const FORECAST_DISTRICT_CENTRES: Array<{
@@ -442,21 +441,7 @@ function applySevereTargets(
   return maxCategory(category, "severe_likely");
 }
 
-function styleForCategory(id: BomRiskCategoryId) {
-  const item = bomLegendItems().find((x) => x.id === id);
-  return (
-    item?.style ?? {
-      fillColor: "#64748b",
-      fillOpacity: 0.55,
-      strokeColor: "#111827",
-      strokeOpacity: 0.9,
-      strokeWidth: 1.25,
-      hatch: "none",
-    }
-  );
-}
-
-function buildDayFeatures(
+function collectDayPoints(
   dayIndex: 0 | 1 | 2,
   samples: SiteDayRisk[],
   severeTargets: Array<{
@@ -465,7 +450,7 @@ function buildDayFeatures(
     lon: number;
     radiusKm: number;
   }>,
-): DisplayFeature[] {
+): RiskSamplePoint[] {
   const points: RiskSamplePoint[] = [];
 
   for (const sample of samples) {
@@ -487,21 +472,18 @@ function buildDayFeatures(
     }
   }
 
-  return buildSmoothRiskFeatures({
-    day: dayIndex + 1,
-    points,
-    categoryLabel: CATEGORY_LABEL,
-    categoryOrder: CATEGORY_ORDER,
-    styleFor: styleForCategory,
-  });
+  return points;
 }
 
-function legendFor(features: DisplayFeature[]): DisplayLegendItem[] {
-  const used = new Set(features.map((f) => f.categoryId));
-  return bomLegendItems().map((item) => ({
-    ...item,
-    used: used.has(item.id),
-  }));
+function legendForPoints(points: RiskSamplePoint[]): DisplayLegendItem[] {
+  const usedRanks = new Set(points.map((p) => p.rank));
+  return bomLegendItems().map((item) => {
+    const rank = RANK_BY_CATEGORY[item.id as BomRiskCategoryId];
+    return {
+      ...item,
+      used: usedRanks.has(rank),
+    };
+  });
 }
 
 function dayDateIso(samples: SiteDayRisk[], dayIndex: number): string {
@@ -533,10 +515,18 @@ async function buildLiveOutlook(): Promise<PublicForecastResponse> {
   const sitesOk = samples.filter((s) => s.days.some((d) => d.date)).length;
 
   const labels = bomRiskDayLabels();
+  const nextPoints: Record<1 | 2 | 3, RiskSamplePoint[]> = {
+    1: [],
+    2: [],
+    3: [],
+  };
   const days = ([0, 1, 2] as const).map((dayIndex) => {
     const effectiveDay = (dayIndex + 1) as 1 | 2 | 3;
-    const features = buildDayFeatures(dayIndex, samples, severe.targets);
+    const points = collectDayPoints(dayIndex, samples, severe.targets);
+    nextPoints[effectiveDay] = points;
     const validDate = dayDateIso(samples, dayIndex);
+    // Map paints a smooth PNG overlay; features stay empty so no squares/circles.
+    const features: DisplayFeature[] = [];
     return {
       effectiveDay,
       storedDay: effectiveDay,
@@ -545,12 +535,13 @@ async function buildLiveOutlook(): Promise<PublicForecastResponse> {
       dateLabel: labels[effectiveDay].dateLabel,
       isToday: effectiveDay === 1,
       features,
-      legend: legendFor(features),
+      legend: legendForPoints(points),
       source: "categorical" as const,
     };
   });
+  dayPointsCache = nextPoints;
 
-  const anyFeatures = days.some((d) => d.features.length > 0);
+  const anyFeatures = Object.values(nextPoints).some((pts) => pts.length > 0);
   const issuedAt =
     severe.issueTimes.sort().at(-1) ??
     samples.find((s) => s.days[0]?.date)?.days[0]?.date ??

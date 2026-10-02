@@ -14,8 +14,8 @@ import type { PublicForecastResponse, RolledDay } from "@/lib/forecast/types";
 import {
   BOM_THUNDERSTORM_CATEGORIES,
   bomLegendItems,
-  classifyBomRiskLabel,
 } from "@/lib/weather/bom-thunderstorm";
+import { BOM_RISK_IMAGE_BOUNDS } from "@/lib/weather/bom-risk-smooth";
 import { cn } from "@/lib/utils";
 
 const RISK_MAP_SETTINGS: MapSettingsState = {
@@ -123,12 +123,21 @@ export function RiskDashboard() {
 
   const usedCategoryIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const f of active?.features ?? []) {
-      const id = classifyBomRiskLabel(f.title);
-      if (id) ids.add(id);
+    for (const item of active?.legend ?? []) {
+      if (item.used) ids.add(item.id);
     }
     return ids;
-  }, [active?.features]);
+  }, [active?.legend]);
+
+  const dayHasRisk = (day: RolledDay | null | undefined) =>
+    Boolean(day?.legend?.some((item) => item.used));
+
+  const riskImageUrl =
+    selectedDay != null && dayHasRisk(active)
+      ? `/api/weather/risk-image?day=${selectedDay}&t=${encodeURIComponent(
+          data?.issuedAt ?? String(selectedDay),
+        )}`
+      : null;
 
   const region = getMapRegion(regionId);
   const daySlots = [1, 2, 3].map((n) => {
@@ -155,7 +164,7 @@ export function RiskDashboard() {
           <div className="flex flex-wrap items-center gap-2">
             {daySlots.map(({ day, rolled }) => {
               const selected = selectedDay === day;
-              const available = Boolean(rolled?.features.length);
+              const available = dayHasRisk(rolled);
               return (
                 <button
                   key={day}
@@ -251,11 +260,13 @@ export function RiskDashboard() {
                   showRadarOverlay={false}
                   showLightning={false}
                   showSynoptic={false}
-                  riskFeatures={active?.features ?? []}
+                  riskFeatures={[]}
+                  riskImageUrl={riskImageUrl}
+                  riskImageBounds={BOM_RISK_IMAGE_BOUNDS}
+                  riskImageDisplay="geo"
+                  riskImageOpacity={0.88}
                 />
-                {!loading &&
-                data?.status === "empty" &&
-                !(active?.features.length) ? (
+                {!loading && data?.status === "empty" ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
                       {data.message ??
@@ -266,7 +277,7 @@ export function RiskDashboard() {
                 {!loading &&
                 data?.status === "ok" &&
                 selectedDay != null &&
-                !(active?.features.length) ? (
+                !dayHasRisk(active) ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
                       No risk areas for this day.
