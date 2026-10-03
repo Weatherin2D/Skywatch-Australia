@@ -183,7 +183,8 @@ function buildSoftField(
   );
   const soft = new Float32Array(width * height);
   for (let i = 0; i < soft.length; i++) {
-    soft[i] = Math.max(cores[i]!, fill[i]! * 0.85);
+    // Keep fill soft so weak neighbours don't inflate category bands.
+    soft[i] = Math.max(cores[i]!, fill[i]! * 0.55);
   }
   blurField(soft, width, height, 5);
   return soft;
@@ -195,8 +196,8 @@ function buildSoftField(
  */
 function quantizeRankField(soft: Float32Array, maxRank: number): Uint8Array {
   const field = new Uint8Array(soft.length);
-  // Threshold ladder for ranks 1…8 — upper bands need strong cores.
-  const thresholds = [0.42, 1.1, 1.85, 2.7, 3.65, 4.7, 5.9, 7.2];
+  // Threshold ladder for ranks 1…8 — each band needs a stronger soft core.
+  const thresholds = [0.55, 1.35, 2.25, 3.25, 4.4, 5.7, 7.1, 8.6];
   for (let i = 0; i < soft.length; i++) {
     const v = soft[i]!;
     let rank = 0;

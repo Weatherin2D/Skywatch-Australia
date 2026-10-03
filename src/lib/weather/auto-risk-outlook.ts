@@ -430,99 +430,90 @@ export function scoreEnvironment(m: DayMetrics): {
   composite: number;
 } {
   const cape = Math.max(0, m.cape);
-  const moisture = clamp01((m.dewpoint - 10) / 14);
-  const rhBoost = clamp01((m.rh - 40) / 50);
-  // Harder CAPE scale — ordinary storm days stay in lower bands.
-  const instability = clamp01(cape / 3200);
+  const moisture = clamp01((m.dewpoint - 12) / 12);
+  const rhBoost = clamp01((m.rh - 45) / 45);
+  // Conservative CAPE scale — everyday convection stays low on the ladder.
+  const instability = clamp01(cape / 3600);
   const cin = m.cin;
   const cinBrake =
-    cin <= -150
-      ? 0.22
-      : cin <= -80
-        ? 0.42
-        : cin <= -40
-          ? 0.65
+    cin <= -120
+      ? 0.18
+      : cin <= -70
+        ? 0.35
+        : cin <= -35
+          ? 0.55
           : cin <= -15
-            ? 0.85
+            ? 0.75
             : 1;
-  const shear = clamp01(m.shearKts / 60);
+  const shear = clamp01(m.shearKts / 65);
   const precipLift =
-    clamp01(m.precipProb / 100) * 0.5 +
+    clamp01(m.precipProb / 100) * 0.45 +
     clamp01(m.cloud / 100) * 0.15 +
-    clamp01(m.precipMm / 14) * 0.35;
+    clamp01(m.precipMm / 16) * 0.4;
   const trigger = clamp01(m.liftTrigger);
-  const lift = clamp01(precipLift * 0.55 + trigger * 0.45);
+  const lift = clamp01(precipLift * 0.6 + trigger * 0.4);
 
   const composite =
-    instability * 0.38 * cinBrake +
-    moisture * 0.16 +
-    rhBoost * 0.06 +
-    shear * 0.16 +
-    lift * 0.24;
+    instability * 0.4 * cinBrake +
+    moisture * 0.15 +
+    rhBoost * 0.05 +
+    shear * 0.15 +
+    lift * 0.25;
 
-  // Strict gates: High / V-High need elite CAPE + support. No easy max-outs.
+  // Every tier is gated hard — no free climbs from bumps.
   let rank = 0;
-  if (composite >= 0.84 && cape >= 2800 && shear >= 0.55 && trigger >= 0.45) {
-    rank = 8; // V-High — rare
-  } else if (composite >= 0.74 && cape >= 2200 && shear >= 0.45) {
+  if (
+    composite >= 0.88 &&
+    cape >= 3000 &&
+    shear >= 0.6 &&
+    trigger >= 0.55 &&
+    moisture >= 0.45
+  ) {
+    rank = 8; // V-High
+  } else if (
+    composite >= 0.78 &&
+    cape >= 2400 &&
+    shear >= 0.5 &&
+    moisture >= 0.4
+  ) {
     rank = 7; // High
-  } else if (composite >= 0.64 && cape >= 1600) {
+  } else if (composite >= 0.68 && cape >= 1800 && moisture >= 0.35) {
     rank = 6; // Moderate
-  } else if (composite >= 0.52 && cape >= 1100) {
+  } else if (composite >= 0.58 && cape >= 1300 && moisture >= 0.3) {
     rank = 5; // Severe
-  } else if (composite >= 0.4 && cape >= 700) {
+  } else if (composite >= 0.48 && cape >= 900) {
     rank = 4; // Slight
-  } else if (composite >= 0.3 && cape >= 400) {
+  } else if (composite >= 0.38 && cape >= 550) {
     rank = 3; // Low
-  } else if (composite >= 0.2 && cape >= 180) {
+  } else if (composite >= 0.28 && cape >= 280) {
     rank = 2; // T-Storm
   } else if (
-    composite >= 0.1 &&
-    (cape >= 60 || (m.precipProb >= 45 && moisture >= 0.35))
+    composite >= 0.14 &&
+    cape >= 100 &&
+    (moisture >= 0.25 || m.precipProb >= 55)
   ) {
     rank = 1; // Low T-Storm
   }
 
-  // At most one organised bump, and never into V-High via bump alone.
-  let bumped = false;
-  if (
-    !bumped &&
-    rank >= 2 &&
-    rank <= 5 &&
-    trigger >= 0.7 &&
-    shear >= 0.5 &&
-    cape >= 900 &&
-    cinBrake >= 0.65
-  ) {
-    rank += 1;
-    bumped = true;
-  } else if (
-    !bumped &&
-    rank >= 2 &&
-    rank <= 4 &&
-    shear >= 0.6 &&
-    cape >= 1000
-  ) {
-    rank += 1;
-  }
+  // No rank bumps — categories must be earned at the gate.
 
   let hatch: 0 | 1 | 2 = 0;
   if (
-    cape >= 2400 &&
-    m.shearKts >= 45 &&
-    cin > -40 &&
-    composite >= 0.65 &&
+    cape >= 2600 &&
+    m.shearKts >= 48 &&
+    cin > -35 &&
+    composite >= 0.72 &&
     rank >= 5 &&
-    trigger >= 0.55
+    trigger >= 0.6
   ) {
     hatch = 2;
   } else if (
-    cape >= 1400 &&
-    m.shearKts >= 32 &&
-    cinBrake >= 0.65 &&
-    composite >= 0.45 &&
+    cape >= 1600 &&
+    m.shearKts >= 36 &&
+    cinBrake >= 0.7 &&
+    composite >= 0.52 &&
     rank >= 4 &&
-    trigger >= 0.4
+    trigger >= 0.5
   ) {
     hatch = 1;
   }
