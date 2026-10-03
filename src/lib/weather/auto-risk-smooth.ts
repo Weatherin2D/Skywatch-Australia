@@ -1,8 +1,8 @@
 /**
- * Automated risk raster: large nested carved bands + black outlines.
+ * Automated risk raster: Delaunay connect-the-dots corridors.
  *
- * Soft-field influence (not morphological stamps) so every category paints
- * as a continuous nested corridor — no patchy blocky squares.
+ * Sample sites with rank ≥ R are triangulated; only short-edged triangles
+ * are filled. Nested bands follow the mesh — no giant Gaussian circles.
  */
 
 import { PNG } from "pngjs";
@@ -22,16 +22,16 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-const WORK_WIDTH = 560;
+const WORK_WIDTH = 720;
 const OUT_WIDTH = 2200;
 const OUTLINE_PX = 2;
 
-/** Core kernel — large enough that nearby samples merge into corridors. */
-const SIGMA_KM = 380;
-const CUTOFF_SIGMA = 2.5;
-/** Wider fill so outer categories cover a much larger area. */
-const FILL_SIGMA_KM = 620;
-const FILL_CUTOFF = 2.2;
+/** Max triangle / corridor edge (km). ~2–3 grid steps; longer spans look fake. */
+const MAX_EDGE_KM = 200;
+/** Ribbon half-width along chain edges without a filled triangle (km). */
+const CORRIDOR_HALF_KM = 22;
+/** Morphological close radius after mesh fill (px at work res) — knits joints. */
+const CLOSE_PX = 5;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -75,71 +75,259 @@ function latLonToPixel(
   return { x, y };
 }
 
-function splatField(
-  points: AutoRiskSamplePoint[],
-  width: number,
-  height: number,
-  pick: (p: AutoRiskSamplePoint) => number,
-  sigmaKm: number,
-  cutoffSigma: number,
-  mode: "max" | "blend",
-): Float32Array {
-  const soft = new Float32Array(width * height);
-  const weight = mode === "blend" ? new Float32Array(width * height) : null;
-  if (!points.length) return soft;
-
-  const maxDist = sigmaKm * cutoffSigma;
-  const twoSigma2 = 2 * sigmaKm * sigmaKm;
+function kmPerPixel(width: number, height: number) {
   const kmPerPxX =
     ((AU.maxLon - AU.minLon) * 111.0 * Math.cos((-27 * Math.PI) / 180)) /
     width;
   const kmPerPxY = ((AU.maxLat - AU.minLat) * 111.0) / height;
-  const radiusPx = Math.ceil(
-    maxDist / Math.max(0.01, Math.min(kmPerPxX, kmPerPxY)),
-  );
+  return Math.max(0.01, Math.min(kmPerPxX, kmPerPxY));
+}
 
-  for (const p of points) {
-    const value = pick(p);
-    if (value <= 0) continue;
-    const { x: cx, y: cy } = latLonToPixel(p.lat, p.lon, width, height);
-    const x0 = Math.max(0, Math.floor(cx - radiusPx));
-    const x1 = Math.min(width - 1, Math.ceil(cx + radiusPx));
-    const y0 = Math.max(0, Math.floor(cy - radiusPx));
-    const y1 = Math.min(height - 1, Math.ceil(cy + radiusPx));
+type MeshPt = { x: number; y: number; lat: number; lon: number };
 
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const lon =
-          AU.minLon + ((x + 0.5) / width) * (AU.maxLon - AU.minLon);
-        const lat =
-          AU.maxLat - ((y + 0.5) / height) * (AU.maxLat - AU.minLat);
-        const d = approxKm(lat, lon, p.lat, p.lon);
-        if (d > maxDist) continue;
-        const w = Math.exp(-(d * d) / twoSigma2);
-        const i = y * width + x;
-        if (mode === "max") {
-          // Broad plateau near sample so cores aren't tiny squares.
-          const score = value * (0.55 + 0.45 * w) * Math.min(1, w / 0.05);
-          if (score > soft[i]!) soft[i] = score;
-        } else {
-          soft[i]! += value * w;
-          weight![i]! += w;
-        }
+/* ---------- Bowyer–Watson Delaunay (2D) ---------- */
+
+type Tri = [number, number, number];
+
+function circumcircle(
+  pts: MeshPt[],
+  i: number,
+  j: number,
+  k: number,
+): { x: number; y: number; r2: number } | null {
+  const a = pts[i]!;
+  const b = pts[j]!;
+  const c = pts[k]!;
+  const A = b.x - a.x;
+  const B = b.y - a.y;
+  const C = c.x - a.x;
+  const D = c.y - a.y;
+  const E = A * (a.x + b.x) + B * (a.y + b.y);
+  const F = C * (a.x + c.x) + D * (a.y + c.y);
+  const G = 2 * (A * (c.y - b.y) - B * (c.x - b.x));
+  if (Math.abs(G) < 1e-10) return null;
+  const x = (D * E - B * F) / G;
+  const y = (A * F - C * E) / G;
+  const dx = a.x - x;
+  const dy = a.y - y;
+  return { x, y, r2: dx * dx + dy * dy };
+}
+
+function delaunay(pts: MeshPt[]): Tri[] {
+  const n = pts.length;
+  if (n < 3) return [];
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const dx = maxX - minX || 1;
+  const dy = maxY - minY || 1;
+  const dmax = Math.max(dx, dy) * 10;
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+
+  // Super-triangle vertices appended temporarily
+  const superA: MeshPt = {
+    x: midX - 2 * dmax,
+    y: midY - dmax,
+    lat: 0,
+    lon: 0,
+  };
+  const superB: MeshPt = {
+    x: midX,
+    y: midY + 2 * dmax,
+    lat: 0,
+    lon: 0,
+  };
+  const superC: MeshPt = {
+    x: midX + 2 * dmax,
+    y: midY - dmax,
+    lat: 0,
+    lon: 0,
+  };
+  const all = pts.concat([superA, superB, superC]);
+  const sa = n;
+  const sb = n + 1;
+  const sc = n + 2;
+
+  let tris: Tri[] = [[sa, sb, sc]];
+
+  for (let i = 0; i < n; i++) {
+    const p = all[i]!;
+    const bad: Tri[] = [];
+    for (const t of tris) {
+      const cc = circumcircle(all, t[0], t[1], t[2]);
+      if (!cc) {
+        bad.push(t);
+        continue;
+      }
+      const dxp = p.x - cc.x;
+      const dyp = p.y - cc.y;
+      if (dxp * dxp + dyp * dyp <= cc.r2 * (1 + 1e-10)) bad.push(t);
+    }
+
+    // Polygon hole boundary (edges that appear once)
+    const edgeCount = new Map<string, [number, number]>();
+    const edgeKey = (u: number, v: number) =>
+      u < v ? `${u}|${v}` : `${v}|${u}`;
+    for (const t of bad) {
+      const edges: [number, number][] = [
+        [t[0], t[1]],
+        [t[1], t[2]],
+        [t[2], t[0]],
+      ];
+      for (const [u, v] of edges) {
+        const k = edgeKey(u, v);
+        if (edgeCount.has(k)) edgeCount.delete(k);
+        else edgeCount.set(k, [u, v]);
+      }
+    }
+
+    const badSet = new Set(bad);
+    tris = tris.filter((t) => !badSet.has(t));
+    for (const [u, v] of edgeCount.values()) {
+      tris.push([u, v, i]);
+    }
+  }
+
+  // Drop triangles touching the super-triangle
+  return tris.filter((t) => t[0] < n && t[1] < n && t[2] < n);
+}
+
+/* ---------- Raster helpers ---------- */
+
+function fillTriangle(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+) {
+  const minX = Math.max(0, Math.floor(Math.min(ax, bx, cx)));
+  const maxX = Math.min(width - 1, Math.ceil(Math.max(ax, bx, cx)));
+  const minY = Math.max(0, Math.floor(Math.min(ay, by, cy)));
+  const maxY = Math.min(height - 1, Math.ceil(Math.max(ay, by, cy)));
+  const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  if (Math.abs(area) < 1e-6) return;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const w0 = (ax - cx) * (y - cy) - (ay - cy) * (x - cx);
+      const w1 = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+      const w2 = (cx - bx) * (y - by) - (cy - by) * (x - bx);
+      if (
+        (w0 >= 0 && w1 >= 0 && w2 >= 0) ||
+        (w0 <= 0 && w1 <= 0 && w2 <= 0)
+      ) {
+        mask[y * width + x] = 1;
       }
     }
   }
-
-  if (weight) {
-    for (let i = 0; i < soft.length; i++) {
-      if (weight[i]! > 1e-6) soft[i] = soft[i]! / weight[i]!;
-      else soft[i] = 0;
-    }
-  }
-
-  return soft;
 }
 
-function blurField(
+/**
+ * Flat ribbon (parallelogram) along an edge — no round capsule caps.
+ * Caps are what made corridors read as mashed-up circles/pills.
+ */
+function stampRibbon(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  halfWidthPx: number,
+) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-3) return;
+  const hw = Math.max(1, halfWidthPx);
+  const nx = (-dy / len) * hw;
+  const ny = (dx / len) * hw;
+  // Quad corners
+  const ax = x0 + nx;
+  const ay = y0 + ny;
+  const bx = x0 - nx;
+  const by = y0 - ny;
+  const cx = x1 - nx;
+  const cy = y1 - ny;
+  const dx2 = x1 + nx;
+  const dy2 = y1 + ny;
+  fillTriangle(mask, width, height, ax, ay, bx, by, cx, cy);
+  fillTriangle(mask, width, height, ax, ay, cx, cy, dx2, dy2);
+}
+
+function dilate(
+  src: Uint8Array,
+  width: number,
+  height: number,
+  radius: number,
+): Uint8Array {
+  if (radius <= 0) return Uint8Array.from(src);
+  let cur = src;
+  for (let pass = 0; pass < radius; pass++) {
+    const next = Uint8Array.from(cur);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (cur[i]) continue;
+        if (
+          cur[i - 1] ||
+          cur[i + 1] ||
+          cur[i - width] ||
+          cur[i + width]
+        ) {
+          next[i] = 1;
+        }
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+function erode(
+  src: Uint8Array,
+  width: number,
+  height: number,
+  radius: number,
+): Uint8Array {
+  if (radius <= 0) return Uint8Array.from(src);
+  let cur = src;
+  for (let pass = 0; pass < radius; pass++) {
+    const next = new Uint8Array(src.length);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (
+          cur[i] &&
+          cur[i - 1] &&
+          cur[i + 1] &&
+          cur[i - width] &&
+          cur[i + width]
+        ) {
+          next[i] = 1;
+        }
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+function blurFloat(
   soft: Float32Array,
   width: number,
   height: number,
@@ -161,136 +349,173 @@ function blurField(
   }
 }
 
-function buildSoftField(
+function pruneSmallComponents(
+  field: Uint8Array,
+  width: number,
+  height: number,
+  minPixels: number,
+) {
+  const seen = new Uint8Array(field.length);
+  const qx = new Int32Array(field.length);
+  const qy = new Int32Array(field.length);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = y * width + x;
+      if (!field[start] || seen[start]) continue;
+      const rank = field[start]!;
+      let qh = 0;
+      let qt = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt += 1;
+      seen[start] = 1;
+      const cells: number[] = [start];
+
+      while (qh < qt) {
+        const cx = qx[qh]!;
+        const cy = qy[qh]!;
+        qh += 1;
+        for (const [nx, ny] of [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ] as const) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (seen[ni] || field[ni] !== rank) continue;
+          seen[ni] = 1;
+          qx[qt] = nx;
+          qy[qt] = ny;
+          qt += 1;
+          cells.push(ni);
+        }
+      }
+      if (cells.length < minPixels) {
+        for (const i of cells) field[i] = 0;
+      }
+    }
+  }
+}
+
+/**
+ * Nested rank field from short-edge Delaunay triangles (connect-the-dots).
+ */
+function buildMeshRankField(
   points: AutoRiskSamplePoint[],
   width: number,
   height: number,
   pick: (p: AutoRiskSamplePoint) => number,
-): Float32Array {
-  const cores = splatField(
-    points,
-    width,
-    height,
-    pick,
-    SIGMA_KM,
-    CUTOFF_SIGMA,
-    "max",
-  );
-  const fill = splatField(
-    points,
-    width,
-    height,
-    pick,
-    FILL_SIGMA_KM,
-    FILL_CUTOFF,
-    "blend",
-  );
-  const soft = new Float32Array(width * height);
-  for (let i = 0; i < soft.length; i++) {
-    // Strong fill → large outer envelopes that merge into corridors.
-    soft[i] = Math.max(cores[i]!, fill[i]! * 0.95);
+): Uint8Array {
+  const field = new Uint8Array(width * height);
+  if (!points.length) return field;
+
+  const kpp = kmPerPixel(width, height);
+  const baseHalfPx = Math.max(1.2, CORRIDOR_HALF_KM / kpp);
+
+  for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
+    const mesh: MeshPt[] = [];
+    for (const p of points) {
+      if (pick(p) < rank) continue;
+      const { x, y } = latLonToPixel(p.lat, p.lon, width, height);
+      mesh.push({ x, y, lat: p.lat, lon: p.lon });
+    }
+    if (!mesh.length) continue;
+
+    const mask = new Uint8Array(width * height);
+    const linked = new Uint8Array(mesh.length);
+    const tris = delaunay(mesh);
+    const maxEdge = MAX_EDGE_KM * (rank <= 2 ? 1.2 : rank <= 4 ? 1.05 : 0.95);
+    const ribbonHalf = baseHalfPx * (rank <= 2 ? 1.15 : 1.0);
+
+    const keepEdge = (ia: number, ib: number) => {
+      const a = mesh[ia]!;
+      const b = mesh[ib]!;
+      if (approxKm(a.lat, a.lon, b.lat, b.lon) > maxEdge) return false;
+      linked[ia] = 1;
+      linked[ib] = 1;
+      stampRibbon(mask, width, height, a.x, a.y, b.x, b.y, ribbonHalf);
+      return true;
+    };
+
+    for (const [ia, ib, ic] of tris) {
+      const a = mesh[ia]!;
+      const b = mesh[ib]!;
+      const c = mesh[ic]!;
+      const eAB = approxKm(a.lat, a.lon, b.lat, b.lon);
+      const eBC = approxKm(b.lat, b.lon, c.lat, c.lon);
+      const eCA = approxKm(c.lat, c.lon, a.lat, a.lon);
+      if (eAB > maxEdge || eBC > maxEdge || eCA > maxEdge) {
+        // Keep short sides as flat ribbons (no circular brushes).
+        keepEdge(ia, ib);
+        keepEdge(ib, ic);
+        keepEdge(ic, ia);
+        continue;
+      }
+      linked[ia] = 1;
+      linked[ib] = 1;
+      linked[ic] = 1;
+      // Triangle fill is the primary shape — polygonal, not radial.
+      fillTriangle(mask, width, height, a.x, a.y, b.x, b.y, c.x, c.y);
+    }
+
+    // Chain leftovers into corridors; never stamp isolate disks.
+    for (let i = 0; i < mesh.length; i++) {
+      if (linked[i]) continue;
+      let bestJ = -1;
+      let bestD = maxEdge;
+      for (let j = 0; j < mesh.length; j++) {
+        if (i === j) continue;
+        const d = approxKm(
+          mesh[i]!.lat,
+          mesh[i]!.lon,
+          mesh[j]!.lat,
+          mesh[j]!.lon,
+        );
+        if (d < bestD) {
+          bestD = d;
+          bestJ = j;
+        }
+      }
+      if (bestJ >= 0) keepEdge(i, bestJ);
+    }
+
+    const closed = erode(
+      dilate(mask, width, height, CLOSE_PX),
+      width,
+      height,
+      Math.max(1, CLOSE_PX - 1),
+    );
+
+    for (let i = 0; i < field.length; i++) {
+      if (closed[i]) field[i] = rank;
+    }
   }
-  blurField(soft, width, height, 6);
+
+  pruneSmallComponents(field, width, height, 60);
+  return field;
+}
+
+function fieldToSoft(field: Uint8Array): Float32Array {
+  const soft = new Float32Array(field.length);
+  for (let i = 0; i < field.length; i++) soft[i] = field[i]!;
   return soft;
 }
 
-/**
- * Nested thresholds: a high-rank sample grows a large outer Low T-Storm
- * envelope with each category carved inside — like SPC/TV outlooks.
- */
-function quantizeRankField(soft: Float32Array, maxRank: number): Uint8Array {
+function quantizeFromSoft(soft: Float32Array, maxRank: number): Uint8Array {
   const field = new Uint8Array(soft.length);
-  // Lower entry thresholds → much larger painted area per category.
-  const thresholds = [0.28, 0.85, 1.45, 2.15, 2.95, 3.85, 4.9, 6.1];
   for (let i = 0; i < soft.length; i++) {
     const v = soft[i]!;
-    let rank = 0;
-    for (let r = maxRank; r >= 1; r--) {
-      if (v >= thresholds[r - 1]!) {
-        rank = r;
-        break;
-      }
+    if (v < 0.45) {
+      field[i] = 0;
+      continue;
     }
+    let rank = Math.min(maxRank, Math.max(1, Math.round(v)));
+    if (v < rank - 0.35 && rank > 1) rank -= 1;
     field[i] = rank;
   }
   return field;
-}
-
-function quantizeHatchField(soft: Float32Array): Uint8Array {
-  const field = new Uint8Array(soft.length);
-  for (let i = 0; i < soft.length; i++) {
-    const v = soft[i]!;
-    if (v < 0.65) field[i] = 0;
-    else if (v < 1.5) field[i] = 1;
-    else field[i] = 2;
-  }
-  return field;
-}
-
-function closeRankHoles(
-  field: Uint8Array,
-  width: number,
-  height: number,
-  passes: number,
-) {
-  for (let pass = 0; pass < passes; pass++) {
-    const src = Uint8Array.from(field);
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const i = y * width + x;
-        if (src[i]! !== 0) continue;
-        const counts = new Array(AUTO_RISK_MAX_RANK + 1).fill(0) as number[];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            counts[src[(y + dy) * width + (x + dx)]!]!++;
-          }
-        }
-        let maj = 0;
-        let majN = 0;
-        for (let r = 1; r <= AUTO_RISK_MAX_RANK; r++) {
-          if (counts[r]! > majN) {
-            majN = counts[r]!;
-            maj = r;
-          }
-        }
-        if (majN >= 6) field[i] = maj;
-      }
-    }
-  }
-}
-
-function majoritySmooth(
-  field: Uint8Array,
-  width: number,
-  height: number,
-  passes: number,
-) {
-  for (let pass = 0; pass < passes; pass++) {
-    const src = Uint8Array.from(field);
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const i = y * width + x;
-        if (src[i]! === 0) continue;
-        const counts = new Array(AUTO_RISK_MAX_RANK + 1).fill(0) as number[];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            counts[src[(y + dy) * width + (x + dx)]!]!++;
-          }
-        }
-        let maj = src[i]!;
-        let majN = 0;
-        for (let r = 1; r <= AUTO_RISK_MAX_RANK; r++) {
-          if (counts[r]! > majN) {
-            majN = counts[r]!;
-            maj = r;
-          }
-        }
-        if (majN >= 5) {
-          field[i] = maj > src[i]! ? src[i]! : maj;
-        }
-      }
-    }
-  }
 }
 
 function upsampleBilinear(
@@ -408,43 +633,52 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
   const work = sizeFor(WORK_WIDTH);
   const out = sizeFor(OUT_WIDTH);
 
-  // Expand each sample downward so a Severe point also feeds outer bands.
-  const expanded = points.map((p) => ({ ...p }));
-
-  const rankWork = buildSoftField(
-    expanded,
+  const rankWork = buildMeshRankField(
+    points,
     work.width,
     work.height,
     (p) => p.rank,
   );
-  const hatchWork = buildSoftField(
-    expanded,
+  const hatchWork = buildMeshRankField(
+    points,
     work.width,
     work.height,
     (p) => p.hatch,
   );
 
+  // Light soften only — heavy blur re-rounds polygons into circle-like blobs.
+  const rankSoftWork = fieldToSoft(rankWork);
+  const hatchSoftWork = fieldToSoft(hatchWork);
+  blurFloat(rankSoftWork, work.width, work.height, 3);
+  blurFloat(hatchSoftWork, work.width, work.height, 2);
+
   const rankSoft = upsampleBilinear(
-    rankWork,
+    rankSoftWork,
     work.width,
     work.height,
     out.width,
     out.height,
   );
   const hatchSoft = upsampleBilinear(
-    hatchWork,
+    hatchSoftWork,
     work.width,
     work.height,
     out.width,
     out.height,
   );
-  blurField(rankSoft, out.width, out.height, 3);
-  blurField(hatchSoft, out.width, out.height, 2);
+  blurFloat(rankSoft, out.width, out.height, 1);
+  blurFloat(hatchSoft, out.width, out.height, 1);
 
-  const ranks = quantizeRankField(rankSoft, AUTO_RISK_MAX_RANK);
-  closeRankHoles(ranks, out.width, out.height, 2);
-  majoritySmooth(ranks, out.width, out.height, 2);
-  const hatches = quantizeHatchField(hatchSoft);
+  const ranks = quantizeFromSoft(rankSoft, AUTO_RISK_MAX_RANK);
+  pruneSmallComponents(ranks, out.width, out.height, 140);
+
+  const hatches = new Uint8Array(hatchSoft.length);
+  for (let i = 0; i < hatchSoft.length; i++) {
+    const v = hatchSoft[i]!;
+    if (v < 0.55) hatches[i] = 0;
+    else if (v < 1.45) hatches[i] = 1;
+    else hatches[i] = 2;
+  }
 
   const { width, height } = out;
   const png = new PNG({ width, height });
