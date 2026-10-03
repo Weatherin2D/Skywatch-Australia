@@ -44,7 +44,7 @@ export const LIGHTNING_COLOR_WINDOW_SEC = LIGHTNING_VISIBLE_WINDOW_SEC;
 /** Cap for canvas satellite trail (cheap to paint). */
 export const LIGHTNING_MAX_VISIBLE = 1600;
 /** Cap for Leaflet DOM markers (expensive). */
-export const LIGHTNING_MAX_VISIBLE_DOM = 120;
+export const LIGHTNING_MAX_VISIBLE_DOM = 220;
 /** Cap for archive API payloads (keeps the client responsive). */
 export const LIGHTNING_ARCHIVE_MAX_STRIKES = 2400;
 

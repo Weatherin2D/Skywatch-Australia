@@ -12,6 +12,7 @@ import {
   type MapRegionId,
   type MapSettingsState,
 } from "@/components/home/mock-data";
+import { useLightning } from "@/hooks/use-lightning";
 import {
   ARCHIVE_STEP_SEC,
   aestPartsToUnix,
@@ -155,9 +156,22 @@ function ArchiveDashboardInner() {
   const [frameIndex, setFrameIndex] = useState(0);
   const [mapSettings, setMapSettings] =
     useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
-  const [lightning, setLightning] = useState<LightningStrike[]>([]);
+  const [archiveLightning, setArchiveLightning] = useState<LightningStrike[]>(
+    [],
+  );
   const [lightningTotal, setLightningTotal] = useState(0);
   const [lightningLoading, setLightningLoading] = useState(false);
+  /** Browser WS + HTTP feed fills gaps when serverless archive/live is cold. */
+  const liveLightning = useLightning(showLightning);
+  const lightning = useMemo(() => {
+    if (!showLightning) return [];
+    if (liveLightning.strikes.length === 0) return archiveLightning;
+    if (archiveLightning.length === 0) return liveLightning.strikes;
+    const map = new Map<string, LightningStrike>();
+    for (const s of archiveLightning) map.set(s.id, s);
+    for (const s of liveLightning.strikes) map.set(s.id, s);
+    return [...map.values()].sort((a, b) => a.time - b.time);
+  }, [showLightning, archiveLightning, liveLightning.strikes]);
   const [synopticGeoJson, setSynopticGeoJson] =
     useState<SynopticGeoJson | null>(null);
   const frameIndexRef = useRef(0);
@@ -353,7 +367,7 @@ function ArchiveDashboardInner() {
   useEffect(() => {
     if (!showLightning || !catalog || loopStartUnix == null || loopEndUnix == null) {
       if (!showLightning) {
-        setLightning([]);
+        setArchiveLightning([]);
         setLightningTotal(0);
         setLightningLoading(false);
       }
@@ -381,7 +395,7 @@ function ArchiveDashboardInner() {
           total?: number;
         };
         if (cancelled || !data.strikes) return;
-        setLightning(data.strikes);
+        setArchiveLightning(data.strikes);
         setLightningTotal(data.total ?? data.strikes.length);
       } catch {
         // Keep previous strikes on transient failure.
@@ -775,7 +789,7 @@ function ArchiveDashboardInner() {
             {showLightning
               ? lightningLoading && lightning.length === 0
                 ? "Loading lightning strikes…"
-                : `${(lightningTotal || lightning.length).toLocaleString()} strikes in loop window.`
+                : `${Math.max(lightningTotal, lightning.length).toLocaleString()} strikes in loop window.`
               : "Lightning off."}{" "}
             Frames every {ARCHIVE_STEP_SEC / 60} minutes
             {regionId === "national" ? " (national)" : ` (${region.short})`}.

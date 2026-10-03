@@ -16,7 +16,8 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export const maxDuration = 30;
+/** Live merge may await LightningMaps backfill on cold start. */
+export const maxDuration = 45;
 
 function mergeById(
   a: LightningStrike[],
@@ -107,7 +108,10 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30",
+          "Cache-Control":
+            strikes.length === 0
+              ? "no-store"
+              : "public, s-maxage=15, stale-while-revalidate=30",
         },
       },
     );

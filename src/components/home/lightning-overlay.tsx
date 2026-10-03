@@ -399,7 +399,8 @@ export function LeafletLightningOverlay({
         const opacity = strikeOpacity(age);
         if (opacity <= 0.05) return null;
         const color = strikeAgeColor(age);
-        const size = strikeAgeSize(age);
+        // Leaflet markers need a bit more size than the canvas trail.
+        const size = Math.max(16, strikeAgeSize(age));
         return (
           <Marker
             key={strike.id}
@@ -407,6 +408,7 @@ export function LeafletLightningOverlay({
             opacity={opacity}
             icon={cachedLightningIcon(iconStyle, color, size, opacity)}
             interactive={false}
+            zIndexOffset={800}
           />
         );
       })}

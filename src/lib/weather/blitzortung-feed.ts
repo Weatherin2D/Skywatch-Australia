@@ -361,19 +361,36 @@ async function runMapsBackfill(state: GlobalFeed) {
  * Snapshot for API responses. Uses absolute strike times so each satellite
  * frame filters the true trail (Windy-style). Blitzortung live + LightningMaps
  * 2h/12h Mercator backfill (same open network family Windy used before LINET).
+ *
+ * On serverless, WebSockets/MQTT often never populate the buffer. When empty,
+ * await the LightningMaps PNG backfill so the first HTTP response is useful
+ * (previously fire-and-forget left prod stuck on zero strikes).
  */
 export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();
   const state = getState();
-  // Never await PNG backfill on the request path — the timer keeps the buffer
-  // warm. Kick an async refresh only when the buffer is still empty.
-  if (state.strikes.size < 5) {
+  if (state.strikes.size < 25) {
+    try {
+      await Promise.race([
+        runMapsBackfill(state),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 14_000);
+        }),
+      ]);
+    } catch (err) {
+      console.error("[lightning] awaited backfill failed", err);
+    }
+  } else {
+    // Keep warm in the background when we already have a trail.
     void runMapsBackfill(state);
   }
   prune(state);
   const strikes = [...state.strikes.values()]
     .filter((s) => isAcceptedStrikeId(s.id))
     .sort((a, b) => b.time - a.time);
+  if (strikes.length > 0 && state.status !== "live") {
+    state.status = "live";
+  }
   const liveHosts = [...state.sockets.entries()]
     .filter(([, ws]) => ws.readyState === WebSocket.OPEN)
     .map(([h]) => h);
