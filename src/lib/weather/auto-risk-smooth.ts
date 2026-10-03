@@ -1,6 +1,8 @@
 /**
- * Smooth automated risk raster: nested carved colour bands + L1/L2 hatches.
- * Tuned for TV-style organic corridors (large outer envelope, nested cores).
+ * Automated risk raster: connect-the-dots nested bands + L1/L2 hatches.
+ *
+ * Sample points are stamped and morphologically closed so nearby sites join
+ * into irregular corridors — not isotropic Gaussian circles.
  */
 
 import { PNG } from "pngjs";
@@ -20,16 +22,26 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-const WORK_WIDTH = 720;
+const WORK_WIDTH = 780;
 const OUT_WIDTH = 2400;
-/** Outline thickness in output pixels (black band borders). */
 const OUTLINE_PX = 3;
-/** Large kernel merges samples into continuous frontal-style corridors. */
-const SIGMA_KM = 300;
-const CUTOFF_SIGMA = 2.4;
-/** Softer long-range fill so outer bands knit into one envelope. */
-const FILL_SIGMA_KM = 480;
-const FILL_CUTOFF = 2.05;
+
+/** Small stamp around each sample (~town footprint). */
+const STAMP_KM = 34;
+/**
+ * Closing radius connects neighbouring samples into corridors.
+ * Lower ranks close farther (outer envelope); higher ranks stay tighter.
+ */
+const CLOSE_KM_BY_RANK: Record<number, number> = {
+  1: 145,
+  2: 125,
+  3: 110,
+  4: 95,
+  5: 85,
+  6: 75,
+  7: 65,
+  8: 55,
+};
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -42,18 +54,6 @@ export type AutoRiskSamplePoint = {
   rank: number;
   hatch: 0 | 1 | 2;
 };
-
-function approxKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const dLat = (lat1 - lat2) * 111.0;
-  const dLon =
-    (lon1 - lon2) * 111.0 * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
-  return Math.hypot(dLat, dLon);
-}
 
 function sizeFor(width: number) {
   const aspect =
@@ -73,192 +73,253 @@ function latLonToPixel(
   return { x, y };
 }
 
-function splatField(
-  points: AutoRiskSamplePoint[],
-  width: number,
-  height: number,
-  pick: (p: AutoRiskSamplePoint) => number,
-  sigmaKm: number,
-  cutoffSigma: number,
-  mode: "max" | "blend",
-): Float32Array {
-  const soft = new Float32Array(width * height);
-  const weight = mode === "blend" ? new Float32Array(width * height) : null;
-  if (!points.length) return soft;
-
-  const maxDist = sigmaKm * cutoffSigma;
-  const twoSigma2 = 2 * sigmaKm * sigmaKm;
+function kmPerPixel(width: number, height: number) {
   const kmPerPxX =
     ((AU.maxLon - AU.minLon) * 111.0 * Math.cos((-27 * Math.PI) / 180)) /
     width;
   const kmPerPxY = ((AU.maxLat - AU.minLat) * 111.0) / height;
-  const radiusPx = Math.ceil(
-    maxDist / Math.max(0.01, Math.min(kmPerPxX, kmPerPxY)),
-  );
-
-  for (const p of points) {
-    const value = pick(p);
-    if (value <= 0) continue;
-    const { x: cx, y: cy } = latLonToPixel(p.lat, p.lon, width, height);
-    const x0 = Math.max(0, Math.floor(cx - radiusPx));
-    const x1 = Math.min(width - 1, Math.ceil(cx + radiusPx));
-    const y0 = Math.max(0, Math.floor(cy - radiusPx));
-    const y1 = Math.min(height - 1, Math.ceil(cy + radiusPx));
-
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const lon =
-          AU.minLon + ((x + 0.5) / width) * (AU.maxLon - AU.minLon);
-        const lat =
-          AU.maxLat - ((y + 0.5) / height) * (AU.maxLat - AU.minLat);
-        const d = approxKm(lat, lon, p.lat, p.lon);
-        if (d > maxDist) continue;
-        const w = Math.exp(-(d * d) / twoSigma2);
-        const i = y * width + x;
-        if (mode === "max") {
-          const score = value * (0.42 + 0.58 * w) * Math.min(1, w / 0.07);
-          if (score > soft[i]!) soft[i] = score;
-        } else {
-          soft[i]! += value * w;
-          weight![i]! += w;
-        }
-      }
-    }
-  }
-
-  if (weight) {
-    for (let i = 0; i < soft.length; i++) {
-      if (weight[i]! > 1e-6) soft[i] = soft[i]! / weight[i]!;
-      else soft[i] = 0;
-    }
-  }
-
-  return soft;
+  return Math.max(0.01, Math.min(kmPerPxX, kmPerPxY));
 }
 
-function blurField(
-  soft: Float32Array,
+function dilate(
+  src: Uint8Array,
   width: number,
   height: number,
-  passes: number,
-) {
-  for (let pass = 0; pass < passes; pass++) {
-    const src = Float32Array.from(soft);
+  radius: number,
+): Uint8Array {
+  if (radius <= 0) return Uint8Array.from(src);
+  let cur = src;
+  for (let pass = 0; pass < radius; pass++) {
+    const next = Uint8Array.from(cur);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
-        let sum = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            sum += src[(y + dy) * width + (x + dx)]!;
-          }
+        const i = y * width + x;
+        if (cur[i]) continue;
+        if (
+          cur[i - 1] ||
+          cur[i + 1] ||
+          cur[i - width] ||
+          cur[i + width] ||
+          cur[i - width - 1] ||
+          cur[i - width + 1] ||
+          cur[i + width - 1] ||
+          cur[i + width + 1]
+        ) {
+          next[i] = 1;
         }
-        soft[y * width + x] = sum / 9;
       }
     }
+    cur = next;
   }
+  return cur;
 }
 
-/** Max cores + blended fill → continuous nested corridors (TV outlook look). */
-function buildSoftField(
-  points: AutoRiskSamplePoint[],
+function erode(
+  src: Uint8Array,
   width: number,
   height: number,
-  pick: (p: AutoRiskSamplePoint) => number,
-): Float32Array {
-  const cores = splatField(
-    points,
-    width,
-    height,
-    pick,
-    SIGMA_KM,
-    CUTOFF_SIGMA,
-    "max",
-  );
-  const fill = splatField(
-    points,
-    width,
-    height,
-    pick,
-    FILL_SIGMA_KM,
-    FILL_CUTOFF,
-    "blend",
-  );
-  const soft = new Float32Array(width * height);
-  for (let i = 0; i < soft.length; i++) {
-    // Keep fill soft so weak neighbours don't inflate category bands.
-    soft[i] = Math.max(cores[i]!, fill[i]! * 0.55);
+  radius: number,
+): Uint8Array {
+  if (radius <= 0) return Uint8Array.from(src);
+  let cur = src;
+  for (let pass = 0; pass < radius; pass++) {
+    const next = new Uint8Array(src.length);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (!cur[i]) continue;
+        if (
+          cur[i - 1] &&
+          cur[i + 1] &&
+          cur[i - width] &&
+          cur[i + width]
+        ) {
+          next[i] = 1;
+        }
+      }
+    }
+    cur = next;
   }
-  blurField(soft, width, height, 5);
-  return soft;
+  return cur;
+}
+
+/** Morphological closing: dilate then erode — bridges gaps between stamps. */
+function closeMask(
+  src: Uint8Array,
+  width: number,
+  height: number,
+  radius: number,
+): Uint8Array {
+  return erode(dilate(src, width, height, radius), width, height, radius);
+}
+
+function stampDisk(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  radiusPx: number,
+) {
+  const r = Math.max(1, Math.round(radiusPx));
+  const r2 = r * r;
+  const x0 = Math.max(0, Math.floor(cx - r));
+  const x1 = Math.min(width - 1, Math.ceil(cx + r));
+  const y0 = Math.max(0, Math.floor(cy - r));
+  const y1 = Math.min(height - 1, Math.ceil(cy + r));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy <= r2) mask[y * width + x] = 1;
+    }
+  }
 }
 
 /**
- * Nested band quantize — higher ranks carve inside lower envelopes
- * (green outside → yellow → orange → red cores), not round-to-nearest blobs.
+ * Connect-the-dots rank field: for each rank, stamp samples at/above that
+ * rank and close gaps so neighbouring sites form irregular polygons.
  */
-function quantizeRankField(soft: Float32Array, maxRank: number): Uint8Array {
-  const field = new Uint8Array(soft.length);
-  // Threshold ladder for ranks 1…8 — each band needs a stronger soft core.
-  const thresholds = [0.55, 1.35, 2.25, 3.25, 4.4, 5.7, 7.1, 8.6];
-  for (let i = 0; i < soft.length; i++) {
-    const v = soft[i]!;
-    let rank = 0;
-    for (let r = maxRank; r >= 1; r--) {
-      if (v >= thresholds[r - 1]!) {
-        rank = r;
-        break;
-      }
+function buildConnectedRankField(
+  points: AutoRiskSamplePoint[],
+  width: number,
+  height: number,
+): Uint8Array {
+  const field = new Uint8Array(width * height);
+  if (!points.length) return field;
+
+  const kpp = kmPerPixel(width, height);
+  const stampR = Math.max(2, STAMP_KM / kpp);
+
+  // Low → high so higher ranks overwrite nested cores.
+  for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
+    const mask = new Uint8Array(width * height);
+    let stamps = 0;
+    for (const p of points) {
+      if (p.rank < rank) continue;
+      const { x, y } = latLonToPixel(p.lat, p.lon, width, height);
+      stampDisk(mask, width, height, x, y, stampR);
+      stamps += 1;
     }
-    field[i] = rank;
+    if (!stamps) continue;
+
+    const closeKm = CLOSE_KM_BY_RANK[rank] ?? 80;
+    const closeR = Math.max(2, Math.round(closeKm / kpp));
+    const closed = closeMask(mask, width, height, closeR);
+
+    for (let i = 0; i < field.length; i++) {
+      if (closed[i]) field[i] = rank;
+    }
   }
+
+  // Drop tiny islands (unconnected single stamps) for a cleaner corridor look.
+  pruneSmallComponents(field, width, height, 18);
+  majoritySmooth(field, width, height, 2);
   return field;
 }
 
-function quantizeHatchField(soft: Float32Array): Uint8Array {
-  const field = new Uint8Array(soft.length);
-  for (let i = 0; i < soft.length; i++) {
-    const v = soft[i]!;
-    if (v < 0.7) field[i] = 0;
-    else if (v < 1.55) field[i] = 1;
-    else field[i] = 2;
-  }
-  return field;
-}
-
-/** Close interior holes so bands read as solid nested polygons. */
-function closeRankHoles(
+/** Remove small connected components below minPixels (4-connected). */
+function pruneSmallComponents(
   field: Uint8Array,
   width: number,
   height: number,
-  passes: number,
+  minPixels: number,
 ) {
-  for (let pass = 0; pass < passes; pass++) {
-    const src = Uint8Array.from(field);
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const i = y * width + x;
-        if (src[i]! !== 0) continue;
-        const counts = new Array(AUTO_RISK_MAX_RANK + 1).fill(0) as number[];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            counts[src[(y + dy) * width + (x + dx)]!]!++;
-          }
+  const seen = new Uint8Array(field.length);
+  const qx = new Int32Array(field.length);
+  const qy = new Int32Array(field.length);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = y * width + x;
+      if (!field[start] || seen[start]) continue;
+      const rank = field[start]!;
+      let qh = 0;
+      let qt = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt += 1;
+      seen[start] = 1;
+      const cells: number[] = [start];
+
+      while (qh < qt) {
+        const cx = qx[qh]!;
+        const cy = qy[qh]!;
+        qh += 1;
+        const neighbors = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ] as const;
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (seen[ni] || field[ni] !== rank) continue;
+          seen[ni] = 1;
+          qx[qt] = nx;
+          qy[qt] = ny;
+          qt += 1;
+          cells.push(ni);
         }
-        let maj = 0;
-        let majN = 0;
-        for (let r = 1; r <= AUTO_RISK_MAX_RANK; r++) {
-          if (counts[r]! > majN) {
-            majN = counts[r]!;
-            maj = r;
-          }
-        }
-        if (majN >= 6) field[i] = maj;
+      }
+
+      if (cells.length < minPixels) {
+        for (const i of cells) field[i] = 0;
       }
     }
   }
 }
 
-/** Soften staircase edges with a majority filter (keep nested structure). */
+function buildConnectedHatchField(
+  points: AutoRiskSamplePoint[],
+  width: number,
+  height: number,
+): Uint8Array {
+  const field = new Uint8Array(width * height);
+  if (!points.length) return field;
+  const kpp = kmPerPixel(width, height);
+  const stampR = Math.max(2, STAMP_KM / kpp);
+
+  for (const level of [1, 2] as const) {
+    const mask = new Uint8Array(width * height);
+    let stamps = 0;
+    for (const p of points) {
+      if (p.hatch < level) continue;
+      const { x, y } = latLonToPixel(p.lat, p.lon, width, height);
+      stampDisk(mask, width, height, x, y, stampR);
+      stamps += 1;
+    }
+    if (!stamps) continue;
+    const closeR = Math.max(2, Math.round((level === 2 ? 55 : 70) / kpp));
+    const closed = closeMask(mask, width, height, closeR);
+    for (let i = 0; i < field.length; i++) {
+      if (closed[i]) field[i] = level;
+    }
+  }
+  return field;
+}
+
+/** Nearest-neighbour upsample keeps faceted connect-the-dots edges. */
+function upsampleNearest(
+  src: Uint8Array,
+  srcW: number,
+  srcH: number,
+  dstW: number,
+  dstH: number,
+): Uint8Array {
+  const out = new Uint8Array(dstW * dstH);
+  for (let y = 0; y < dstH; y++) {
+    const sy = Math.min(srcH - 1, Math.floor(((y + 0.5) * srcH) / dstH));
+    for (let x = 0; x < dstW; x++) {
+      const sx = Math.min(srcW - 1, Math.floor(((x + 0.5) * srcW) / dstW));
+      out[y * dstW + x] = src[sy * srcW + sx]!;
+    }
+  }
+  return out;
+}
+
+/** Light majority filter — softens stair-steps without rounding into circles. */
 function majoritySmooth(
   field: Uint8Array,
   width: number,
@@ -270,7 +331,6 @@ function majoritySmooth(
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const i = y * width + x;
-        if (src[i]! === 0) continue;
         const counts = new Array(AUTO_RISK_MAX_RANK + 1).fill(0) as number[];
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -278,50 +338,17 @@ function majoritySmooth(
           }
         }
         let maj = src[i]!;
-        let majN = 0;
-        for (let r = 1; r <= AUTO_RISK_MAX_RANK; r++) {
+        let majN = counts[maj]!;
+        for (let r = 0; r <= AUTO_RISK_MAX_RANK; r++) {
           if (counts[r]! > majN) {
             majN = counts[r]!;
             maj = r;
           }
         }
-        // Prefer keeping or stepping down one band — avoids speckles.
-        if (majN >= 5) {
-          field[i] = maj > src[i]! ? src[i]! : maj;
-        }
+        if (majN >= 5) field[i] = maj;
       }
     }
   }
-}
-
-function upsampleBilinear(
-  src: Float32Array,
-  srcW: number,
-  srcH: number,
-  dstW: number,
-  dstH: number,
-): Float32Array {
-  const out = new Float32Array(dstW * dstH);
-  for (let y = 0; y < dstH; y++) {
-    const fy = ((y + 0.5) * srcH) / dstH - 0.5;
-    const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(fy)));
-    const y1 = Math.max(0, Math.min(srcH - 1, y0 + 1));
-    const ty = Math.max(0, Math.min(1, fy - y0));
-    for (let x = 0; x < dstW; x++) {
-      const fx = ((x + 0.5) * srcW) / dstW - 0.5;
-      const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(fx)));
-      const x1 = Math.max(0, Math.min(srcW - 1, x0 + 1));
-      const tx = Math.max(0, Math.min(1, fx - x0));
-      const v00 = src[y0 * srcW + x0]!;
-      const v10 = src[y0 * srcW + x1]!;
-      const v01 = src[y1 * srcW + x0]!;
-      const v11 = src[y1 * srcW + x1]!;
-      out[y * dstW + x] =
-        (v00 * (1 - tx) + v10 * tx) * (1 - ty) +
-        (v01 * (1 - tx) + v11 * tx) * ty;
-    }
-  }
-  return out;
 }
 
 function paintHatch(
@@ -345,10 +372,6 @@ function paintHatch(
   png.data[o + 3] = Math.min(255, Math.round(png.data[o + 3]! * 1.05));
 }
 
-/**
- * Black outline wherever a risk pixel borders a different rank
- * (including empty). Thickened for high-res overlays.
- */
 function paintRankOutlines(
   png: PNG,
   ranks: Uint8Array,
@@ -376,7 +399,6 @@ function paintRankOutlines(
     }
   }
 
-  // Dilate edge mask for thicker strokes at high resolution.
   let mask = edge;
   for (let t = 1; t < thickness; t++) {
     const next = Uint8Array.from(mask);
@@ -413,35 +435,25 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
   const work = sizeFor(WORK_WIDTH);
   const out = sizeFor(OUT_WIDTH);
 
-  const rankWork = buildSoftField(points, work.width, work.height, (p) => p.rank);
-  const hatchWork = buildSoftField(
-    points,
-    work.width,
-    work.height,
-    (p) => p.hatch,
-  );
+  const rankWork = buildConnectedRankField(points, work.width, work.height);
+  const hatchWork = buildConnectedHatchField(points, work.width, work.height);
 
-  const rankSoft = upsampleBilinear(
+  const ranks = upsampleNearest(
     rankWork,
     work.width,
     work.height,
     out.width,
     out.height,
   );
-  const hatchSoft = upsampleBilinear(
+  const hatches = upsampleNearest(
     hatchWork,
     work.width,
     work.height,
     out.width,
     out.height,
   );
-  blurField(rankSoft, out.width, out.height, 2);
-  blurField(hatchSoft, out.width, out.height, 1);
-
-  const ranks = quantizeRankField(rankSoft, AUTO_RISK_MAX_RANK);
-  closeRankHoles(ranks, out.width, out.height, 2);
   majoritySmooth(ranks, out.width, out.height, 2);
-  const hatches = quantizeHatchField(hatchSoft);
+
   const { width, height } = out;
   const png = new PNG({ width, height });
 
@@ -471,7 +483,6 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     }
   }
 
-  // Black outlines on every risk-band boundary (after fill/hatch).
   paintRankOutlines(png, ranks, width, height, OUTLINE_PX);
 
   return PNG.sync.write(png);
