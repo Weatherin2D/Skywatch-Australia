@@ -26,11 +26,14 @@ import {
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
 const EMPTY_CACHE_MS = 90_000;
-const BATCH = 60;
+const BATCH = 55;
 const BATCH_CONCURRENCY = 3;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
-/** Minimum spacing for national sample grid (~120–160 points). */
-const MIN_SITE_KM = 105;
+/** Dense national fill (~0.95° / ~100 km). Towns kept as anchors. */
+const GRID_STEP_DEG = 0.95;
+const MIN_FILL_KM = 80;
+/** Drop ocean/fill points farther than this from any known AU site. */
+const NEAR_LAND_KM = 240;
 
 type HourlyLoc = {
   latitude?: number;
@@ -84,19 +87,46 @@ function approxKm(
   return Math.hypot(dLat, dLon);
 }
 
-/** Thin BoM town list into a national ~120–160 point sample grid. */
+/**
+ * Dense national sample grid: all BoM towns plus a regular fill over land.
+ * Target ~400–550 points for sharper automatic risk maps.
+ */
 function buildSampleSites(): BomRiskSite[] {
-  const kept: BomRiskSite[] = [];
-  for (const site of BOM_RISK_SITES) {
-    if (
-      kept.every(
-        (k) => approxKm(site.lat, site.lon, k.lat, k.lon) >= MIN_SITE_KM,
-      )
+  const sites: BomRiskSite[] = BOM_RISK_SITES.map((s) => ({ ...s }));
+
+  for (
+    let lat = -43.6;
+    lat <= -10.4 + 1e-9;
+    lat = Number((lat + GRID_STEP_DEG).toFixed(4))
+  ) {
+    for (
+      let lon = 113.0;
+      lon <= 153.6 + 1e-9;
+      lon = Number((lon + GRID_STEP_DEG).toFixed(4))
     ) {
-      kept.push(site);
+      // Skip far-offshore cells (no town within NEAR_LAND_KM).
+      if (
+        !BOM_RISK_SITES.some(
+          (s) => approxKm(lat, lon, s.lat, s.lon) <= NEAR_LAND_KM,
+        )
+      ) {
+        continue;
+      }
+      if (
+        sites.some((s) => approxKm(lat, lon, s.lat, s.lon) < MIN_FILL_KM)
+      ) {
+        continue;
+      }
+      sites.push({
+        name: `grid_${lat}_${lon}`,
+        state: "",
+        geohash: "",
+        lat,
+        lon,
+      });
     }
   }
-  return kept;
+  return sites;
 }
 
 const SAMPLE_SITES = buildSampleSites();

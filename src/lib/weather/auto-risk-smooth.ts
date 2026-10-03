@@ -1,5 +1,6 @@
 /**
  * Smooth automated risk raster: categorical colour bands + L1/L2 hatch overlays.
+ * High-res splat renderer — dense samples stay fast on serverless.
  */
 
 import { PNG } from "pngjs";
@@ -19,10 +20,13 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-const WORK_WIDTH = 280;
-const OUT_WIDTH = 720;
-const SIGMA_KM = 300;
-const CUTOFF_SIGMA = 2.2;
+/** Working field before upsample — high enough to hold fine structure. */
+const WORK_WIDTH = 480;
+/** Final Leaflet overlay resolution (~2× previous). */
+const OUT_WIDTH = 1500;
+/** Tighter kernel so dense samples resolve sharper risk cores. */
+const SIGMA_KM = 155;
+const CUTOFF_SIGMA = 2.3;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -57,12 +61,21 @@ function sizeFor(width: number) {
   return { width, height };
 }
 
-function pixelToLatLon(x: number, y: number, width: number, height: number) {
-  const lon = AU.minLon + ((x + 0.5) / width) * (AU.maxLon - AU.minLon);
-  const lat = AU.maxLat - ((y + 0.5) / height) * (AU.maxLat - AU.minLat);
-  return { lat, lon };
+function latLonToPixel(
+  lat: number,
+  lon: number,
+  width: number,
+  height: number,
+) {
+  const x = ((lon - AU.minLon) / (AU.maxLon - AU.minLon)) * width - 0.5;
+  const y = ((AU.maxLat - lat) / (AU.maxLat - AU.minLat)) * height - 0.5;
+  return { x, y };
 }
 
+/**
+ * Splat each sample as a Gaussian onto the work grid (max-blend).
+ * O(points × kernel) — stays fast at high resolution with hundreds of sites.
+ */
 function buildSoftField(
   points: AutoRiskSamplePoint[],
   width: number,
@@ -74,29 +87,41 @@ function buildSoftField(
 
   const maxDist = SIGMA_KM * CUTOFF_SIGMA;
   const twoSigma2 = 2 * SIGMA_KM * SIGMA_KM;
-  const degPad = maxDist / 90;
+  const kmPerPxX =
+    ((AU.maxLon - AU.minLon) * 111.0 * Math.cos((-27 * Math.PI) / 180)) /
+    width;
+  const kmPerPxY = ((AU.maxLat - AU.minLat) * 111.0) / height;
+  const radiusPx = Math.ceil(
+    maxDist / Math.max(0.01, Math.min(kmPerPxX, kmPerPxY)),
+  );
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const { lat, lon } = pixelToLatLon(x, y, width, height);
-      let best = 0;
-      for (const p of points) {
-        const value = pick(p);
-        if (value <= 0) continue;
-        if (Math.abs(p.lat - lat) > degPad || Math.abs(p.lon - lon) > degPad) {
-          continue;
-        }
+  for (const p of points) {
+    const value = pick(p);
+    if (value <= 0) continue;
+    const { x: cx, y: cy } = latLonToPixel(p.lat, p.lon, width, height);
+    const x0 = Math.max(0, Math.floor(cx - radiusPx));
+    const x1 = Math.min(width - 1, Math.ceil(cx + radiusPx));
+    const y0 = Math.max(0, Math.floor(cy - radiusPx));
+    const y1 = Math.min(height - 1, Math.ceil(cy + radiusPx));
+
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const lon =
+          AU.minLon + ((x + 0.5) / width) * (AU.maxLon - AU.minLon);
+        const lat =
+          AU.maxLat - ((y + 0.5) / height) * (AU.maxLat - AU.minLat);
         const d = approxKm(lat, lon, p.lat, p.lon);
         if (d > maxDist) continue;
         const w = Math.exp(-(d * d) / twoSigma2);
         const score = value * (0.45 + 0.55 * w) * Math.min(1, w / 0.09);
-        if (score > best) best = score;
+        const i = y * width + x;
+        if (score > soft[i]!) soft[i] = score;
       }
-      soft[y * width + x] = best;
     }
   }
 
-  for (let pass = 0; pass < 3; pass++) {
+  // Light blur to knit neighbouring samples into continuous bands.
+  for (let pass = 0; pass < 2; pass++) {
     const src = Float32Array.from(soft);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
@@ -119,17 +144,14 @@ function quantizeRankField(
   maxRank: number,
 ): Uint8Array {
   const field = new Uint8Array(soft.length);
-  // Thresholds scale with max rank so bands carve similarly to BoM smooth.
-  const step = Math.max(0.55, maxRank / (maxRank + 0.8));
   for (let i = 0; i < soft.length; i++) {
     const v = soft[i]!;
-    if (v < 0.42) {
+    if (v < 0.4) {
       field[i] = 0;
       continue;
     }
     let rank = Math.min(maxRank, Math.max(1, Math.round(v)));
-    // Soft edges: pull fractional scores down one band.
-    if (v < rank - 0.35 && rank > 1) rank -= 1;
+    if (v < rank - 0.32 && rank > 1) rank -= 1;
     field[i] = rank;
   }
   return field;
@@ -207,11 +229,10 @@ function paintHatch(
   kind: 1 | 2,
 ) {
   const o = (y * width + x) * 4;
-  // Keep categorical colour; darken with stripe pattern.
   const onStripe =
     kind === 2
-      ? (x + y) % 8 < 3 || (x - y + 800) % 8 < 3
-      : (x + y) % 7 < 2;
+      ? (x + y) % 10 < 3 || (x - y + 2000) % 10 < 3
+      : (x + y) % 9 < 2;
   if (!onStripe) return;
   const mix = kind === 2 ? 0.55 : 0.4;
   png.data[o] = Math.round(png.data[o]! * (1 - mix));
@@ -247,7 +268,7 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     out.width,
     out.height,
   );
-  blurField(rankSoft, out.width, out.height, 2);
+  blurField(rankSoft, out.width, out.height, 1);
   blurField(hatchSoft, out.width, out.height, 1);
 
   const ranks = quantizeRankField(rankSoft, AUTO_RISK_MAX_RANK);
@@ -272,7 +293,6 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     png.data[o + 3] = a;
   }
 
-  // Soft outer edge fade.
   const srcA = Buffer.from(png.data);
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
@@ -286,12 +306,13 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
       }
       if (empty > 0) {
         const o = i * 4;
-        png.data[o + 3] = Math.round(srcA[o + 3]! * Math.max(0.35, 1 - empty / 10));
+        png.data[o + 3] = Math.round(
+          srcA[o + 3]! * Math.max(0.35, 1 - empty / 10),
+        );
       }
     }
   }
 
-  // Hatch overlays on top of categorical fill (only where risk exists).
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
