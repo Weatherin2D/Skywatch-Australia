@@ -23,9 +23,11 @@ import {
 } from "@/lib/weather/archive-time";
 import {
   ARCHIVE_LOOP_OPTIONS,
+  DEFAULT_ARCHIVE_LOOP_HOURS,
   archiveFrameUrl,
   buildArchiveScrubFrames,
-  type ArchiveLoopLength,
+  clampArchiveLoopHours,
+  parseArchiveLoopParam,
 } from "@/lib/weather/archive-client";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
@@ -147,7 +149,7 @@ function ArchiveDashboardInner() {
   const [parts, setParts] = useState<AestParts | null>(null);
   const [showLightning, setShowLightning] = useState(true);
   const [showSynoptic, setShowSynoptic] = useState(true);
-  const [loopLength, setLoopLength] = useState<ArchiveLoopLength>("4h");
+  const [loopHours, setLoopHours] = useState(DEFAULT_ARCHIVE_LOOP_HOURS);
   const [playing, setPlaying] = useState(false);
   const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
   const [frameIndex, setFrameIndex] = useState(0);
@@ -197,10 +199,8 @@ function ArchiveDashboardInner() {
           }
           if (searchParams.get("lightning") === "0") setShowLightning(false);
           if (searchParams.get("synoptic") === "0") setShowSynoptic(false);
-          const loop = searchParams.get("loop");
-          if (loop === "4h" || loop === "12h" || loop === "24h") {
-            setLoopLength(loop);
-          }
+          const loop = parseArchiveLoopParam(searchParams.get("loop"));
+          if (loop != null) setLoopHours(loop);
           hydrated.current = true;
         }
       } catch (err) {
@@ -262,9 +262,9 @@ function ArchiveDashboardInner() {
       selectedUnix,
       catalog.epochUnix,
       catalog.tipUnix,
-      loopLength,
+      loopHours,
     );
-  }, [selectedUnix, catalog, product, loopLength]);
+  }, [selectedUnix, catalog, product, loopHours]);
 
   // Prefetch a few upcoming frames so play/scrub stays smooth.
   useEffect(() => {
@@ -405,7 +405,7 @@ function ArchiveDashboardInner() {
     else params.set("lightning", "0");
     if (showSynoptic) params.set("synoptic", "1");
     else params.set("synoptic", "0");
-    params.set("loop", loopLength);
+    params.set("loop", String(loopHours));
     const next = `?${params.toString()}`;
     if (window.location.search !== next) {
       window.history.replaceState(null, "", `/archive${next}`);
@@ -418,7 +418,7 @@ function ArchiveDashboardInner() {
     regionId,
     showLightning,
     showSynoptic,
-    loopLength,
+    loopHours,
   ]);
 
   useEffect(() => {
@@ -594,13 +594,9 @@ function ArchiveDashboardInner() {
         />
         <SelectField
           label="Loop length"
-          value={
-            loopLength === "24h" ? 24 : loopLength === "12h" ? 12 : 4
-          }
+          value={loopHours}
           onChange={(v) => {
-            const next: ArchiveLoopLength =
-              v >= 24 ? "24h" : v >= 12 ? "12h" : "4h";
-            setLoopLength(next);
+            setLoopHours(clampArchiveLoopHours(v));
             setPlaying(false);
           }}
           options={ARCHIVE_LOOP_OPTIONS.map((o) => ({

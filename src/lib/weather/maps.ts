@@ -356,6 +356,7 @@ export const PLAYBACK_SPEEDS = [
   { id: "1", label: "1×", msPerFrame: 500 },
   { id: "2", label: "2×", msPerFrame: 280 },
   { id: "4", label: "4×", msPerFrame: 160 },
+  { id: "10", label: "10×", msPerFrame: 50 },
 ] as const;
 
 export type PlaybackSpeedId = (typeof PLAYBACK_SPEEDS)[number]["id"];

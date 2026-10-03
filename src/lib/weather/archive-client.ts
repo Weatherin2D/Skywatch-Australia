@@ -7,17 +7,46 @@ import {
   startOfAestDayUnix,
 } from "@/lib/weather/archive-time";
 
-export type ArchiveLoopLength = "4h" | "12h" | "24h";
+/** Loop length in hours (1–48). 24 = full AEST calendar day. */
+export type ArchiveLoopHours = number;
 
+export const ARCHIVE_LOOP_MIN_HOURS = 1;
+export const ARCHIVE_LOOP_MAX_HOURS = 48;
+export const DEFAULT_ARCHIVE_LOOP_HOURS = 4;
+
+/** Preset chips + select options for the archive UI. */
 export const ARCHIVE_LOOP_OPTIONS: {
-  id: ArchiveLoopLength;
-  label: string;
   hours: number;
+  label: string;
 }[] = [
-  { id: "4h", label: "4 hours", hours: 4 },
-  { id: "12h", label: "12 hours", hours: 12 },
-  { id: "24h", label: "Full day (24h)", hours: 24 },
+  { hours: 1, label: "1 hour" },
+  { hours: 2, label: "2 hours" },
+  { hours: 3, label: "3 hours" },
+  { hours: 4, label: "4 hours" },
+  { hours: 6, label: "6 hours" },
+  { hours: 8, label: "8 hours" },
+  { hours: 12, label: "12 hours" },
+  { hours: 18, label: "18 hours" },
+  { hours: 24, label: "Full day (24h)" },
+  { hours: 36, label: "36 hours" },
+  { hours: 48, label: "48 hours" },
 ];
+
+export function clampArchiveLoopHours(hours: number): number {
+  if (!Number.isFinite(hours)) return DEFAULT_ARCHIVE_LOOP_HOURS;
+  return Math.min(
+    ARCHIVE_LOOP_MAX_HOURS,
+    Math.max(ARCHIVE_LOOP_MIN_HOURS, Math.round(hours)),
+  );
+}
+
+/** Parse `loop` query: `6`, `6h`, `12h`, `24h`. */
+export function parseArchiveLoopParam(raw: string | null): number | null {
+  if (!raw) return null;
+  const m = /^(\d{1,2})h?$/i.exec(raw.trim());
+  if (!m) return null;
+  return clampArchiveLoopHours(Number(m[1]));
+}
 
 export function archiveFrameUrl(
   product: SatelliteProductId,
@@ -32,28 +61,29 @@ export function archiveFrameUrl(
 
 /**
  * Build scrub/play frames for the archive loop.
- * - 4h / 12h: centered on the selected time
  * - 24h: full AEST calendar day containing the selected time
+ * - other lengths: window centered on the selected time
  */
 export function buildArchiveScrubFrames(
   product: SatelliteProductId,
   centerUnix: number,
   epochUnix: number,
   tipUnix: number,
-  loop: ArchiveLoopLength = "4h",
+  loopHours: ArchiveLoopHours = DEFAULT_ARCHIVE_LOOP_HOURS,
   availableTimes?: Set<number>,
 ): WeatherFrame[] {
   const center = quantizeArchiveStamp(centerUnix);
+  const hours = clampArchiveLoopHours(loopHours);
   let from: number;
   let to: number;
 
-  if (loop === "24h") {
+  if (hours === 24) {
     from = Math.max(epochUnix, startOfAestDayUnix(center));
     to = Math.min(tipUnix, from + 24 * 3600 - ARCHIVE_STEP_SEC);
   } else {
-    const half = (loop === "12h" ? 12 : 4) * 3600;
-    from = Math.max(epochUnix, center - half);
-    to = Math.min(tipUnix, center + half);
+    const half = (hours * 3600) / 2;
+    from = Math.max(epochUnix, center - Math.floor(half));
+    to = Math.min(tipUnix, center + Math.ceil(half));
   }
 
   if (to < from) return [];
