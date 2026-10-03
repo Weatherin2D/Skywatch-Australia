@@ -33,9 +33,15 @@ export async function GET(request: NextRequest) {
   try {
     const meta = await ensureArchiveMeta();
     // Hobby Cron is daily only — keep the archive growing when users visit.
-    after(() => {
-      void maybeRunArchiveIngestLazy(meta.updatedAt);
-    });
+    try {
+      after(() => {
+        void maybeRunArchiveIngestLazy(meta.updatedAt).catch((err) => {
+          console.warn("[weather/archive] lazy ingest", err);
+        });
+      });
+    } catch (err) {
+      console.warn("[weather/archive] after() unavailable", err);
+    }
     const now = Math.floor(Date.now() / 1000);
     const tip = quantizeArchiveStamp(now);
     const productParam = request.nextUrl.searchParams.get("product");
@@ -44,12 +50,15 @@ export async function GET(request: NextRequest) {
         ? productParam
         : meta.products[0] ?? "infrared";
 
-    const bounds = await findSatTimeBounds(product);
+    const bounds = await findSatTimeBounds(product).catch(() => ({
+      min: null as number | null,
+      max: null as number | null,
+    }));
     const date =
       request.nextUrl.searchParams.get("date") ??
       formatAestDateKey(Math.min(tip, Math.max(meta.epochUnix, now)));
 
-    const dayTimes = await listSatTimesForDay(product, date);
+    const dayTimes = await listSatTimesForDay(product, date).catch(() => []);
 
     return NextResponse.json(
       {
@@ -82,15 +91,50 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+          "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30",
         },
       },
     );
   } catch (err) {
     console.error("[weather/archive]", err);
+    // Last-resort catalog so the Archive UI can still open and use live fallbacks.
+    const now = Math.floor(Date.now() / 1000);
+    const tip = quantizeArchiveStamp(now);
+    const epochUnix = tip - (tip % (24 * 3600));
     return NextResponse.json(
-      { error: "Archive catalog unavailable" },
-      { status: 500 },
+      {
+        generated: now,
+        storage: "local",
+        epochUnix,
+        epochLabel: formatArchiveDateTimeLabel(epochUnix),
+        tipUnix: tip,
+        stepSec: ARCHIVE_STEP_SEC,
+        scrubHalfWindowSec: ARCHIVE_SCRUB_HALF_WINDOW_SEC,
+        products: [
+          { id: "infrared", label: getSatelliteProduct("infrared").label },
+          { id: "visible", label: getSatelliteProduct("visible").label },
+          { id: "shortwave", label: getSatelliteProduct("shortwave").label },
+        ],
+        productTier: 0,
+        satBytes24h: 0,
+        range: { minUnix: epochUnix, maxUnix: tip },
+        date: formatAestDateKey(tip),
+        product: "infrared",
+        times: [],
+        degraded: true,
+        attribution: {
+          satellite: "Himawari imagery via RealEarth / NASA GIBS",
+          synoptic: "MSLP · GFS via Open-Meteo · fronts from BoM IDY00030",
+          lightning:
+            "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — entertainment only, not for official warning use",
+        },
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
     );
   }
 }

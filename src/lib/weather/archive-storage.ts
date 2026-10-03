@@ -1,6 +1,7 @@
 /**
  * Durable archive store for satellite frames, synoptic GeoJSON, and lightning.
- * Prefers Vercel Blob; falls back to /tmp/skywatch-archive for local/dev.
+ * Prefers Vercel Blob; falls back to /tmp/skywatch-archive when Blob is
+ * unavailable (missing token, suspended store, network errors).
  */
 
 import { promises as fs } from "fs";
@@ -61,12 +62,20 @@ export type ArchiveLightningHour = {
 
 type BlobAccess = "public" | "private";
 
-function useBlobStorage() {
+/** Once Blob is known broken (e.g. suspended), stay on local for this process. */
+let blobDisabled = false;
+let blobDisableReason: string | null = null;
+
+function blobConfigured(): boolean {
   return Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
       process.env.BLOB_STORE_ID ||
       (process.env.VERCEL && process.env.VERCEL_OIDC_TOKEN),
   );
+}
+
+function useBlobStorage() {
+  return blobConfigured() && !blobDisabled;
 }
 
 function preferredAccessOrder(): BlobAccess[] {
@@ -76,12 +85,51 @@ function preferredAccessOrder(): BlobAccess[] {
   return ["public", "private"];
 }
 
+function isBlobFatalError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("suspended") ||
+    m.includes("not found") ||
+    m.includes("unauthorized") ||
+    m.includes("forbidden") ||
+    m.includes("access denied") ||
+    m.includes("no token") ||
+    m.includes("store does not exist")
+  );
+}
+
+function disableBlob(reason: string) {
+  if (blobDisabled) return;
+  blobDisabled = true;
+  blobDisableReason = reason;
+  console.warn(`[archive-storage] Blob disabled — falling back to local: ${reason}`);
+}
+
 function localPath(pathname: string): string {
   return path.join(LOCAL_ROOT, pathname.replace(/^archive\//, ""));
 }
 
 async function ensureLocalDir(filePath: string) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
+}
+
+async function putLocal(
+  pathname: string,
+  body: Buffer | string,
+): Promise<void> {
+  const fp = localPath(pathname);
+  await ensureLocalDir(fp);
+  await fs.writeFile(fp, body);
+}
+
+async function getLocal(pathname: string): Promise<Buffer | null> {
+  try {
+    return await fs.readFile(localPath(pathname));
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 async function putBytes(
@@ -103,16 +151,20 @@ async function putBytes(
         });
         return;
       } catch (error) {
-        errors.push(
-          `put(${access}): ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const msg = error instanceof Error ? error.message : String(error);
+        errors.push(`put(${access}): ${msg}`);
+        if (isBlobFatalError(msg)) {
+          disableBlob(msg);
+          break;
+        }
       }
     }
-    throw new Error(`Archive blob write failed. ${errors.join(" | ")}`);
+    // Soft-fail to local so the archive catalog/UI stays up.
+    console.warn(
+      `[archive-storage] Blob put failed for ${pathname}; using local. ${errors.join(" | ")}`,
+    );
   }
-  const fp = localPath(pathname);
-  await ensureLocalDir(fp);
-  await fs.writeFile(fp, body);
+  await putLocal(pathname, body);
 }
 
 async function getBytes(pathname: string): Promise<Buffer | null> {
@@ -124,19 +176,16 @@ async function getBytes(pathname: string): Promise<Buffer | null> {
         if (!result.stream) continue;
         const ab = await new Response(result.stream).arrayBuffer();
         return Buffer.from(ab);
-      } catch {
-        // try next
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (isBlobFatalError(msg)) {
+          disableBlob(msg);
+          break;
+        }
       }
     }
-    return null;
   }
-  try {
-    return await fs.readFile(localPath(pathname));
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === "ENOENT") return null;
-    throw error;
-  }
+  return getLocal(pathname);
 }
 
 async function exists(pathname: string): Promise<boolean> {
@@ -144,21 +193,9 @@ async function exists(pathname: string): Promise<boolean> {
   return buf != null;
 }
 
-async function listPrefix(
+async function listLocalPrefix(
   prefix: string,
 ): Promise<{ pathname: string; size: number }[]> {
-  if (useBlobStorage()) {
-    const out: { pathname: string; size: number }[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await list({ prefix, cursor, limit: 1000 });
-      for (const b of page.blobs) {
-        out.push({ pathname: b.pathname, size: b.size });
-      }
-      cursor = page.hasMore ? page.cursor : undefined;
-    } while (cursor);
-    return out;
-  }
   const abs = localPath(prefix);
   const out: { pathname: string; size: number }[] = [];
   async function walk(dir: string, basePath: string) {
@@ -180,6 +217,32 @@ async function listPrefix(
   }
   await walk(abs, prefix.replace(/\/$/, ""));
   return out;
+}
+
+async function listPrefix(
+  prefix: string,
+): Promise<{ pathname: string; size: number }[]> {
+  if (useBlobStorage()) {
+    try {
+      const out: { pathname: string; size: number }[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await list({ prefix, cursor, limit: 1000 });
+        for (const b of page.blobs) {
+          out.push({ pathname: b.pathname, size: b.size });
+        }
+        cursor = page.hasMore ? page.cursor : undefined;
+      } while (cursor);
+      return out;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (isBlobFatalError(msg)) disableBlob(msg);
+      console.warn(
+        `[archive-storage] Blob list failed for ${prefix}; using local. ${msg}`,
+      );
+    }
+  }
+  return listLocalPrefix(prefix);
 }
 
 export function satObjectPath(
@@ -215,20 +278,33 @@ export async function writeArchiveMeta(meta: ArchiveMeta): Promise<void> {
   await putBytes(META_PATH, JSON.stringify(meta, null, 2), "application/json", true);
 }
 
-/** Ensure meta exists; epoch is start of AEST today on first create. */
-export async function ensureArchiveMeta(): Promise<ArchiveMeta> {
-  const existing = await readArchiveMeta();
-  if (existing?.epochUnix) return existing;
-  const now = Math.floor(Date.now() / 1000);
-  const meta: ArchiveMeta = {
+function defaultArchiveMeta(now = Math.floor(Date.now() / 1000)): ArchiveMeta {
+  return {
     epochUnix: startOfAestDayUnix(now),
     products: [...ARCHIVE_PRODUCT_TIERS[0]!],
     stepSec: STEP_SEC,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     productTier: 0,
+    satBytes24h: 0,
   };
-  await writeArchiveMeta(meta);
+}
+
+/** Ensure meta exists; epoch is start of AEST today on first create. */
+export async function ensureArchiveMeta(): Promise<ArchiveMeta> {
+  try {
+    const existing = await readArchiveMeta();
+    if (existing?.epochUnix) return existing;
+  } catch (err) {
+    console.warn("[archive-storage] read meta failed", err);
+  }
+  const meta = defaultArchiveMeta();
+  try {
+    await writeArchiveMeta(meta);
+  } catch (err) {
+    // Still serve a catalog — frames/lightning have live fallbacks.
+    console.warn("[archive-storage] write meta failed; using ephemeral meta", err);
+  }
   return meta;
 }
 
@@ -260,25 +336,30 @@ export async function listSatTimesForDay(
 ): Promise<number[]> {
   const [y, m, d] = dateKey.split("-");
   if (!y || !m || !d) return [];
-  const prefix = `archive/sat/${product}/${y}/${m}/${d}/`;
-  const items = await listPrefix(prefix);
-  const times: number[] = [];
-  for (const item of items) {
-    const base = path.posix.basename(item.pathname, ".jpg");
-    if (!/^\d{4}$/.test(base)) continue;
-    const hour = Number(base.slice(0, 2));
-    const minute = Number(base.slice(2, 4));
-    times.push(
-      aestPartsToUnix({
-        year: Number(y),
-        month: Number(m),
-        day: Number(d),
-        hour,
-        minute,
-      }),
-    );
+  try {
+    const prefix = `archive/sat/${product}/${y}/${m}/${d}/`;
+    const items = await listPrefix(prefix);
+    const times: number[] = [];
+    for (const item of items) {
+      const base = path.posix.basename(item.pathname, ".jpg");
+      if (!/^\d{4}$/.test(base)) continue;
+      const hour = Number(base.slice(0, 2));
+      const minute = Number(base.slice(2, 4));
+      times.push(
+        aestPartsToUnix({
+          year: Number(y),
+          month: Number(m),
+          day: Number(d),
+          hour,
+          minute,
+        }),
+      );
+    }
+    return times.sort((a, b) => a - b);
+  } catch (err) {
+    console.warn("[archive-storage] listSatTimesForDay", err);
+    return [];
   }
-  return times.sort((a, b) => a - b);
 }
 
 export async function putSynopticRecord(
@@ -305,11 +386,15 @@ export async function getSynopticRecord(
 }
 
 export async function listSynopticStamps(): Promise<string[]> {
-  const items = await listPrefix("archive/synoptic/");
-  return items
-    .map((i) => path.posix.basename(i.pathname, ".json"))
-    .filter((s) => /^\d{12}$/.test(s))
-    .sort();
+  try {
+    const items = await listPrefix("archive/synoptic/");
+    return items
+      .map((i) => path.posix.basename(i.pathname, ".json"))
+      .filter((s) => /^\d{12}$/.test(s))
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 export async function getLightningHour(
@@ -339,12 +424,16 @@ export async function mergeLightningHour(
     strikes: merged,
     updatedAt: new Date().toISOString(),
   };
-  await putBytes(
-    lightningHourPath(timeUnix),
-    JSON.stringify(record),
-    "application/json",
-    true,
-  );
+  try {
+    await putBytes(
+      lightningHourPath(timeUnix),
+      JSON.stringify(record),
+      "application/json",
+      true,
+    );
+  } catch (err) {
+    console.warn("[archive-storage] mergeLightningHour persist failed", err);
+  }
   return merged.length;
 }
 
@@ -372,42 +461,50 @@ export async function getLightningRange(
 }
 
 export async function estimateSatBytesLast24h(): Promise<number> {
-  const items = await listPrefix("archive/sat/");
-  const today = formatAestDateKey(Math.floor(Date.now() / 1000));
-  const yest = formatAestDateKey(Math.floor(Date.now() / 1000) - 86400);
-  let total = 0;
-  for (const item of items) {
-    const m = item.pathname.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);
-    if (!m) continue;
-    const key = `${m[1]}-${m[2]}-${m[3]}`;
-    if (key === today || key === yest) total += item.size;
+  try {
+    const items = await listPrefix("archive/sat/");
+    const today = formatAestDateKey(Math.floor(Date.now() / 1000));
+    const yest = formatAestDateKey(Math.floor(Date.now() / 1000) - 86400);
+    let total = 0;
+    for (const item of items) {
+      const m = item.pathname.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);
+      if (!m) continue;
+      const key = `${m[1]}-${m[2]}-${m[3]}`;
+      if (key === today || key === yest) total += item.size;
+    }
+    return total;
+  } catch {
+    return 0;
   }
-  return total;
 }
 
 /** Earliest / latest sat frame times for a product (best-effort scan). */
 export async function findSatTimeBounds(
   product: SatelliteProductId,
 ): Promise<{ min: number | null; max: number | null }> {
-  const items = await listPrefix(`archive/sat/${product}/`);
-  let min: number | null = null;
-  let max: number | null = null;
-  for (const item of items) {
-    const m = item.pathname.match(
-      /\/(\d{4})\/(\d{2})\/(\d{2})\/(\d{4})\.jpg$/,
-    );
-    if (!m) continue;
-    const t = aestPartsToUnix({
-      year: Number(m[1]),
-      month: Number(m[2]),
-      day: Number(m[3]),
-      hour: Number(m[4]!.slice(0, 2)),
-      minute: Number(m[4]!.slice(2, 4)),
-    });
-    if (min == null || t < min) min = t;
-    if (max == null || t > max) max = t;
+  try {
+    const items = await listPrefix(`archive/sat/${product}/`);
+    let min: number | null = null;
+    let max: number | null = null;
+    for (const item of items) {
+      const m = item.pathname.match(
+        /\/(\d{4})\/(\d{2})\/(\d{2})\/(\d{4})\.jpg$/,
+      );
+      if (!m) continue;
+      const t = aestPartsToUnix({
+        year: Number(m[1]),
+        month: Number(m[2]),
+        day: Number(m[3]),
+        hour: Number(m[4]!.slice(0, 2)),
+        minute: Number(m[4]!.slice(2, 4)),
+      });
+      if (min == null || t < min) min = t;
+      if (max == null || t > max) max = t;
+    }
+    return { min, max };
+  } catch {
+    return { min: null, max: null };
   }
-  return { min, max };
 }
 
 export function hourStartAestUnix(unixSec: number): number {
@@ -440,6 +537,10 @@ export function demoteProducts(
 
 export function archiveStorageMode(): "blob" | "local" {
   return useBlobStorage() ? "blob" : "local";
+}
+
+export function archiveBlobDisableReason(): string | null {
+  return blobDisableReason;
 }
 
 export { BLOB_PREFIX, META_PATH, LOCAL_ROOT };

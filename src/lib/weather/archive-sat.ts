@@ -61,7 +61,11 @@ export async function ensureArchiveSatFrame(
       );
       if (!got) return null;
       const jpeg = await toJpeg(got.body);
-      await putSatFrame(product, stamp, jpeg);
+      try {
+        await putSatFrame(product, stamp, jpeg);
+      } catch (err) {
+        console.warn(`[archive-sat] persist failed ${key}`, err);
+      }
       return { body: jpeg, captured: true };
     } catch (err) {
       console.error(`[archive-sat] ${key}`, err);
