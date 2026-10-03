@@ -35,12 +35,18 @@ export async function GET(req: NextRequest) {
           { status: 400 },
         );
       }
-      const result = await getAutoRiskDayPng(dayNum);
+      const force =
+        req.nextUrl.searchParams.get("force") === "1" ||
+        req.nextUrl.searchParams.get("refresh") === "1";
+      const result = await getAutoRiskDayPng(dayNum, { force });
       const png = !result || result.empty ? EMPTY_PNG : result.png;
       return new NextResponse(new Uint8Array(png), {
         headers: {
           "Content-Type": "image/png",
-          "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
+          "Cache-Control":
+            !result || result.empty
+              ? "no-store"
+              : "public, max-age=120, stale-while-revalidate=600",
           "X-Risk-Display": "geo",
           "X-Risk-Source": "auto",
           ...(result?.issuedAt

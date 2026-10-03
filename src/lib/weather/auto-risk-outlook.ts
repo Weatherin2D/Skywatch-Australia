@@ -24,8 +24,10 @@ import {
 } from "@/lib/weather/archive-time";
 
 const CACHE_MS = 20 * 60_000;
-const BATCH = 70;
-const BATCH_CONCURRENCY = 4;
+/** Empty/failed outlooks must not stick for the full cache window. */
+const EMPTY_CACHE_MS = 90_000;
+const BATCH = 60;
+const BATCH_CONCURRENCY = 3;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
 /** Minimum spacing for national sample grid (~120–160 points). */
 const MIN_SITE_KM = 105;
@@ -140,6 +142,9 @@ async function fetchBatch(
   lats: number[],
   lons: number[],
 ): Promise<HourlyLoc[]> {
+  // NOTE: Do NOT request pressure-level winds (500hPa etc.) in multi-location
+  // batches — Open-Meteo regularly hangs on those and every site times out,
+  // which previously left production stuck on an empty outlook.
   const params = new URLSearchParams({
     latitude: lats.map((v) => v.toFixed(4)).join(","),
     longitude: lons.map((v) => v.toFixed(4)).join(","),
@@ -154,8 +159,9 @@ async function fetchBatch(
       "convective_inhibition",
       "wind_speed_10m",
       "wind_direction_10m",
-      "wind_speed_500hPa",
-      "wind_direction_500hPa",
+      "wind_speed_100m",
+      "wind_direction_100m",
+      "wind_gusts_10m",
     ].join(","),
     models: "best_match",
     forecast_days: String(FORECAST_DAYS),
@@ -170,7 +176,7 @@ async function fetchBatch(
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
-        signal: AbortSignal.timeout(22_000),
+        signal: AbortSignal.timeout(20_000),
       });
       if (res.status === 429) {
         lastErr = new Error("Open-Meteo 429");
@@ -232,15 +238,18 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
 
     const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
-    const s500 = num(h.wind_speed_500hPa?.[i]);
-    const d500 = num(h.wind_direction_500hPa?.[i]);
+    const s100 = num(h.wind_speed_100m?.[i]);
+    const d100 = num(h.wind_direction_100m?.[i]);
+    const gust = num(h.wind_gusts_10m?.[i]) ?? 0;
 
+    // Approximate deep shear from near-surface layer + gust excess
+    // (pressure-level winds are omitted — they break multi-location OM batches).
     let sh = 0;
-    if (s500 != null && d500 != null) {
-      sh = vectorDiffKts(s500, d500, s10, d10);
-    } else {
-      sh = clamp01(s10 / 45) * 20;
+    if (s100 != null && d100 != null) {
+      sh = vectorDiffKts(s100, d100, s10, d10) * 2.4;
     }
+    sh = Math.max(sh, Math.max(0, gust - s10) * 0.55);
+    sh = Math.max(sh, clamp01(s10 / 45) * 18);
 
     cape = Math.max(cape, c);
     cin = Math.min(cin, ci);
@@ -472,9 +481,19 @@ async function computeOutlook(): Promise<CacheEntry> {
   return { at: Date.now(), outlook, dayPoints, dayPng };
 }
 
-async function ensureCache(): Promise<CacheEntry> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache;
-  if (inflight) return inflight;
+function cacheTtlMs(entry: CacheEntry): number {
+  return entry.outlook.status === "ok" ? CACHE_MS : EMPTY_CACHE_MS;
+}
+
+async function ensureCache(opts: { force?: boolean } = {}): Promise<CacheEntry> {
+  if (
+    !opts.force &&
+    cache &&
+    Date.now() - cache.at < cacheTtlMs(cache)
+  ) {
+    return cache;
+  }
+  if (!opts.force && inflight) return inflight;
   inflight = computeOutlook()
     .then((entry) => {
       cache = entry;
@@ -486,16 +505,19 @@ async function ensureCache(): Promise<CacheEntry> {
   return inflight;
 }
 
-export async function getAutoRiskOutlook(): Promise<PublicForecastResponse> {
-  const entry = await ensureCache();
+export async function getAutoRiskOutlook(
+  opts: { force?: boolean } = {},
+): Promise<PublicForecastResponse> {
+  const entry = await ensureCache(opts);
   return entry.outlook;
 }
 
 export async function getAutoRiskDayPng(
   day: number,
+  opts: { force?: boolean } = {},
 ): Promise<{ png: Buffer; empty: boolean; issuedAt: string | null } | null> {
   if (!Number.isInteger(day) || day < 1 || day > FORECAST_DAYS) return null;
-  const entry = await ensureCache();
+  const entry = await ensureCache(opts);
   const points = entry.dayPoints[day] ?? [];
   let png = entry.dayPng[day];
   if (!png) {
@@ -514,8 +536,8 @@ export function isAutoRiskDay(n: number): boolean {
 }
 
 /** Catalog payload for /api/weather/risk?source=auto */
-export async function getAutoRiskCatalog() {
-  const outlook = await getAutoRiskOutlook();
+export async function getAutoRiskCatalog(opts: { force?: boolean } = {}) {
+  const outlook = await getAutoRiskOutlook(opts);
   const issued = outlook.issuedAt ?? new Date().toISOString();
   return {
     status: outlook.status,

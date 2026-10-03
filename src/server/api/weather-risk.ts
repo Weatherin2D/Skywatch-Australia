@@ -18,11 +18,16 @@ export async function GET(req: NextRequest) {
 
   try {
     if (source === "auto") {
-      const catalog = await getAutoRiskCatalog();
+      const force =
+        req.nextUrl.searchParams.get("force") === "1" ||
+        req.nextUrl.searchParams.get("refresh") === "1";
+      const catalog = await getAutoRiskCatalog({ force });
+      const cacheControl =
+        catalog.status === "ok"
+          ? "public, max-age=120, stale-while-revalidate=600"
+          : "no-store";
       return NextResponse.json(catalog, {
-        headers: {
-          "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
-        },
+        headers: { "Cache-Control": cacheControl },
       });
     }
 
