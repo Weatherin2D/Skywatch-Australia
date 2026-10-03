@@ -20,14 +20,16 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-const WORK_WIDTH = 420;
-const OUT_WIDTH = 1400;
+const WORK_WIDTH = 720;
+const OUT_WIDTH = 2400;
+/** Outline thickness in output pixels (black band borders). */
+const OUTLINE_PX = 2;
 /** Large kernel merges samples into continuous frontal-style corridors. */
-const SIGMA_KM = 320;
-const CUTOFF_SIGMA = 2.45;
+const SIGMA_KM = 300;
+const CUTOFF_SIGMA = 2.4;
 /** Softer long-range fill so outer bands knit into one envelope. */
-const FILL_SIGMA_KM = 520;
-const FILL_CUTOFF = 2.1;
+const FILL_SIGMA_KM = 480;
+const FILL_CUTOFF = 2.05;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -333,14 +335,77 @@ function paintHatch(
   const o = (y * width + x) * 4;
   const onStripe =
     kind === 2
-      ? (x + y) % 10 < 3 || (x - y + 2000) % 10 < 3
-      : (x + y) % 9 < 2;
+      ? (x + y) % 12 < 3 || (x - y + 4000) % 12 < 3
+      : (x + y) % 11 < 2;
   if (!onStripe) return;
   const mix = kind === 2 ? 0.55 : 0.4;
   png.data[o] = Math.round(png.data[o]! * (1 - mix));
   png.data[o + 1] = Math.round(png.data[o + 1]! * (1 - mix));
   png.data[o + 2] = Math.round(png.data[o + 2]! * (1 - mix));
   png.data[o + 3] = Math.min(255, Math.round(png.data[o + 3]! * 1.05));
+}
+
+/**
+ * Black outline wherever a risk pixel borders a different rank
+ * (including empty). Thickened for high-res overlays.
+ */
+function paintRankOutlines(
+  png: PNG,
+  ranks: Uint8Array,
+  width: number,
+  height: number,
+  thickness: number,
+) {
+  const edge = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const r = ranks[i]!;
+      if (!r) continue;
+      let border = false;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+        border = true;
+      } else {
+        const n = ranks[i - width]!;
+        const s = ranks[i + width]!;
+        const w = ranks[i - 1]!;
+        const e = ranks[i + 1]!;
+        if (n !== r || s !== r || w !== r || e !== r) border = true;
+      }
+      if (border) edge[i] = 1;
+    }
+  }
+
+  // Dilate edge mask for thicker strokes at high resolution.
+  let mask = edge;
+  for (let t = 1; t < thickness; t++) {
+    const next = Uint8Array.from(mask);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (!ranks[i]) continue;
+        if (
+          mask[i] ||
+          mask[i - 1] ||
+          mask[i + 1] ||
+          mask[i - width] ||
+          mask[i + width]
+        ) {
+          next[i] = 1;
+        }
+      }
+    }
+    mask = next;
+  }
+
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i] || !ranks[i]) continue;
+    const o = i * 4;
+    png.data[o] = 0;
+    png.data[o + 1] = 0;
+    png.data[o + 2] = 0;
+    png.data[o + 3] = 230;
+  }
 }
 
 /** Georeferenced PNG for Leaflet ImageOverlay. */
@@ -370,8 +435,8 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     out.width,
     out.height,
   );
-  blurField(rankSoft, out.width, out.height, 3);
-  blurField(hatchSoft, out.width, out.height, 2);
+  blurField(rankSoft, out.width, out.height, 2);
+  blurField(hatchSoft, out.width, out.height, 1);
 
   const ranks = quantizeRankField(rankSoft, AUTO_RISK_MAX_RANK);
   closeRankHoles(ranks, out.width, out.height, 2);
@@ -397,27 +462,6 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     png.data[o + 3] = a;
   }
 
-  // Soft outer edge fade for organic TV-style boundaries.
-  const srcA = Buffer.from(png.data);
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      const i = y * width + x;
-      if (ranks[i] === 0) continue;
-      let empty = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (ranks[(y + dy) * width + (x + dx)] === 0) empty++;
-        }
-      }
-      if (empty > 0) {
-        const o = i * 4;
-        png.data[o + 3] = Math.round(
-          srcA[o + 3]! * Math.max(0.28, 1 - empty / 9),
-        );
-      }
-    }
-  }
-
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
@@ -426,6 +470,9 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
       if (h === 1 || h === 2) paintHatch(png, width, height, x, y, h);
     }
   }
+
+  // Black outlines on every risk-band boundary (after fill/hatch).
+  paintRankOutlines(png, ranks, width, height, OUTLINE_PX);
 
   return PNG.sync.write(png);
 }

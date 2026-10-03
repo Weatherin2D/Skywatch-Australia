@@ -29,11 +29,11 @@ const EMPTY_CACHE_MS = 90_000;
 const BATCH = 55;
 const BATCH_CONCURRENCY = 3;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
-/** Dense national fill (~0.95° / ~100 km). Towns kept as anchors. */
-const GRID_STEP_DEG = 0.95;
-const MIN_FILL_KM = 80;
+/** Dense national fill (~0.7° / ~75 km). Towns kept as anchors. */
+const GRID_STEP_DEG = 0.7;
+const MIN_FILL_KM = 55;
 /** Drop ocean/fill points farther than this from any known AU site. */
-const NEAR_LAND_KM = 240;
+const NEAR_LAND_KM = 260;
 
 type HourlyLoc = {
   latitude?: number;
