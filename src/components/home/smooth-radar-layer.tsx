@@ -185,14 +185,9 @@ export function useRadarFramePreloader(
       } catch {
         /* map may be tearing down */
       }
-      // Clamp to RainViewer native range; overzoom uses z12 tiles scaled up.
+      // Current native zoom only — neighbouring zooms doubled tile API cost.
       const native = Math.max(3, Math.min(12, z));
-      const levels = new Set<number>([
-        native,
-        Math.max(3, native - 1),
-        Math.min(12, native + 1),
-      ]);
-      return [...levels];
+      return [native];
     };
 
     const pushFrame = (idx: number, force = false) => {
@@ -203,20 +198,19 @@ export function useRadarFramePreloader(
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      for (const url of radarWarmupTileUrls(tpl, zooms, bounds, 48)) {
+      for (const url of radarWarmupTileUrls(tpl, zooms, bounds, 24)) {
         queue.push(url);
       }
     };
 
     const n = templates.length;
-    // Current + next frames first (playback path), then a wider look-ahead.
-    for (let step = 0; step <= 6; step++) {
+    // Current + next two frames only — wider look-ahead hammered the tile API.
+    for (let step = 0; step <= 2; step++) {
       pushFrame((activeIndex + step) % n, step === 0);
     }
-    pushFrame((activeIndex - 1 + n) % n);
 
     let active = 0;
-    const CONCURRENCY = 16;
+    const CONCURRENCY = 4;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -243,7 +237,7 @@ export function useRadarFramePreloader(
         pushFrame(activeIndex % n, true);
         pushFrame((activeIndex + 1) % n, true);
         pump();
-      }, 120);
+      }, 350);
     };
     map.on("moveend", onViewChange);
     map.on("zoomend", onViewChange);

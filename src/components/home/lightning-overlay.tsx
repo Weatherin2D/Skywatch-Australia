@@ -44,7 +44,7 @@ function useNowTick(enabled: boolean) {
     if (!enabled) return;
     const id = window.setInterval(() => {
       setNow(Math.floor(Date.now() / 1000));
-    }, 1000);
+    }, 2500);
     return () => window.clearInterval(id);
   }, [enabled]);
   return now;

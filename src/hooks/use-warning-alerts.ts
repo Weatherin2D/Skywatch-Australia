@@ -13,7 +13,7 @@ import {
 import type { BomWarningSummary } from "@/lib/weather/warnings";
 
 async function fetchWarnings(): Promise<BomWarningSummary[]> {
-  const res = await fetch("/api/weather/warnings", { cache: "no-store" });
+  const res = await fetch("/api/weather/warnings");
   if (!res.ok) return [];
   const json = (await res.json()) as { warnings?: BomWarningSummary[] };
   return json.warnings ?? [];
@@ -25,7 +25,7 @@ function matchesStates(w: BomWarningSummary, states: string[]): boolean {
   return w.states.some((s) => want.has(s.toUpperCase()));
 }
 
-export function useWarningAlerts(pollMs = 90_000) {
+export function useWarningAlerts(pollMs = 180_000) {
   const [prefs, setPrefs] = useState<AlertPrefs>(() => ({
     enabled: false,
     states: [],

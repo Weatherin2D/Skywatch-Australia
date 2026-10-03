@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WeatherFrame } from "@/lib/weather/maps";
 
-const PRELOAD_CONCURRENCY = 8;
+/** Keep browser + Fluid CPU calm — tip-first order still warms playback. */
+const PRELOAD_CONCURRENCY = 3;
 
 /**
  * Preloads satellite frame images with limited concurrency so the browser

@@ -93,35 +93,18 @@ for (const [hex, dbz] of Object.entries(UB_DBZ)) {
   RECOLOUR_MAP.set(packRgba(r, g, b, a), packRgba(nr, ng, nb, na));
 }
 
-const UB_ENTRIES = [...RECOLOUR_MAP.keys()].map((packed) => ({
-  packed,
-  r: (packed >>> 24) & 255,
-  g: (packed >>> 16) & 255,
-  b: (packed >>> 8) & 255,
-  a: packed & 255,
-  out: RECOLOUR_MAP.get(packed)!,
-}));
-
-/** Squared distance threshold — beyond this, treat as non-radar (transparent). */
-const NEAREST_MAX_DIST2 = 36 * 36;
-
-function nearestRecolour(r: number, g: number, b: number, a: number): number {
-  let best = 0;
-  let bestDist = Infinity;
-  // Exact / near-exact palette hits dominate; bail early once close enough.
-  for (const entry of UB_ENTRIES) {
-    const dr = r - entry.r;
-    const dg = g - entry.g;
-    const db = b - entry.b;
-    const da = a - entry.a;
-    const dist = dr * dr + dg * dg + db * db + da * da * 2;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = entry.out;
-      if (dist <= 4) return best;
-    }
-  }
-  return bestDist > NEAREST_MAX_DIST2 ? 0 : best;
+/**
+ * Exact LUT hits cover nearly all RainViewer Universal Blue pixels. Scanning
+ * the full palette for every unmatched pixel was the dominant tile CPU cost —
+ * treat rare mismatches as transparent instead.
+ */
+function nearestRecolour(
+  _r: number,
+  _g: number,
+  _b: number,
+  _a: number,
+): number {
+  return 0;
 }
 
 /**

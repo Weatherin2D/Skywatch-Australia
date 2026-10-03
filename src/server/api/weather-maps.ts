@@ -245,12 +245,12 @@ async function buildAllSatelliteProducts(): Promise<{
     products[id] = { frames };
   }
 
+  // Warm only the newest few IR frames — full-loop warm burned Fluid CPU.
   if (products.infrared.frames.length) {
-    warmFramesInBackground(
-      "infrared",
-      products.infrared.frames.map((f) => f.time),
-      4,
-    );
+    const tipTimes = products.infrared.frames
+      .map((f) => f.time)
+      .slice(-3);
+    warmFramesInBackground("infrared", tipTimes, 1);
   }
 
   return {
@@ -352,8 +352,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(payload, {
       headers: {
-        // Tip advances every ~10 min — keep CDN short so live polls see it.
-        "Cache-Control": "public, s-maxage=15, stale-while-revalidate=15",
+        // Tip advances every ~10 min — 60s CDN still feels live, cuts origin hits.
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
         "X-Satellite-Product": wantAll ? "all" : product,
         "X-Satellite-Layer":
           activeMeta.realearthProduct ?? activeMeta.gibsLayer ?? activeProduct,

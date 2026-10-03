@@ -21,7 +21,13 @@ function useJsonResource<T>(url: string | null, refreshMs: number) {
       setLoading(!hasDataRef.current);
       setError(null);
       try {
-        const res = await fetch(url, { signal, cache: "no-store" });
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState === "hidden"
+        ) {
+          return;
+        }
+        const res = await fetch(url, { signal });
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
         const json = (await res.json()) as T;
         if (signal?.aborted) return;
@@ -51,7 +57,7 @@ function useJsonResource<T>(url: string | null, refreshMs: number) {
   return { data, loading, error, reload: () => load() };
 }
 
-export function useStormActivity(refreshMs = 30_000) {
+export function useStormActivity(refreshMs = 90_000) {
   return useJsonResource<StormActivityPayload>(
     "/api/weather/storm-activity",
     refreshMs,

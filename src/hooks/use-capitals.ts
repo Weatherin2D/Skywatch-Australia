@@ -29,10 +29,7 @@ export function useCapitals(refreshMs = 5 * 60_000) {
       error: null,
     }));
     try {
-      const res = await fetch("/api/weather/capitals", {
-        signal,
-        cache: "no-store",
-      });
+      const res = await fetch("/api/weather/capitals", { signal });
       if (!res.ok) throw new Error(`Capitals unavailable (${res.status})`);
       const data = (await res.json()) as Payload;
       if (signal?.aborted) return;

@@ -44,10 +44,7 @@ export function useSynoptic(enabled: boolean) {
       // One retry covers Vercel cold-start races without blocking the UI long.
       for (let attempt = 0; attempt < 2; attempt++) {
         if (signal?.aborted) return;
-        res = await fetch("/api/weather/synoptic", {
-          signal,
-          cache: "no-store",
-        });
+        res = await fetch("/api/weather/synoptic", { signal });
         lastStatus = res.status;
         if (res.ok) break;
         if (res.status !== 502 && res.status !== 503 && res.status !== 504) break;

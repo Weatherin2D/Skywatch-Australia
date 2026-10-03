@@ -10,7 +10,7 @@ export async function GET() {
     const payload = await fetchStormActivity();
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30",
+        "Cache-Control": "public, s-maxage=45, stale-while-revalidate=90",
       },
     });
   } catch (err) {

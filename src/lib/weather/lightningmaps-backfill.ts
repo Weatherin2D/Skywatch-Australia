@@ -19,6 +19,7 @@ import { inLightningBounds } from "@/lib/weather/blitzortung-parse";
  * Official MyBlitzortung templates (includes/templates.inc.php).
  * Projection defaults to Mercator; coord = North, East, South, West.
  */
+/** One regional map is enough — 3 maps × 3 periods was 9 PNG decode jobs. */
 const MAPS = [
   {
     id: "australia_big",
@@ -30,35 +31,17 @@ const MAPS = [
     /** Prefer this map when deduping overlapping strokes. */
     priority: 3,
   },
-  {
-    id: "australia",
-    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=australia",
-    north: -8,
-    east: 159,
-    south: -45,
-    west: 109,
-    priority: 2,
-  },
-  {
-    id: "oceania",
-    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=oceania",
-    north: 10,
-    east: 180,
-    south: -51.6,
-    west: 110,
-    priority: 1,
-  },
 ] as const;
 
-/** Fine recent ages + longer history to cover the satellite loop tip. */
-const PERIODS_H = [1, 2, 12] as const;
+/** Recent timing + loop-length history (skip redundant 1h when 2h covers it). */
+const PERIODS_H = [2, 12] as const;
 
 const USER_AGENT = "SkyWatchAustralia/1.0";
 /** Keep up to the longest fetched period. */
 const KEEP_SEC = Math.max(...PERIODS_H) * 60 * 60;
 /** MyBlitzortung col_smooth default — age steps across the colour ramp. */
 const COLOR_STEPS = 24;
-const CACHE_TTL_SEC = 25;
+const CACHE_TTL_SEC = 120;
 
 export type MapBackfillResult = {
   strikes: LightningStrike[];

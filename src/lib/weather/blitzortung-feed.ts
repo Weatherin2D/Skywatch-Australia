@@ -318,10 +318,12 @@ export function ensureLightningFeed() {
   state.persistTimer = setInterval(() => {
     void savePersisted(state);
   }, PERSIST_EVERY_MS);
+  // Fire-and-forget; do not block boot. Refresh infrequently — PNG decode is
+  // expensive on Fluid Active CPU.
   void runMapsBackfill(state);
   state.backfillTimer = setInterval(() => {
     void runMapsBackfill(state);
-  }, 30_000);
+  }, 180_000);
 }
 
 /**
@@ -363,9 +365,10 @@ async function runMapsBackfill(state: GlobalFeed) {
 export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();
   const state = getState();
-  await runMapsBackfill(state);
+  // Never await PNG backfill on the request path — the timer keeps the buffer
+  // warm. Kick an async refresh only when the buffer is still empty.
   if (state.strikes.size < 5) {
-    await new Promise((r) => setTimeout(r, 800));
+    void runMapsBackfill(state);
   }
   prune(state);
   const strikes = [...state.strikes.values()]

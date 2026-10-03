@@ -1,6 +1,6 @@
-/* SkyWatch Australia — minimal offline shell + last weather frame cache */
-const SHELL_CACHE = "skywatch-shell-v1";
-const FRAME_CACHE = "skywatch-frames-v1";
+/* SkyWatch Australia — offline shell + cache-first immutable weather assets */
+const SHELL_CACHE = "skywatch-shell-v2";
+const FRAME_CACHE = "skywatch-frames-v2";
 const SHELL_URLS = ["/", "/radar", "/satellite", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -27,12 +27,25 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-function isFrameRequest(url) {
+function isImmutableWeatherAsset(url) {
+  // Content-addressed frame/tile URLs — safe to serve from cache first.
   return (
     url.pathname.startsWith("/api/weather/frame") ||
-    url.pathname.startsWith("/api/weather/radar-tile") ||
-    url.pathname.startsWith("/api/weather/maps")
+    url.pathname.startsWith("/api/weather/radar-tile")
   );
+}
+
+function isMapsCatalog(url) {
+  return url.pathname.startsWith("/api/weather/maps");
+}
+
+function trimCache(cache, maxEntries) {
+  return cache.keys().then((keys) => {
+    if (keys.length <= maxEntries) return;
+    return Promise.all(
+      keys.slice(0, keys.length - maxEntries).map((k) => cache.delete(k)),
+    );
+  });
 }
 
 self.addEventListener("fetch", (event) => {
@@ -42,25 +55,40 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  if (isFrameRequest(url)) {
+  if (isImmutableWeatherAsset(url)) {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(FRAME_CACHE).then((cache) => {
-              cache.put(req, copy);
-              // Keep cache small — delete oldest when over ~24 entries
-              cache.keys().then((keys) => {
-                if (keys.length > 24) {
-                  cache.delete(keys[0]);
-                }
-              });
-            });
-          }
-          return res;
-        })
-        .catch(() => caches.match(req).then((c) => c || caches.match("/"))),
+      caches.open(FRAME_CACHE).then((cache) =>
+        cache.match(req).then((cached) => {
+          if (cached) return cached;
+          return fetch(req).then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              void cache.put(req, copy).then(() => trimCache(cache, 48));
+            }
+            return res;
+          });
+        }),
+      ).catch(() => caches.match("/")),
+    );
+    return;
+  }
+
+  if (isMapsCatalog(url)) {
+    // Stale-while-revalidate: show CDN/cache quickly, refresh in background.
+    event.respondWith(
+      caches.open(FRAME_CACHE).then((cache) =>
+        cache.match(req).then((cached) => {
+          const network = fetch(req)
+            .then((res) => {
+              if (res.ok) {
+                void cache.put(req, res.clone());
+              }
+              return res;
+            })
+            .catch(() => cached || Response.error());
+          return cached || network;
+        }),
+      ),
     );
     return;
   }

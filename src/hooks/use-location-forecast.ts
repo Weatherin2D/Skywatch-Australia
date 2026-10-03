@@ -33,7 +33,7 @@ export function useLocationForecast(
       try {
         const res = await fetch(
           `/api/weather/forecast/${encodeURIComponent(geohash)}`,
-          { signal, cache: "no-store" },
+          { signal },
         );
         if (!res.ok) {
           throw new Error(`Forecast unavailable (${res.status})`);

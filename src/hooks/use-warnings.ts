@@ -18,7 +18,7 @@ type State = {
   error: string | null;
 };
 
-export function useWarnings(refreshMs = 60_000) {
+export function useWarnings(refreshMs = 180_000) {
   const [state, setState] = useState<State>({
     data: null,
     loading: true,
@@ -26,16 +26,19 @@ export function useWarnings(refreshMs = 60_000) {
   });
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
     setState((s) => ({
       ...s,
       loading: s.data == null,
       error: null,
     }));
     try {
-      const res = await fetch("/api/weather/warnings", {
-        signal,
-        cache: "no-store",
-      });
+      const res = await fetch("/api/weather/warnings", { signal });
       if (!res.ok) {
         throw new Error(`Warnings unavailable (${res.status})`);
       }
@@ -60,9 +63,14 @@ export function useWarnings(refreshMs = 60_000) {
     const id = window.setInterval(() => {
       void load();
     }, refreshMs);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       ac.abort();
       window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [load, refreshMs]);
 

@@ -24,7 +24,10 @@ const EMPTY: State = {
   live: false,
 };
 
-const POLL_MS = 2500;
+/** HTTP backfill only — live strikes come from the browser WebSocket feed. */
+const POLL_MS = 20_000;
+/** Even slower once the live client socket is delivering strikes. */
+const POLL_MS_WHEN_LIVE = 60_000;
 const WINDOW_MIN = 24 * 60;
 
 function mergeStrike(
@@ -43,7 +46,8 @@ function pruneMap(map: Map<string, LightningStrike>, nowSec: number) {
 
 export function useLightning(enabled: boolean) {
   const [state, setState] = useState<State>(EMPTY);
-  const seenRef = useRef<Map<string, LightningStrike>>(new Map());
+  const seenRef = useRef(new Map<string, LightningStrike>());
+  const liveRef = useRef(false);
 
   const publish = useCallback(
     (
@@ -56,6 +60,8 @@ export function useLightning(enabled: boolean) {
       const merged = [...seenRef.current.values()].sort(
         (a, b) => b.time - a.time,
       );
+      const live = patch.live ?? liveRef.current;
+      liveRef.current = Boolean(live);
       setState((s) => ({
         strikes: merged,
         loading: false,
@@ -63,7 +69,7 @@ export function useLightning(enabled: boolean) {
         generated: patch.generated ?? s.generated ?? now,
         attribution: patch.attribution ?? s.attribution,
         status: patch.status ?? s.status,
-        live: patch.live ?? s.live,
+        live,
       }));
     },
     [],
@@ -71,6 +77,12 @@ export function useLightning(enabled: boolean) {
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
       setState((s) => ({
         ...s,
         loading: s.strikes.length === 0 && !s.live,
@@ -79,7 +91,7 @@ export function useLightning(enabled: boolean) {
       try {
         const res = await fetch("/api/weather/lightning", {
           signal,
-          cache: "no-store",
+          // Respect short Cache-Control from the API.
         });
         if (!res.ok) throw new Error(`Lightning unavailable (${res.status})`);
         const data = (await res.json()) as LightningPayload;
@@ -100,7 +112,6 @@ export function useLightning(enabled: boolean) {
           ...s,
           loading: false,
           error: err instanceof Error ? err.message : "Lightning unavailable",
-          // Keep client socket live flag if browser feed is up
           live: s.live,
         }));
       }
@@ -111,15 +122,25 @@ export function useLightning(enabled: boolean) {
   useEffect(() => {
     if (!enabled) {
       seenRef.current.clear();
+      liveRef.current = false;
       setState(EMPTY);
       return;
     }
 
     const ac = new AbortController();
     void load(ac.signal);
-    const id = window.setInterval(() => {
-      void load();
-    }, POLL_MS);
+
+    let id = 0;
+    const schedule = () => {
+      window.clearInterval(id);
+      const ms = liveRef.current ? POLL_MS_WHEN_LIVE : POLL_MS;
+      id = window.setInterval(() => {
+        void load();
+      }, ms);
+    };
+    schedule();
+    // Re-tune interval when live flag flips via socket.
+    const retune = window.setInterval(schedule, 15_000);
 
     const client = startClientLightningFeed((strike) => {
       mergeStrike(seenRef.current, strike);
@@ -131,9 +152,16 @@ export function useLightning(enabled: boolean) {
       });
     });
 
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
     return () => {
       ac.abort();
       window.clearInterval(id);
+      window.clearInterval(retune);
+      document.removeEventListener("visibilitychange", onVis);
       client.stop();
     };
   }, [enabled, load, publish]);

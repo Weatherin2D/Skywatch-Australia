@@ -21,7 +21,9 @@ export async function GET() {
 
   return NextResponse.json(payload, {
     headers: {
-      "Cache-Control": "no-store, max-age=0",
+      // Short CDN/browser cache — clients poll slowly; live strikes also arrive
+      // via the browser WebSocket feed.
+      "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30, max-age=10",
       "X-Lightning-In-Bounds": String(snap.receivedInBounds),
       "X-Lightning-Buffered": String(snap.strikes.length),
     },

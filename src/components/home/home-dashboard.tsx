@@ -57,7 +57,6 @@ import {
   type PlaybackSpeedId,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
-import { radarWarmupTileUrls } from "@/lib/weather/radar-palette";
 import { cn } from "@/lib/utils";
 
 export type HomeDashboardFocus = "radar" | "satellite";
@@ -503,22 +502,28 @@ function HomeDashboardInner({
       : "none";
   const tipTime = loopFrames[loopFrames.length - 1]?.time ?? 0;
 
-  // Prefetch synoptic analyses that cover the satellite loop into the shared
-  // memory cache so play-from-start never waits on the network.
+  // Prefetch a small synoptic window around the playhead (not every sat frame).
   useEffect(() => {
     if (!showSynoptic || !useTimeline) return;
     if (synopticFrames.length === 0 || loopFrames.length === 0) return;
     const urls = new Set<string>();
-    for (const sat of loopFrames) {
+    const idxs = [
+      frameIndex,
+      Math.min(loopFrames.length - 1, frameIndex + 1),
+      Math.max(0, frameIndex - 1),
+      loopFrames.length - 1,
+    ];
+    for (const i of idxs) {
+      const sat = loopFrames[i];
+      if (!sat) continue;
       const syn = pickSynopticFrame(synopticFrames, sat.time);
       if (syn?.geojsonUrl) urls.add(syn.geojsonUrl);
     }
-    // Also warm the newest catalog stamps (often includes the embedded field).
-    for (const syn of synopticFrames.slice(0, 4)) {
+    for (const syn of synopticFrames.slice(0, 2)) {
       if (syn.geojsonUrl) urls.add(syn.geojsonUrl);
     }
     void prefetchSynopticGeoJson(urls);
-  }, [showSynoptic, useTimeline, loopFrames, synopticFrames]);
+  }, [showSynoptic, useTimeline, loopFrames, synopticFrames, frameIndex]);
 
   // Soft live tip updates: keep the same wall-clock frame when a new tip
   // arrives. Hard-reset only when product/region (or radar loop) changes.
@@ -642,53 +647,8 @@ function HomeDashboardInner({
     }
   }, [useTimeline]);
 
-  // Eagerly warm AU radar tiles for the playhead ± a few frames (browser HTTP cache).
-  useEffect(() => {
-    if (!showRadarOverlay || radarFrames.length === 0) return;
-    let cancelled = false;
-    const n = radarFrames.length;
-    const start = useRadarLoop ? frameIndex : Math.max(0, n - 1);
-    const templates: string[] = [];
-    for (let step = 0; step <= 6; step++) {
-      const tpl = radarFrames[(start + step) % n]?.tileUrlTemplate;
-      if (tpl) templates.push(tpl);
-    }
-    const [[south, west], [north, east]] = region.bounds;
-    const warmBounds = { south, west, north, east };
-    // Cover national framing plus typical state / city zooms up front.
-    const zooms = regionId === "national" ? [4, 5, 6] : [5, 6, 7, 8];
-    const urls = templates.flatMap((tpl) =>
-      radarWarmupTileUrls(tpl, zooms, warmBounds, 48),
-    );
-    let active = 0;
-    const queue = [...urls];
-    const pump = () => {
-      while (!cancelled && active < 18 && queue.length > 0) {
-        const url = queue.shift()!;
-        active += 1;
-        const img = new window.Image();
-        const done = () => {
-          active -= 1;
-          pump();
-        };
-        img.onload = done;
-        img.onerror = done;
-        img.decoding = "async";
-        img.src = url;
-      }
-    };
-    pump();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    showRadarOverlay,
-    radarFrames,
-    useRadarLoop,
-    frameIndex,
-    region.bounds,
-    regionId,
-  ]);
+  // Radar tile warmup lives only in SmoothRadarLayer's viewport preloader —
+  // a second dashboard-wide storm of tile requests burned Fluid Active CPU.
 
   useEffect(() => {
     if (!satMenuOpen && !regionMenuOpen) return;

@@ -22,18 +22,18 @@ type State = {
 /** Stable empty list — avoid `?? []` allocating a new array every render. */
 const EMPTY_FRAMES: WeatherFrame[] = [];
 
-/** Poll often enough to catch each new 10-minute Himawari publish promptly. */
-const LIVE_POLL_MS = 45_000;
+/** Himawari tips land ~10 min apart — polling every 45s burned Fluid CPU. */
+const LIVE_POLL_MS = 90_000;
 /**
- * RealEarth tips land ~15–30 min after the wall-clock slot. Also nudge shortly
- * after each 10-minute boundary so we don't wait a full poll interval.
+ * RealEarth tips land ~15–30 min after the wall-clock slot. Nudge after each
+ * 10-minute boundary, but with enough delay that we don't stack on the poll.
  */
-const BOUNDARY_OFFSET_MS = 30_000;
+const BOUNDARY_OFFSET_MS = 90_000;
 
 function msUntilNextTenMinuteBoundary(now = Date.now()): number {
   const stepMs = HIMAWARI_STEP_SEC * 1000;
   const next = Math.ceil((now + 1) / stepMs) * stepMs;
-  return Math.max(5_000, next - now + BOUNDARY_OFFSET_MS);
+  return Math.max(30_000, next - now + BOUNDARY_OFFSET_MS);
 }
 
 export function useWeatherMaps(
@@ -53,16 +53,20 @@ export function useWeatherMaps(
   }, [product]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
     setState((s) => ({
       ...s,
       loading: s.data == null,
       error: null,
     }));
     try {
-      const res = await fetch("/api/weather/maps?all=1", {
-        signal,
-        cache: "no-store",
-      });
+      // Product menu needs every loop — CDN Cache-Control absorbs repeats.
+      const res = await fetch("/api/weather/maps?all=1", { signal });
       if (!res.ok) {
         throw new Error(`Weather maps unavailable (${res.status})`);
       }
