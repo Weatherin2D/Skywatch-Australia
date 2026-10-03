@@ -89,7 +89,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     color: "#E91E63",
     rgba: [233, 30, 99, 195],
     blurb:
-      "70% storms · 50% organised · 40% severe · 12% very dangerous.",
+      "70% storms · 50% organised · 40% severe · 5% very dangerous.",
   },
   {
     id: "vhigh",
@@ -98,7 +98,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     color: "#9C27B0",
     rgba: [156, 39, 176, 200],
     blurb:
-      "75% storms · 60% organised · 50% severe · 5% very dangerous.",
+      "75% storms · 60% organised · 50% severe · 12% very dangerous.",
   },
 ];
 
