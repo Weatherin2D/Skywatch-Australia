@@ -84,7 +84,7 @@ const FETCH_UA =
 
 /**
  * Category key (user-defined):
- * - Critical — very dangerous severe thunderstorm / severe weather warnings
+ * - Critical — detailed / very dangerous severe thunderstorm; very dangerous severe weather
  * - Severe — severe thunderstorm / severe weather warnings; major flood warnings
  * - Moderate — flood warnings (moderate, minor); flood watches (major, moderate)
  * - Minor — flood watches (minor); marine wind warnings
@@ -151,6 +151,15 @@ export function isCancelledPhase(phase: WarningPhase): boolean {
 
 export function isVeryDangerousText(text: string): boolean {
   return /\bvery\s+dangerous\b/i.test(text);
+}
+
+/**
+ * BoM "Detailed Severe Thunderstorm Warning for …" products (cell-tracked).
+ * Requires "for" so district STWs that only mention a detailed product elsewhere
+ * ("a more Detailed Severe Thunderstorm Warning has been issued") stay Severe.
+ */
+export function isDetailedSevereThunderstormText(text: string): boolean {
+  return /\bdetailed\s+severe\s+thunderstorm\s+warning\s+for\b/i.test(text);
 }
 
 /**
@@ -229,10 +238,13 @@ export function classifyWarningSeverity(
   const text = classificationText(raw, messageHtml);
 
   // --- User key: severe thunderstorm / severe weather ---
-  if (
-    type === "severe_thunderstorm_warning" ||
-    type === "severe_weather_warning"
-  ) {
+  if (type === "severe_thunderstorm_warning") {
+    if (isVeryDangerousText(text) || isDetailedSevereThunderstormText(text)) {
+      return "critical";
+    }
+    return "severe";
+  }
+  if (type === "severe_weather_warning") {
     return isVeryDangerousText(text) ? "critical" : "severe";
   }
 
@@ -512,7 +524,7 @@ export async function fetchBomWarningList(options?: {
   const payload = await bomGet<{ data?: RawSummary[] }>(BOM_WARNINGS_URL);
   const rawItems = payload.data || [];
 
-  // Pull product text for flood / severe weather so levels & "very dangerous" classify correctly.
+  // Pull product text for flood / severe weather so levels, detailed STW & "very dangerous" classify correctly.
   const messages = new Map<string, string>();
   await Promise.all(
     rawItems.map(async (raw) => {

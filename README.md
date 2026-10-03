@@ -40,7 +40,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 `/risk` uses only the official BoM MetEye thunderstorm layer (`IDZ73094`) — Chance (teal) / Likely (red) — for the full MetEye horizon (~7 days). Each day shows the same 3-hourly frame MetEye displays for that period.
 
-**Warning categories:** Critical (very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
+**Warning categories:** Critical (detailed severe thunderstorm; very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
 
 **Local preferences (no auth/DB):** saved place and warning-alert settings live in `localStorage`. Map view is shareable via query params (`region`, `mode`, `radar`, `lightning`, `synoptic`, `product`).
 
