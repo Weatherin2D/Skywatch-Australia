@@ -229,7 +229,6 @@ function HomeDashboardInner({
 }: {
   focus?: HomeDashboardFocus;
 } = {}) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   /** False until URL params have been applied — sync must wait for this render. */
   const [urlReady, setUrlReady] = useState(false);
