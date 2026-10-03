@@ -481,16 +481,15 @@ export function scoreEnvironment(m: DayMetrics): {
     rank = 6; // Moderate
   } else if (composite >= 0.58 && cape >= 1300 && moisture >= 0.3) {
     rank = 5; // Severe
-  } else if (composite >= 0.48 && cape >= 900) {
+  } else if (composite >= 0.44 && cape >= 750) {
     rank = 4; // Slight
-  } else if (composite >= 0.38 && cape >= 550) {
+  } else if (composite >= 0.32 && cape >= 400) {
     rank = 3; // Low
-  } else if (composite >= 0.28 && cape >= 280) {
+  } else if (composite >= 0.22 && cape >= 180) {
     rank = 2; // T-Storm
   } else if (
-    composite >= 0.14 &&
-    cape >= 100 &&
-    (moisture >= 0.25 || m.precipProb >= 55)
+    composite >= 0.1 &&
+    (cape >= 70 || (m.precipProb >= 40 && moisture >= 0.2))
   ) {
     rank = 1; // Low T-Storm
   }
