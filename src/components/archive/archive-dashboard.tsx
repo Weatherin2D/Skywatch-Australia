@@ -40,6 +40,7 @@ import {
   getPlaybackSpeed,
   getSatelliteProduct,
   isSatelliteProductId,
+  satelliteFrameProxyUrl,
   scrubToFrameIndex,
   timelineEdgeLabels,
   type PlaybackSpeedId,
@@ -153,7 +154,8 @@ function ArchiveDashboardInner() {
   const [playing, setPlaying] = useState(false);
   const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [mapSettings] = useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
+  const [mapSettings, setMapSettings] =
+    useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
   const [lightning, setLightning] = useState<LightningStrike[]>([]);
   const [synopticGeoJson, setSynopticGeoJson] =
     useState<SynopticGeoJson | null>(null);
@@ -301,15 +303,18 @@ function ArchiveDashboardInner() {
   const activeFrame = frames[frameIndex] ?? null;
   const activeTime = activeFrame?.time ?? selectedUnix;
 
-  // Lightning for trail window ending at active time
+  const loopStartUnix = frames[0]?.time ?? null;
+  const loopEndUnix = frames.length > 0 ? frames[frames.length - 1]!.time : null;
+
+  // Lightning for the whole loop (+ 3h trail before start), not per-frame.
   useEffect(() => {
-    if (!showLightning || activeTime == null || !catalog) {
-      setLightning([]);
+    if (!showLightning || !catalog || loopStartUnix == null || loopEndUnix == null) {
+      if (!showLightning) setLightning([]);
       return;
     }
     let cancelled = false;
-    const from = Math.max(catalog.epochUnix, activeTime - 3 * 3600);
-    const to = activeTime;
+    const from = Math.max(catalog.epochUnix, loopStartUnix - 3 * 3600);
+    const to = loopEndUnix;
     (async () => {
       try {
         const q = new URLSearchParams({
@@ -321,21 +326,23 @@ function ArchiveDashboardInner() {
         });
         if (!res.ok) return;
         const data = (await res.json()) as { strikes?: LightningStrike[] };
-        if (!cancelled) setLightning(data.strikes ?? []);
+        if (!cancelled && data.strikes) setLightning(data.strikes);
       } catch {
-        if (!cancelled) setLightning([]);
+        // Keep previous strikes on transient failure.
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [showLightning, activeTime, catalog]);
+  }, [showLightning, catalog, loopStartUnix, loopEndUnix]);
 
-  // Synoptic nearest to active time
+  // Synoptic nearest to active time — keep last good field on errors.
   useEffect(() => {
     if (!showSynoptic || activeTime == null) {
-      setSynopticGeoJson(null);
-      setSynopticValidTime(null);
+      if (!showSynoptic) {
+        setSynopticGeoJson(null);
+        setSynopticValidTime(null);
+      }
       return;
     }
     let cancelled = false;
@@ -345,27 +352,18 @@ function ArchiveDashboardInner() {
           `/api/weather/archive/synoptic?time=${activeTime}`,
           { cache: "no-store" },
         );
-        if (!res.ok) {
-          if (!cancelled) {
-            setSynopticGeoJson(null);
-            setSynopticValidTime(null);
-          }
-          return;
-        }
+        if (!res.ok) return;
         const data = (await res.json()) as {
           geojson?: SynopticGeoJson;
           time?: number;
           attribution?: string;
         };
-        if (cancelled) return;
-        setSynopticGeoJson(data.geojson ?? null);
+        if (cancelled || !data.geojson) return;
+        setSynopticGeoJson(data.geojson);
         setSynopticValidTime(data.time ?? null);
         setSynopticAttribution(data.attribution ?? null);
       } catch {
-        if (!cancelled) {
-          setSynopticGeoJson(null);
-          setSynopticValidTime(null);
-        }
+        // Keep previous synoptic overlay.
       }
     })();
     return () => {
@@ -625,11 +623,21 @@ function ArchiveDashboardInner() {
             Layers
           </p>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
-            <span>Lightning</span>
+            <span>Lightning tracker</span>
             <Toggle
               on={showLightning}
               onChange={setShowLightning}
-              label="Lightning"
+              label="Lightning tracker"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2 text-sm text-white">
+            <span>Bolt icons</span>
+            <Toggle
+              on={mapSettings.lightningBolts}
+              onChange={(on) =>
+                setMapSettings((s) => ({ ...s, lightningBolts: on }))
+              }
+              label="Lightning bolt icons"
             />
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
@@ -641,8 +649,10 @@ function ArchiveDashboardInner() {
             />
           </div>
           <p className="text-[11px] leading-relaxed text-white/45">
-            Frames every {ARCHIVE_STEP_SEC / 60} minutes (national). Full day
-            loops the selected AEST calendar day. Region zoom is view-only.
+            {showLightning
+              ? `${lightning.length.toLocaleString()} strikes in loop window.`
+              : "Lightning off."}{" "}
+            Frames every {ARCHIVE_STEP_SEC / 60} minutes (national).
           </p>
         </aside>
 
@@ -784,10 +794,17 @@ function ArchiveDashboardInner() {
                   ? archiveFrameUrl(product, activeFrame.time)
                   : null
               }
+              frameImageFallbackUrl={
+                activeFrame
+                  ? satelliteFrameProxyUrl(product, activeFrame.time, {
+                      region: "national",
+                    })
+                  : null
+              }
               frameImageBounds={GIBS_AU_BOUNDS}
               frameKey={
                 activeFrame
-                  ? `archive-${product}-${activeFrame.time}`
+                  ? `archive-${product}-${regionId}`
                   : "archive-empty"
               }
               frameOpacity={1}
@@ -797,11 +814,17 @@ function ArchiveDashboardInner() {
               lightningStrikes={lightning}
               lightningReferenceTime={activeTime}
               lightningTimelineStart={
-                activeTime != null ? activeTime - 3 * 3600 : null
+                frames[0] != null ? frames[0].time - 3 * 3600 : null
               }
-              lightningTimelineEnd={activeTime}
+              lightningTimelineEnd={
+                frames.length > 0 ? frames[frames.length - 1]!.time : activeTime
+              }
               lightningPlaying={playing}
               lightningMsPerFrame={getPlaybackSpeed(speedId).msPerFrame}
+              lightningNextFrameTime={
+                frames[(frameIndex + 1) % Math.max(frames.length, 1)]?.time ??
+                null
+              }
               showSynoptic={showSynoptic}
               synopticFrames={synopticFrames}
               synopticGeoJson={synopticGeoJson}

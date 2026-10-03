@@ -52,6 +52,8 @@ type Props = {
   frameTileUrl?: string | null;
   /** Full-frame IR image (GIBS WMS via proxy) */
   frameImageUrl?: string | null;
+  /** Optional live/proxy URL if the primary frame fails to load. */
+  frameImageFallbackUrl?: string | null;
   frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
   frameOpacity?: number;
@@ -251,12 +253,15 @@ function SatelliteFrameView({
   alt,
   opacity = 1,
   loopKey,
+  fallbackUrl = null,
 }: {
   url: string | null;
   alt: string;
   opacity?: number;
   /** Product + region identity; changing this drops any held frame. */
   loopKey?: string;
+  /** Tried after primary URL exhausts retries (e.g. live frame proxy). */
+  fallbackUrl?: string | null;
 }) {
   const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -288,34 +293,42 @@ function SatelliteFrameView({
 
     let cancelled = false;
     let attempts = 0;
+    let usingFallback = false;
+    let activeUrl = url;
     loadingRef.current = url;
     setFailed(false);
     const isArchive = url.includes("/api/weather/archive/frame");
-    const maxAttempts = isArchive ? 5 : 2;
-    const retryDelayMs = isArchive ? 2000 : 400;
+    const maxAttempts = isArchive ? 4 : 2;
+    const retryDelayMs = isArchive ? 1600 : 400;
 
-    const commit = () => {
+    const commit = (committedUrl: string) => {
       if (cancelled) return;
-      displayRef.current = url;
+      displayRef.current = committedUrl;
       loadingRef.current = null;
-      setDisplayUrl(url);
+      setDisplayUrl(committedUrl);
       setFailed(false);
     };
 
     const load = () => {
       attempts += 1;
       const img = new window.Image();
-      const src = attempts === 1 ? url : `${url}&retry=${attempts}`;
-      img.onload = commit;
+      const src =
+        attempts === 1 ? activeUrl : `${activeUrl}&retry=${attempts}`;
+      img.onload = () => commit(activeUrl);
       img.onerror = () => {
         if (cancelled) return;
         if (attempts < maxAttempts) {
           window.setTimeout(load, retryDelayMs);
           return;
         }
+        if (!usingFallback && fallbackUrl) {
+          usingFallback = true;
+          attempts = 0;
+          activeUrl = fallbackUrl;
+          window.setTimeout(load, 200);
+          return;
+        }
         loadingRef.current = null;
-        // Drop a stale held frame from another stamp so we don't look "stuck"
-        // on an old product while the current URL keeps failing.
         if (displayRef.current && displayRef.current !== url) {
           displayRef.current = null;
           setDisplayUrl(null);
@@ -324,7 +337,7 @@ function SatelliteFrameView({
       };
       img.src = src;
       if (img.complete && img.naturalWidth > 0) {
-        commit();
+        commit(activeUrl);
       }
     };
 
@@ -333,12 +346,12 @@ function SatelliteFrameView({
       cancelled = true;
       if (loadingRef.current === url) loadingRef.current = null;
     };
-  }, [url]);
+  }, [url, fallbackUrl]);
 
   if (!displayUrl) {
     const archive = url?.includes("/api/weather/archive/frame");
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] px-4 text-center text-sm text-white/70">
+      <div className="absolute inset-0 z-[1] flex items-center justify-center bg-[#0a1628] px-4 text-center text-sm text-white/70">
         {failed
           ? archive
             ? "Archive frame still capturing — scrub slightly or wait a moment…"
@@ -370,6 +383,7 @@ export function HomeMap({
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
   frameImageUrl = null,
+  frameImageFallbackUrl = null,
   frameKey,
   mapSettings,
   showLightning = false,
@@ -450,6 +464,7 @@ export function HomeMap({
               : String(regionId)
           }
           url={frameImageUrl}
+          fallbackUrl={frameImageFallbackUrl}
           alt={frameAlt}
           opacity={frameOpacity}
         />

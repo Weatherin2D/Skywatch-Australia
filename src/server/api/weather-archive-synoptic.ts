@@ -114,7 +114,25 @@ export async function GET(request: NextRequest) {
     const stamp = unixToSynopticStamp(target);
     let record = await getSynopticRecord(stamp);
     if (!record) {
-      record = await buildAndStore(target);
+      try {
+        record = await buildAndStore(target);
+      } catch (buildErr) {
+        console.error("[weather/archive/synoptic] build", buildErr);
+        // Fall back to nearest older stored stamp if build fails.
+        for (const hour of [6, 12, 18, 24, 30, 36]) {
+          const older = target - hour * 3600;
+          if (older < meta.epochUnix) break;
+          const olderStamp = unixToSynopticStamp(older);
+          record = await getSynopticRecord(olderStamp);
+          if (record) break;
+        }
+      }
+    }
+    if (!record) {
+      return NextResponse.json(
+        { error: "Archive synoptic unavailable" },
+        { status: 502 },
+      );
     }
     return NextResponse.json(record, {
       headers: {

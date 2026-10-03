@@ -30,6 +30,7 @@ export function HomeMapDynamic({
   showRadarOverlay,
   frameTileUrl,
   frameImageUrl,
+  frameImageFallbackUrl,
   frameImageBounds,
   frameKey,
   frameOpacity,
@@ -63,6 +64,7 @@ export function HomeMapDynamic({
   showRadarOverlay?: boolean;
   frameTileUrl?: string | null;
   frameImageUrl?: string | null;
+  frameImageFallbackUrl?: string | null;
   frameImageBounds?: [[number, number], [number, number]] | null;
   frameKey?: string | number;
   frameOpacity?: number;
@@ -98,6 +100,7 @@ export function HomeMapDynamic({
       showRadarOverlay={showRadarOverlay}
       frameTileUrl={frameTileUrl}
       frameImageUrl={frameImageUrl}
+      frameImageFallbackUrl={frameImageFallbackUrl}
       frameImageBounds={frameImageBounds}
       frameKey={frameKey}
       frameOpacity={frameOpacity}

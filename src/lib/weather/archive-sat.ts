@@ -16,39 +16,61 @@ import {
 
 const JPEG_QUALITY = 72;
 
+const inflight = new Map<
+  string,
+  Promise<{ body: Buffer; captured: boolean } | null>
+>();
+
 async function toJpeg(body: Buffer): Promise<Buffer> {
   return sharp(body).jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
 }
 
 /**
  * Return archived JPEG bytes, capturing from upstream when missing and the
- * stamp is inside [epoch, now].
+ * stamp is inside [epoch, now]. Dedupes concurrent captures of the same stamp.
  */
 export async function ensureArchiveSatFrame(
   product: SatelliteProductId,
   timeUnix: number,
 ): Promise<{ body: Buffer; captured: boolean } | null> {
   const stamp = quantizeArchiveStamp(timeUnix);
+  const key = `${product}:${stamp}`;
+
   const existing = await getSatFrame(product, stamp);
   if (existing) return { body: existing, captured: false };
 
-  const meta = await ensureArchiveMeta();
-  const now = Math.floor(Date.now() / 1000);
-  if (stamp < meta.epochUnix || stamp > now + 120) return null;
+  const pending = inflight.get(key);
+  if (pending) return pending;
 
-  if (await satFrameExists(product, stamp)) {
-    const again = await getSatFrame(product, stamp);
-    if (again) return { body: again, captured: false };
-  }
+  const work = (async () => {
+    try {
+      const meta = await ensureArchiveMeta();
+      const now = Math.floor(Date.now() / 1000);
+      if (stamp < meta.epochUnix || stamp > now + 180) return null;
 
-  const got = await fetchAndCacheFrameResilient(
-    product,
-    stamp,
-    GIBS_AU_BOUNDS,
-    "national",
-  );
-  if (!got) return null;
-  const jpeg = await toJpeg(got.body);
-  await putSatFrame(product, stamp, jpeg);
-  return { body: jpeg, captured: true };
+      if (await satFrameExists(product, stamp)) {
+        const again = await getSatFrame(product, stamp);
+        if (again) return { body: again, captured: false };
+      }
+
+      const got = await fetchAndCacheFrameResilient(
+        product,
+        stamp,
+        GIBS_AU_BOUNDS,
+        "national",
+      );
+      if (!got) return null;
+      const jpeg = await toJpeg(got.body);
+      await putSatFrame(product, stamp, jpeg);
+      return { body: jpeg, captured: true };
+    } catch (err) {
+      console.error(`[archive-sat] ${key}`, err);
+      return null;
+    } finally {
+      inflight.delete(key);
+    }
+  })();
+
+  inflight.set(key, work);
+  return work;
 }
