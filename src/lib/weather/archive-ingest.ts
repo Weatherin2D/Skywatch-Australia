@@ -43,8 +43,11 @@ import {
 } from "@/lib/weather/synoptic";
 
 const JPEG_QUALITY = 72;
-const MAX_SAT_STAMPS_PER_RUN = 12;
-const MAX_PRODUCTS_PARALLEL = 2;
+/** Keep each cron invocation under Vercel maxDuration (~60s). */
+const BUDGET_MS = 45_000;
+const MAX_BACKFILL_IR_STAMPS = 2;
+const MAX_TIP_EXTRA_PRODUCTS = 2;
+const MAX_PRODUCTS_PARALLEL = 3;
 
 export type IngestResult = {
   ok: true;
@@ -166,9 +169,13 @@ async function ingestLightning(sinceUnix: number): Promise<number> {
 }
 
 /**
- * Run one ingest cycle: tip stamp + bounded backfill + synoptic + lightning.
+ * Run one ingest cycle: lightning + synoptic first, then a bounded sat batch.
+ * Products other than infrared are filled across successive cron runs.
  */
 export async function runArchiveIngest(): Promise<IngestResult> {
+  const started = Date.now();
+  const withinBudget = () => Date.now() - started < BUDGET_MS;
+
   let meta = await ensureArchiveMeta();
   const now = Math.floor(Date.now() / 1000);
   const tipUnix = quantizeArchiveStamp(now - 60); // allow upstream lag
@@ -176,7 +183,6 @@ export async function runArchiveIngest(): Promise<IngestResult> {
   const effectiveTip = Math.max(tipUnix, epoch);
 
   const stamps = enumerateStamps(epoch, effectiveTip);
-  // Prefer newest missing stamps first
   const newestFirst = [...stamps].reverse();
 
   let satStored = 0;
@@ -184,10 +190,13 @@ export async function runArchiveIngest(): Promise<IngestResult> {
   let satFailed = 0;
   let stampsWorked = 0;
 
-  for (const stamp of newestFirst) {
-    if (stampsWorked >= MAX_SAT_STAMPS_PER_RUN) break;
-    for (let i = 0; i < meta.products.length; i += MAX_PRODUCTS_PARALLEL) {
-      const batch = meta.products.slice(i, i + MAX_PRODUCTS_PARALLEL);
+  async function ingestStampProducts(
+    stamp: number,
+    products: SatelliteProductId[],
+  ) {
+    for (let i = 0; i < products.length; i += MAX_PRODUCTS_PARALLEL) {
+      if (!withinBudget()) return;
+      const batch = products.slice(i, i + MAX_PRODUCTS_PARALLEL);
       const results = await Promise.all(
         batch.map((p) => ingestSatStamp(p, stamp)),
       );
@@ -200,12 +209,38 @@ export async function runArchiveIngest(): Promise<IngestResult> {
     stampsWorked += 1;
   }
 
+  const lightningMerged = await ingestLightning(epoch);
+
   let synopticStored = 0;
-  for (const t of synopticCandidates(epoch, effectiveTip).reverse().slice(0, 4)) {
+  for (const t of synopticCandidates(epoch, effectiveTip).reverse().slice(0, 2)) {
+    if (!withinBudget()) break;
     if (await ingestSynopticAt(t)) synopticStored += 1;
   }
 
-  const lightningMerged = await ingestLightning(epoch);
+  const tip = newestFirst[0];
+  if (tip != null && withinBudget()) {
+    // Always keep infrared current on the tip.
+    await ingestStampProducts(tip, ["infrared"]);
+    // Rotate other products that are still missing for this tip.
+    const extras: SatelliteProductId[] = [];
+    for (const p of meta.products) {
+      if (p === "infrared") continue;
+      if (await satFrameExists(p, tip)) continue;
+      extras.push(p);
+      if (extras.length >= MAX_TIP_EXTRA_PRODUCTS) break;
+    }
+    if (extras.length && withinBudget()) {
+      await ingestStampProducts(tip, extras);
+    }
+  }
+
+  let backfillDone = 0;
+  for (const stamp of newestFirst.slice(1)) {
+    if (!withinBudget() || backfillDone >= MAX_BACKFILL_IR_STAMPS) break;
+    if (await satFrameExists("infrared", stamp)) continue;
+    await ingestStampProducts(stamp, ["infrared"]);
+    backfillDone += 1;
+  }
 
   const satBytes24h = await estimateSatBytesLast24h();
   const demoted = demoteProducts(meta.productTier ?? 0, satBytes24h);
@@ -219,7 +254,6 @@ export async function runArchiveIngest(): Promise<IngestResult> {
   };
   await writeArchiveMeta(meta);
 
-  const remaining = newestFirst.length; // approximate; UI uses day index
   return {
     ok: true,
     meta,
