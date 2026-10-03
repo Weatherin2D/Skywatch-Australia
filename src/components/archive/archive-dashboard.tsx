@@ -161,6 +161,7 @@ function ArchiveDashboardInner() {
   });
   const [lightning, setLightning] = useState<LightningStrike[]>([]);
   const [lightningTotal, setLightningTotal] = useState(0);
+  const [lightningLoading, setLightningLoading] = useState(false);
   const [synopticGeoJson, setSynopticGeoJson] =
     useState<SynopticGeoJson | null>(null);
   const frameIndexRef = useRef(0);
@@ -350,10 +351,12 @@ function ArchiveDashboardInner() {
       if (!showLightning) {
         setLightning([]);
         setLightningTotal(0);
+        setLightningLoading(false);
       }
       return;
     }
     let cancelled = false;
+    setLightningLoading(true);
     const from = Math.max(catalog.epochUnix, loopStartUnix - 3 * 3600);
     const to = loopEndUnix;
     (async () => {
@@ -365,7 +368,10 @@ function ArchiveDashboardInner() {
         const res = await fetch(`/api/weather/archive/lightning?${q}`, {
           cache: "no-store",
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled) setLightningLoading(false);
+          return;
+        }
         const data = (await res.json()) as {
           strikes?: LightningStrike[];
           total?: number;
@@ -375,6 +381,8 @@ function ArchiveDashboardInner() {
         setLightningTotal(data.total ?? data.strikes.length);
       } catch {
         // Keep previous strikes on transient failure.
+      } finally {
+        if (!cancelled) setLightningLoading(false);
       }
     })();
     return () => {
@@ -732,7 +740,9 @@ function ArchiveDashboardInner() {
           </div>
           <p className="text-[11px] leading-relaxed text-white/45">
             {showLightning
-              ? `${(lightningTotal || lightning.length).toLocaleString()} strikes in loop window.`
+              ? lightningLoading && lightning.length === 0
+                ? "Loading lightning strikes…"
+                : `${(lightningTotal || lightning.length).toLocaleString()} strikes in loop window.`
               : "Lightning off."}{" "}
             Frames every {ARCHIVE_STEP_SEC / 60} minutes (national).
           </p>
