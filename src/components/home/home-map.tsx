@@ -268,21 +268,22 @@ function SatelliteFrameView({
   const displayRef = useRef<string | null>(null);
   const loadingRef = useRef<string | null>(null);
   const loopKeyRef = useRef(loopKey);
+  const loadGenRef = useRef(0);
 
   useEffect(() => {
     if (loopKeyRef.current === loopKey) return;
     loopKeyRef.current = loopKey;
     displayRef.current = null;
     loadingRef.current = null;
+    loadGenRef.current += 1;
     setDisplayUrl(null);
     setFailed(false);
   }, [loopKey]);
 
   useEffect(() => {
     if (!url) {
-      displayRef.current = null;
+      // Keep last decoded frame if the URL briefly goes null during scrub.
       loadingRef.current = null;
-      setDisplayUrl(null);
       setFailed(false);
       return;
     }
@@ -291,18 +292,18 @@ function SatelliteFrameView({
       return;
     }
 
-    let cancelled = false;
+    const gen = ++loadGenRef.current;
     let attempts = 0;
     let usingFallback = false;
     let activeUrl = url;
     loadingRef.current = url;
     setFailed(false);
     const isArchive = url.includes("/api/weather/archive/frame");
-    const maxAttempts = isArchive ? 4 : 2;
-    const retryDelayMs = isArchive ? 1600 : 400;
+    const maxAttempts = isArchive ? 3 : 2;
+    const retryDelayMs = isArchive ? 900 : 400;
 
     const commit = (committedUrl: string) => {
-      if (cancelled) return;
+      if (gen !== loadGenRef.current) return;
       displayRef.current = committedUrl;
       loadingRef.current = null;
       setDisplayUrl(committedUrl);
@@ -310,13 +311,14 @@ function SatelliteFrameView({
     };
 
     const load = () => {
+      if (gen !== loadGenRef.current) return;
       attempts += 1;
       const img = new window.Image();
       const src =
         attempts === 1 ? activeUrl : `${activeUrl}&retry=${attempts}`;
       img.onload = () => commit(activeUrl);
       img.onerror = () => {
-        if (cancelled) return;
+        if (gen !== loadGenRef.current) return;
         if (attempts < maxAttempts) {
           window.setTimeout(load, retryDelayMs);
           return;
@@ -325,15 +327,12 @@ function SatelliteFrameView({
           usingFallback = true;
           attempts = 0;
           activeUrl = fallbackUrl;
-          window.setTimeout(load, 200);
+          window.setTimeout(load, 120);
           return;
         }
         loadingRef.current = null;
-        if (displayRef.current && displayRef.current !== url) {
-          displayRef.current = null;
-          setDisplayUrl(null);
-        }
-        setFailed(true);
+        // Never blank a previously good frame — hold it to avoid flicker.
+        setFailed(!displayRef.current);
       };
       img.src = src;
       if (img.complete && img.naturalWidth > 0) {
@@ -343,7 +342,6 @@ function SatelliteFrameView({
 
     load();
     return () => {
-      cancelled = true;
       if (loadingRef.current === url) loadingRef.current = null;
     };
   }, [url, fallbackUrl]);

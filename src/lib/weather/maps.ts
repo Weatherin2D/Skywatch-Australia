@@ -352,11 +352,11 @@ export function satelliteFrameProxyUrl(
 
 /** Playback speeds for satellite/radar loops (ms per frame). */
 export const PLAYBACK_SPEEDS = [
-  { id: "0.5", label: "0.5×", msPerFrame: 1000 },
-  { id: "1", label: "1×", msPerFrame: 500 },
-  { id: "2", label: "2×", msPerFrame: 280 },
-  { id: "4", label: "4×", msPerFrame: 160 },
-  { id: "10", label: "10×", msPerFrame: 50 },
+  { id: "0.5", label: "0.5×", msPerFrame: 1100 },
+  { id: "1", label: "1×", msPerFrame: 650 },
+  { id: "2", label: "2×", msPerFrame: 360 },
+  { id: "4", label: "4×", msPerFrame: 200 },
+  { id: "10", label: "10×", msPerFrame: 110 },
 ] as const;
 
 export type PlaybackSpeedId = (typeof PLAYBACK_SPEEDS)[number]["id"];

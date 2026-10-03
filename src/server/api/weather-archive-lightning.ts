@@ -6,8 +6,12 @@ import {
   mergeLightningHour,
 } from "@/lib/weather/archive-storage";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
-import { LIGHTNING_VISIBLE_WINDOW_SEC } from "@/lib/weather/lightning";
-import type { LightningStrike } from "@/lib/weather/lightning";
+import {
+  LIGHTNING_ARCHIVE_MAX_STRIKES,
+  LIGHTNING_VISIBLE_WINDOW_SEC,
+  sampleStrikesAcrossTime,
+  type LightningStrike,
+} from "@/lib/weather/lightning";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,6 +31,7 @@ function mergeById(
 /**
  * GET /api/weather/archive/lightning?from=&to=
  * Combines stored archive hours with the live buffer (and persists new strikes).
+ * Returns a time-distributed sample so the client stays smooth.
  */
 export async function GET(request: NextRequest) {
   const fromRaw = request.nextUrl.searchParams.get("from");
@@ -45,6 +50,7 @@ export async function GET(request: NextRequest) {
         generated: Math.floor(Date.now() / 1000),
         source: "archive",
         strikes: [],
+        total: 0,
         attribution:
           "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — entertainment only",
         windowMinutes: Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 60),
@@ -81,13 +87,20 @@ export async function GET(request: NextRequest) {
       console.error("[weather/archive/lightning] live merge", err);
     }
 
+    const total = archived.length;
+    const strikes = sampleStrikesAcrossTime(
+      archived,
+      LIGHTNING_ARCHIVE_MAX_STRIKES,
+    );
+
     return NextResponse.json(
       {
         generated: Math.floor(Date.now() / 1000),
         source: "archive+live",
         from: lo,
         to: hi,
-        strikes: archived,
+        total,
+        strikes,
         attribution:
           "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — entertainment only, not for official warning use",
         windowMinutes: Math.round(LIGHTNING_VISIBLE_WINDOW_SEC / 60),

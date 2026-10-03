@@ -69,9 +69,10 @@ function drawCrosshair(
   b: number,
   opacity: number,
 ) {
-  const half = size / 2;
-  const gap = Math.max(0.6, size * 0.12);
-  const thick = Math.max(0.6, size * 0.14);
+  const s = Math.max(12, size);
+  const half = s / 2;
+  const gap = Math.max(1.2, s * 0.14);
+  const thick = Math.max(1.4, s * 0.18);
   const arm = half - gap;
   if (arm <= 0.25) return;
 
@@ -109,23 +110,30 @@ function drawBolt(
   b: number,
   opacity: number,
 ) {
-  const s = size;
+  // Enforce a readable minimum so bolts never collapse to pin-dots.
+  const s = Math.max(18, size);
+  // Soft glow disc so strikes pop on dark IR / bright cloud tops.
+  ctx.globalAlpha = opacity * 0.28;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.globalAlpha = opacity;
   ctx.fillStyle = `rgb(${r},${g},${b})`;
   ctx.beginPath();
-  // Pointy bolt — top tip → mid notch → bottom tip → back up
-  ctx.moveTo(cx - s * 0.08, cy - s * 0.52);
-  ctx.lineTo(cx + s * 0.22, cy - s * 0.08);
-  ctx.lineTo(cx + s * 0.02, cy - s * 0.08);
-  ctx.lineTo(cx + s * 0.28, cy + s * 0.52);
-  ctx.lineTo(cx - s * 0.12, cy + s * 0.02);
-  ctx.lineTo(cx + s * 0.06, cy + s * 0.02);
+  // Wide zigzag bolt (⚡) — reads clearly at national scale.
+  ctx.moveTo(cx + s * 0.08, cy - s * 0.58);
+  ctx.lineTo(cx - s * 0.32, cy + s * 0.02);
+  ctx.lineTo(cx - s * 0.06, cy + s * 0.02);
+  ctx.lineTo(cx - s * 0.22, cy + s * 0.58);
+  ctx.lineTo(cx + s * 0.36, cy - s * 0.06);
+  ctx.lineTo(cx + s * 0.1, cy - s * 0.06);
   ctx.closePath();
   ctx.fill();
-  // Thin dark edge so bolts read on bright cloud tops
-  ctx.globalAlpha = opacity * 0.55;
-  ctx.strokeStyle = "rgba(0,0,0,0.55)";
-  ctx.lineWidth = Math.max(0.6, s * 0.06);
+  ctx.globalAlpha = Math.min(1, opacity * 0.9);
+  ctx.strokeStyle = "rgba(0,0,0,0.75)";
+  ctx.lineWidth = Math.max(1.2, s * 0.09);
   ctx.stroke();
 }
 

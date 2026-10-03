@@ -160,8 +160,12 @@ function ArchiveDashboardInner() {
     lightningBolts: true,
   });
   const [lightning, setLightning] = useState<LightningStrike[]>([]);
+  const [lightningTotal, setLightningTotal] = useState(0);
   const [synopticGeoJson, setSynopticGeoJson] =
     useState<SynopticGeoJson | null>(null);
+  const frameIndexRef = useRef(0);
+  const loadedFramesRef = useRef(new Set<string>());
+  const playingRef = useRef(false);
   const [synopticValidTime, setSynopticValidTime] = useState<number | null>(
     null,
   );
@@ -271,23 +275,45 @@ function ArchiveDashboardInner() {
     );
   }, [selectedUnix, catalog, product, loopHours]);
 
-  // Prefetch a few upcoming frames so play/scrub stays smooth.
+  const prefetchFrame = (url: string) =>
+    new Promise<boolean>((resolve) => {
+      if (loadedFramesRef.current.has(url)) {
+        resolve(true);
+        return;
+      }
+      const img = new window.Image();
+      img.onload = () => {
+        loadedFramesRef.current.add(url);
+        resolve(true);
+      };
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+
+  // Prefetch the whole loop so play/scrub does not skip unloaded frames.
   useEffect(() => {
     if (frames.length === 0) return;
-    const urls: string[] = [];
-    for (let i = 0; i < 6; i++) {
-      const f = frames[(frameIndex + i) % frames.length];
-      if (f?.imageUrl) urls.push(f.imageUrl);
-    }
-    for (const url of urls) {
-      const img = new window.Image();
-      img.src = url;
-    }
-  }, [frames, frameIndex]);
+    let cancelled = false;
+    (async () => {
+      // Warm from the playhead outward so the next frames arrive first.
+      const order: WeatherFrame[] = [];
+      for (let i = 0; i < frames.length; i++) {
+        order.push(frames[(frameIndexRef.current + i) % frames.length]!);
+      }
+      for (const f of order) {
+        if (cancelled || !f.imageUrl) break;
+        await prefetchFrame(f.imageUrl);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [frames]);
 
   // Keep frame index near selected time
   useEffect(() => {
     if (!selectedUnix || frames.length === 0) {
+      frameIndexRef.current = 0;
       setFrameIndex(0);
       return;
     }
@@ -300,8 +326,17 @@ function ArchiveDashboardInner() {
         best = i;
       }
     });
+    frameIndexRef.current = best;
     setFrameIndex(best);
   }, [selectedUnix, frames]);
+
+  useEffect(() => {
+    frameIndexRef.current = frameIndex;
+  }, [frameIndex]);
+
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
 
   const activeFrame = frames[frameIndex] ?? null;
   const activeTime = activeFrame?.time ?? selectedUnix;
@@ -312,7 +347,10 @@ function ArchiveDashboardInner() {
   // Lightning for the whole loop (+ 3h trail before start), not per-frame.
   useEffect(() => {
     if (!showLightning || !catalog || loopStartUnix == null || loopEndUnix == null) {
-      if (!showLightning) setLightning([]);
+      if (!showLightning) {
+        setLightning([]);
+        setLightningTotal(0);
+      }
       return;
     }
     let cancelled = false;
@@ -328,8 +366,13 @@ function ArchiveDashboardInner() {
           cache: "no-store",
         });
         if (!res.ok) return;
-        const data = (await res.json()) as { strikes?: LightningStrike[] };
-        if (!cancelled && data.strikes) setLightning(data.strikes);
+        const data = (await res.json()) as {
+          strikes?: LightningStrike[];
+          total?: number;
+        };
+        if (cancelled || !data.strikes) return;
+        setLightning(data.strikes);
+        setLightningTotal(data.total ?? data.strikes.length);
       } catch {
         // Keep previous strikes on transient failure.
       }
@@ -339,9 +382,15 @@ function ArchiveDashboardInner() {
     };
   }, [showLightning, catalog, loopStartUnix, loopEndUnix]);
 
-  // Synoptic nearest to active time — keep last good field on errors.
+  // Synoptic: snap to the hour while playing so we don't refetch every IR step.
+  const synopticQueryTime = useMemo(() => {
+    if (activeTime == null) return null;
+    if (!playing) return activeTime;
+    return Math.floor(activeTime / 3600) * 3600;
+  }, [activeTime, playing]);
+
   useEffect(() => {
-    if (!showSynoptic || activeTime == null) {
+    if (!showSynoptic || synopticQueryTime == null) {
       if (!showSynoptic) {
         setSynopticGeoJson(null);
         setSynopticValidTime(null);
@@ -352,7 +401,7 @@ function ArchiveDashboardInner() {
     (async () => {
       try {
         const res = await fetch(
-          `/api/weather/archive/synoptic?time=${activeTime}`,
+          `/api/weather/archive/synoptic?time=${synopticQueryTime}`,
           { cache: "no-store" },
         );
         if (!res.ok) return;
@@ -372,32 +421,61 @@ function ArchiveDashboardInner() {
     return () => {
       cancelled = true;
     };
-  }, [showSynoptic, activeTime]);
+  }, [showSynoptic, synopticQueryTime]);
 
-  // Playback
+  // Smooth playback: wait for the next decoded frame, pause briefly on wrap.
   useEffect(() => {
     if (!playing || frames.length < 2) return;
-    const ms = getPlaybackSpeed(speedId).msPerFrame;
-    const id = window.setInterval(() => {
-      setFrameIndex((i) => (i + 1) % frames.length);
-    }, ms);
-    return () => window.clearInterval(id);
-  }, [playing, frames.length, speedId]);
+    const baseMs = getPlaybackSpeed(speedId).msPerFrame;
+    // Archive needs a bit more dwell so on-demand captures don't stutter.
+    const ms = Math.max(baseMs + 80, Math.round(baseMs * 1.25));
+    let cancelled = false;
 
-  // Sync parts when scrubbing
-  useEffect(() => {
-    if (!activeFrame || playing) return;
-    // don't fight date selects while user is picking — only when scrub moves
-  }, [activeFrame, playing]);
+    const sleep = (n: number) =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, n);
+      });
 
-  useEffect(() => {
-    if (!playing || !activeFrame) return;
-    setParts(unixToAestParts(activeFrame.time));
-  }, [playing, activeFrame]);
+    (async () => {
+      while (!cancelled && playingRef.current) {
+        const cur = frameIndexRef.current;
+        const next = (cur + 1) % frames.length;
+        const nextUrl = frames[next]?.imageUrl;
+        if (nextUrl) {
+          const waitStart = performance.now();
+          while (
+            !loadedFramesRef.current.has(nextUrl) &&
+            performance.now() - waitStart < Math.max(ms * 4, 2500)
+          ) {
+            await prefetchFrame(nextUrl);
+            if (cancelled || !playingRef.current) return;
+            if (!loadedFramesRef.current.has(nextUrl)) await sleep(40);
+          }
+        }
+        if (cancelled || !playingRef.current) return;
+        // Soft loop: hold the last frame briefly before recycling.
+        if (next === 0) await sleep(Math.max(420, ms));
+        if (cancelled || !playingRef.current) return;
+        frameIndexRef.current = next;
+        setFrameIndex(next);
+        // Prefetch a couple ahead of the playhead.
+        for (let ahead = 1; ahead <= 3; ahead++) {
+          const f = frames[(next + ahead) % frames.length];
+          if (f?.imageUrl) void prefetchFrame(f.imageUrl);
+        }
+        await sleep(ms);
+      }
+    })();
 
-  // URL sync
+    return () => {
+      cancelled = true;
+    };
+  }, [playing, frames, speedId]);
+
+  // URL sync — skip while playing to avoid history thrash every frame.
   useEffect(() => {
     if (!hydrated.current || !selectedUnix || pathname !== "/archive") return;
+    if (playing) return;
     const params = new URLSearchParams();
     params.set("t", String(activeTime ?? selectedUnix));
     params.set("product", product);
@@ -420,6 +498,7 @@ function ArchiveDashboardInner() {
     showLightning,
     showSynoptic,
     loopHours,
+    playing,
   ]);
 
   useEffect(() => {
@@ -653,7 +732,7 @@ function ArchiveDashboardInner() {
           </div>
           <p className="text-[11px] leading-relaxed text-white/45">
             {showLightning
-              ? `${lightning.length.toLocaleString()} strikes in loop window.`
+              ? `${(lightningTotal || lightning.length).toLocaleString()} strikes in loop window.`
               : "Lightning off."}{" "}
             Frames every {ARCHIVE_STEP_SEC / 60} minutes (national).
           </p>
@@ -816,12 +895,8 @@ function ArchiveDashboardInner() {
               showLightning={showLightning}
               lightningStrikes={lightning}
               lightningReferenceTime={activeTime}
-              lightningTimelineStart={
-                frames[0] != null ? frames[0].time - 3 * 3600 : null
-              }
-              lightningTimelineEnd={
-                frames.length > 0 ? frames[frames.length - 1]!.time : activeTime
-              }
+              lightningTimelineStart={loopStartUnix}
+              lightningTimelineEnd={loopEndUnix ?? activeTime}
               lightningPlaying={playing}
               lightningMsPerFrame={getPlaybackSpeed(speedId).msPerFrame}
               lightningNextFrameTime={
@@ -883,6 +958,7 @@ function ArchiveDashboardInner() {
               onChange={(e) => {
                 setPlaying(false);
                 const idx = scrubToFrameIndex(Number(e.target.value), frames.length);
+                frameIndexRef.current = idx;
                 setFrameIndex(idx);
                 const f = frames[idx];
                 if (f) setParts(unixToAestParts(f.time));

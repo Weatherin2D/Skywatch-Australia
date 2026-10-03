@@ -42,9 +42,11 @@ export const LIGHTNING_VISIBLE_WINDOW_SEC = 3 * 60 * 60;
 export const LIGHTNING_COLOR_WINDOW_SEC = LIGHTNING_VISIBLE_WINDOW_SEC;
 
 /** Cap for canvas satellite trail (cheap to paint). */
-export const LIGHTNING_MAX_VISIBLE = 1200;
+export const LIGHTNING_MAX_VISIBLE = 1600;
 /** Cap for Leaflet DOM markers (expensive). */
 export const LIGHTNING_MAX_VISIBLE_DOM = 120;
+/** Cap for archive API payloads (keeps the client responsive). */
+export const LIGHTNING_ARCHIVE_MAX_STRIKES = 2400;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest flash
@@ -104,14 +106,14 @@ export function strikeAgeRgb(
   };
 }
 
-/** Crosshair size scales slightly as strikes age along the trail. */
+/** Crosshair / bolt size scales slightly as strikes age along the trail. */
 export function strikeAgeSize(
   ageSec: number,
   windowSec = LIGHTNING_COLOR_WINDOW_SEC,
 ) {
   const t = strikeAgeNorm(ageSec, windowSec);
-  // ~2.5× smaller than the original 18→11 px trail.
-  return Math.max(4, Math.round(lerp(7.2, 4.4, t)));
+  // Large enough to read as bolt/crosshair icons over national IR.
+  return Math.max(14, Math.round(lerp(24, 15, t)));
 }
 
 /**
@@ -254,6 +256,37 @@ export function sampleStrikesForDisplay(
   return [...byCell.values()]
     .sort((a, b) => b.time - a.time)
     .slice(0, maxVisible);
+}
+
+/**
+ * Sample strikes evenly across time buckets so every archive frame keeps a
+ * trail, while capping payload size for the browser.
+ */
+export function sampleStrikesAcrossTime(
+  strikes: LightningStrike[],
+  maxTotal: number = LIGHTNING_ARCHIVE_MAX_STRIKES,
+  bucketSec = 600,
+): LightningStrike[] {
+  if (strikes.length <= maxTotal) {
+    return [...strikes].sort((a, b) => a.time - b.time);
+  }
+  const buckets = new Map<number, LightningStrike[]>();
+  for (const s of strikes) {
+    const key = Math.floor(s.time / bucketSec) * bucketSec;
+    const list = buckets.get(key);
+    if (list) list.push(s);
+    else buckets.set(key, [s]);
+  }
+  const keys = [...buckets.keys()].sort((a, b) => a - b);
+  const perBucket = Math.max(12, Math.ceil(maxTotal / Math.max(1, keys.length)));
+  const out: LightningStrike[] = [];
+  for (const key of keys) {
+    out.push(...sampleStrikesForDisplay(buckets.get(key)!, perBucket));
+  }
+  if (out.length <= maxTotal) {
+    return out.sort((a, b) => a.time - b.time);
+  }
+  return sampleStrikesForDisplay(out, maxTotal).sort((a, b) => a.time - b.time);
 }
 
 /**
