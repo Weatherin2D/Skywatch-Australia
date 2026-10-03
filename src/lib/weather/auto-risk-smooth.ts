@@ -481,11 +481,16 @@ function buildMeshRankField(
       if (bestJ >= 0) keepEdge(i, bestJ);
     }
 
+    // Sparse high ranks often only form thin ribbons — fatten them into area
+    // bands so cores don't read as tiny pills / capsules.
+    const filled = mask.reduce((n, v) => n + v, 0);
+    const fatten =
+      filled < width * height * 0.01 ? CLOSE_PX + 5 : CLOSE_PX;
     const closed = erode(
-      dilate(mask, width, height, CLOSE_PX),
+      dilate(mask, width, height, fatten),
       width,
       height,
-      Math.max(1, CLOSE_PX - 1),
+      Math.max(1, Math.floor(fatten * 0.55)),
     );
 
     for (let i = 0; i < field.length; i++) {
