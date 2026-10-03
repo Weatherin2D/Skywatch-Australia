@@ -1,4 +1,6 @@
+import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
+import { maybeRunArchiveIngestLazy } from "@/lib/weather/archive-ingest";
 import {
   ARCHIVE_SCRUB_HALF_WINDOW_SEC,
   ARCHIVE_STEP_SEC,
@@ -30,6 +32,10 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   try {
     const meta = await ensureArchiveMeta();
+    // Hobby Cron is daily only — keep the archive growing when users visit.
+    after(() => {
+      void maybeRunArchiveIngestLazy(meta.updatedAt);
+    });
     const now = Math.floor(Date.now() / 1000);
     const tip = quantizeArchiveStamp(now);
     const productParam = request.nextUrl.searchParams.get("product");

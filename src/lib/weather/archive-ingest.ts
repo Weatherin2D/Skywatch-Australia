@@ -48,6 +48,8 @@ const BUDGET_MS = 45_000;
 const MAX_BACKFILL_IR_STAMPS = 2;
 const MAX_TIP_EXTRA_PRODUCTS = 2;
 const MAX_PRODUCTS_PARALLEL = 3;
+/** Hobby plan: cron is daily; fill gaps when the archive UI/API is hit. */
+export const ARCHIVE_LAZY_INGEST_MIN_INTERVAL_MS = 10 * 60 * 1000;
 
 export type IngestResult = {
   ok: true;
@@ -61,6 +63,8 @@ export type IngestResult = {
   backfillRemaining: number;
   satBytes24h: number;
 };
+
+let lazyIngestInFlight: Promise<IngestResult | null> | null = null;
 
 async function toJpeg(body: Buffer, contentType: string): Promise<Buffer> {
   if (contentType.includes("jpeg") || contentType.includes("jpg")) {
@@ -166,6 +170,34 @@ async function ingestLightning(sinceUnix: number): Promise<number> {
     console.error("[archive] lightning", err);
     return 0;
   }
+}
+
+/**
+ * Throttled ingest for Hobby (no sub-daily Vercel Cron).
+ * Safe to call from catalog/page traffic; no-ops if recently updated.
+ */
+export async function maybeRunArchiveIngestLazy(
+  metaUpdatedAtIso?: string | null,
+): Promise<IngestResult | null> {
+  const updatedMs = metaUpdatedAtIso
+    ? Date.parse(metaUpdatedAtIso)
+    : 0;
+  if (
+    Number.isFinite(updatedMs) &&
+    Date.now() - updatedMs < ARCHIVE_LAZY_INGEST_MIN_INTERVAL_MS
+  ) {
+    return null;
+  }
+  if (lazyIngestInFlight) return lazyIngestInFlight;
+  lazyIngestInFlight = runArchiveIngest()
+    .catch((err) => {
+      console.error("[archive] lazy ingest failed", err);
+      return null;
+    })
+    .finally(() => {
+      lazyIngestInFlight = null;
+    });
+  return lazyIngestInFlight;
 }
 
 /**
