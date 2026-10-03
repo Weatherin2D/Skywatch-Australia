@@ -1,5 +1,11 @@
+import type { MapRegionId } from "@/components/home/mock-data";
+import { getMapRegion } from "@/components/home/mock-data";
 import type { SatelliteProductId } from "@/lib/weather/maps";
-import { GIBS_AU_BOUNDS, type WeatherFrame } from "@/lib/weather/maps";
+import {
+  GIBS_AU_BOUNDS,
+  satelliteFrameProxyUrl,
+  type WeatherFrame,
+} from "@/lib/weather/maps";
 import {
   ARCHIVE_STEP_SEC,
   enumerateStamps,
@@ -60,9 +66,23 @@ export function archiveFrameUrl(
 }
 
 /**
+ * National archive JPEG when available; regional views use the live frame
+ * proxy cropped to the state window (same as the Satellite page).
+ */
+export function archiveDisplayFrameUrl(
+  product: SatelliteProductId,
+  timeUnix: number,
+  regionId: MapRegionId = "national",
+): string {
+  if (regionId === "national") return archiveFrameUrl(product, timeUnix);
+  return satelliteFrameProxyUrl(product, timeUnix, { region: regionId });
+}
+
+/**
  * Build scrub/play frames for the archive loop.
  * - 24h: full AEST calendar day containing the selected time
  * - other lengths: window centered on the selected time
+ * - region zooms the raster + bounds (national = archived JPEG)
  */
 export function buildArchiveScrubFrames(
   product: SatelliteProductId,
@@ -71,6 +91,7 @@ export function buildArchiveScrubFrames(
   tipUnix: number,
   loopHours: ArchiveLoopHours = DEFAULT_ARCHIVE_LOOP_HOURS,
   availableTimes?: Set<number>,
+  regionId: MapRegionId = "national",
 ): WeatherFrame[] {
   const center = quantizeArchiveStamp(centerUnix);
   const hours = clampArchiveLoopHours(loopHours);
@@ -88,13 +109,15 @@ export function buildArchiveScrubFrames(
 
   if (to < from) return [];
 
+  const bounds =
+    regionId === "national" ? GIBS_AU_BOUNDS : getMapRegion(regionId).bounds;
   const stamps = enumerateStamps(from, to);
   return stamps
     .filter((t) => !availableTimes || availableTimes.has(t))
     .map((time) => ({
       time,
-      imageUrl: archiveFrameUrl(product, time),
-      imageBounds: GIBS_AU_BOUNDS,
+      imageUrl: archiveDisplayFrameUrl(product, time, regionId),
+      imageBounds: bounds,
     }));
 }
 

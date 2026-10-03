@@ -24,7 +24,6 @@ import {
 import {
   ARCHIVE_LOOP_OPTIONS,
   DEFAULT_ARCHIVE_LOOP_HOURS,
-  archiveFrameUrl,
   buildArchiveScrubFrames,
   clampArchiveLoopHours,
   parseArchiveLoopParam,
@@ -154,11 +153,8 @@ function ArchiveDashboardInner() {
   const [playing, setPlaying] = useState(false);
   const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [mapSettings, setMapSettings] = useState<MapSettingsState>({
-    ...DEFAULT_MAP_SETTINGS,
-    // Archive defaults to bolt glyphs so strikes read clearly over IR.
-    lightningBolts: true,
-  });
+  const [mapSettings, setMapSettings] =
+    useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
   const [lightning, setLightning] = useState<LightningStrike[]>([]);
   const [lightningTotal, setLightningTotal] = useState(0);
   const [lightningLoading, setLightningLoading] = useState(false);
@@ -267,14 +263,17 @@ function ArchiveDashboardInner() {
   const frames: WeatherFrame[] = useMemo(() => {
     if (!selectedUnix || !catalog) return [];
     // Always use expected 10-min slots; frame API captures on demand.
+    // Region zooms the raster to the state crop (same as Satellite page).
     return buildArchiveScrubFrames(
       product,
       selectedUnix,
       catalog.epochUnix,
       catalog.tipUnix,
       loopHours,
+      undefined,
+      regionId,
     );
-  }, [selectedUnix, catalog, product, loopHours]);
+  }, [selectedUnix, catalog, product, loopHours, regionId]);
 
   const prefetchFrame = (url: string) =>
     new Promise<boolean>((resolve) => {
@@ -290,6 +289,11 @@ function ArchiveDashboardInner() {
       img.onerror = () => resolve(false);
       img.src = url;
     });
+
+  // Drop cached decode list when the crop/product changes.
+  useEffect(() => {
+    loadedFramesRef.current.clear();
+  }, [regionId, product]);
 
   // Prefetch the whole loop so play/scrub does not skip unloaded frames.
   useEffect(() => {
@@ -721,14 +725,43 @@ function ArchiveDashboardInner() {
             />
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
-            <span>Bolt icons</span>
-            <Toggle
-              on={mapSettings.lightningBolts}
-              onChange={(on) =>
-                setMapSettings((s) => ({ ...s, lightningBolts: on }))
-              }
-              label="Lightning bolt icons"
-            />
+            <span>Strike style</span>
+            <div
+              className="inline-flex rounded-full border border-white/15 bg-black/30 p-0.5"
+              role="group"
+              aria-label="Lightning strike style"
+            >
+              <button
+                type="button"
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                  !mapSettings.lightningBolts
+                    ? "bg-[var(--cyan)] text-[#041018]"
+                    : "text-white/65 hover:text-white",
+                )}
+                aria-pressed={!mapSettings.lightningBolts}
+                onClick={() =>
+                  setMapSettings((s) => ({ ...s, lightningBolts: false }))
+                }
+              >
+                Crosshairs
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                  mapSettings.lightningBolts
+                    ? "bg-[var(--cyan)] text-[#041018]"
+                    : "text-white/65 hover:text-white",
+                )}
+                aria-pressed={mapSettings.lightningBolts}
+                onClick={() =>
+                  setMapSettings((s) => ({ ...s, lightningBolts: true }))
+                }
+              >
+                Icons
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
             <span>Synoptic</span>
@@ -744,7 +777,8 @@ function ArchiveDashboardInner() {
                 ? "Loading lightning strikes…"
                 : `${(lightningTotal || lightning.length).toLocaleString()} strikes in loop window.`
               : "Lightning off."}{" "}
-            Frames every {ARCHIVE_STEP_SEC / 60} minutes (national).
+            Frames every {ARCHIVE_STEP_SEC / 60} minutes
+            {regionId === "national" ? " (national)" : ` (${region.short})`}.
           </p>
         </aside>
 
@@ -881,26 +915,24 @@ function ArchiveDashboardInner() {
               mode="Satellite"
               regionId={regionId}
               showRadarOverlay={false}
-              frameImageUrl={
-                activeFrame
-                  ? archiveFrameUrl(product, activeFrame.time)
-                  : null
-              }
+              frameImageUrl={activeFrame?.imageUrl ?? null}
               frameImageFallbackUrl={
-                activeFrame
+                activeFrame && regionId === "national"
                   ? satelliteFrameProxyUrl(product, activeFrame.time, {
                       region: "national",
                     })
                   : null
               }
-              frameImageBounds={GIBS_AU_BOUNDS}
+              frameImageBounds={
+                activeFrame?.imageBounds ?? region.bounds ?? GIBS_AU_BOUNDS
+              }
               frameKey={
                 activeFrame
                   ? `archive-${product}-${regionId}`
                   : "archive-empty"
               }
               frameOpacity={1}
-              frameAlt={`${satProductMeta.label} archive`}
+              frameAlt={`${satProductMeta.label} archive · ${region.label}`}
               mapSettings={mapSettings}
               showLightning={showLightning}
               lightningStrikes={lightning}
