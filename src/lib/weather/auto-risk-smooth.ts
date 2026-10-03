@@ -404,7 +404,7 @@ function paintRankOutlines(
     png.data[o] = 0;
     png.data[o + 1] = 0;
     png.data[o + 2] = 0;
-    png.data[o + 3] = 230;
+    png.data[o + 3] = 255;
   }
 }
 
