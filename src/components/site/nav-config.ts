@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Archive,
   CloudLightning,
   CloudRain,
   CloudSun,
@@ -19,12 +20,14 @@ export const PRIMARY_NAV = [
 ] as const;
 
 export const SECONDARY_NAV = [
+  { href: "/archive", label: "Archive", icon: Archive },
   { href: "/models", label: "Models", icon: Layers },
   { href: "/climate", label: "Climate", icon: ThermometerSun },
   { href: "/risk", label: "Risk", icon: CloudLightning },
 ] as const;
 
 export const MORE_NAV = [
+  { href: "/archive", label: "Archive" },
   { href: "/models", label: "Models" },
   { href: "/climate", label: "Climate" },
   { href: "/risk", label: "Risk outlook" },

@@ -17,6 +17,11 @@ import * as weatherRisk from "@/server/api/weather-risk";
 import * as weatherRiskImage from "@/server/api/weather-risk-image";
 import * as weatherClimate from "@/server/api/weather-climate";
 import * as weatherHazards from "@/server/api/weather-hazards";
+import * as weatherArchive from "@/server/api/weather-archive";
+import * as weatherArchiveFrame from "@/server/api/weather-archive-frame";
+import * as weatherArchiveSynoptic from "@/server/api/weather-archive-synoptic";
+import * as weatherArchiveLightning from "@/server/api/weather-archive-lightning";
+import * as weatherArchiveIngest from "@/server/api/weather-archive-ingest";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,6 +57,11 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/risk-image": weatherRiskImage as RouteHandlers,
   "weather/climate": weatherClimate as RouteHandlers,
   "weather/hazards": weatherHazards as RouteHandlers,
+  "weather/archive": weatherArchive as RouteHandlers,
+  "weather/archive/frame": weatherArchiveFrame as RouteHandlers,
+  "weather/archive/synoptic": weatherArchiveSynoptic as RouteHandlers,
+  "weather/archive/lightning": weatherArchiveLightning as RouteHandlers,
+  "weather/archive/ingest": weatherArchiveIngest as RouteHandlers,
 };
 
 function resolve(

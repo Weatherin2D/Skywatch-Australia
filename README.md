@@ -19,8 +19,14 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
 | `/forecast/[geohash]` | Direct forecast for a BoM location (incl. 24–48h rain timeline) |
 | `/warnings` | Live BoM warnings + optional browser Notification alerts (client-side) |
+| `/archive` | Forward-growing archive from midnight AEST today — satellite, synoptic, lightning with date/time picker |
 | `/risk` | MetEye thunderstorm risk map for the full MetEye horizon |
 | `/more` | Secondary tools + mobile install hint (PWA) |
+| `/api/weather/archive` | Archive catalog (epoch, products, day index) |
+| `/api/weather/archive/frame` | Archived national satellite JPEG |
+| `/api/weather/archive/synoptic` | Archived / on-demand synoptic GeoJSON |
+| `/api/weather/archive/lightning` | Archived lightning strikes (`from`/`to`) |
+| `/api/weather/archive/ingest` | Cron ingest (every 10 min) — sat + synoptic + lightning |
 | `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
