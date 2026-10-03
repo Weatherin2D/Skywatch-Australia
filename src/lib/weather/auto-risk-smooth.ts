@@ -1,6 +1,6 @@
 /**
- * Smooth automated risk raster: categorical colour bands + L1/L2 hatch overlays.
- * High-res splat renderer — dense samples stay fast on serverless.
+ * Smooth automated risk raster: nested carved colour bands + L1/L2 hatches.
+ * Tuned for TV-style organic corridors (large outer envelope, nested cores).
  */
 
 import { PNG } from "pngjs";
@@ -20,13 +20,14 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-/** Working field before upsample — high enough to hold fine structure. */
-const WORK_WIDTH = 480;
-/** Final Leaflet overlay resolution (~2× previous). */
-const OUT_WIDTH = 1500;
-/** Tighter kernel so dense samples resolve sharper risk cores. */
-const SIGMA_KM = 155;
-const CUTOFF_SIGMA = 2.3;
+const WORK_WIDTH = 420;
+const OUT_WIDTH = 1400;
+/** Large kernel merges samples into continuous frontal-style corridors. */
+const SIGMA_KM = 320;
+const CUTOFF_SIGMA = 2.45;
+/** Softer long-range fill so outer bands knit into one envelope. */
+const FILL_SIGMA_KM = 520;
+const FILL_CUTOFF = 2.1;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -36,9 +37,7 @@ for (const c of AUTO_RISK_CATEGORIES) {
 export type AutoRiskSamplePoint = {
   lat: number;
   lon: number;
-  /** Categorical rank 0–8. */
   rank: number;
-  /** Hatch overlay 0 / 1 (L1) / 2 (L2). */
   hatch: 0 | 1 | 2;
 };
 
@@ -72,21 +71,21 @@ function latLonToPixel(
   return { x, y };
 }
 
-/**
- * Splat each sample as a Gaussian onto the work grid (max-blend).
- * O(points × kernel) — stays fast at high resolution with hundreds of sites.
- */
-function buildSoftField(
+function splatField(
   points: AutoRiskSamplePoint[],
   width: number,
   height: number,
   pick: (p: AutoRiskSamplePoint) => number,
+  sigmaKm: number,
+  cutoffSigma: number,
+  mode: "max" | "blend",
 ): Float32Array {
   const soft = new Float32Array(width * height);
+  const weight = mode === "blend" ? new Float32Array(width * height) : null;
   if (!points.length) return soft;
 
-  const maxDist = SIGMA_KM * CUTOFF_SIGMA;
-  const twoSigma2 = 2 * SIGMA_KM * SIGMA_KM;
+  const maxDist = sigmaKm * cutoffSigma;
+  const twoSigma2 = 2 * sigmaKm * sigmaKm;
   const kmPerPxX =
     ((AU.maxLon - AU.minLon) * 111.0 * Math.cos((-27 * Math.PI) / 180)) /
     width;
@@ -113,15 +112,35 @@ function buildSoftField(
         const d = approxKm(lat, lon, p.lat, p.lon);
         if (d > maxDist) continue;
         const w = Math.exp(-(d * d) / twoSigma2);
-        const score = value * (0.45 + 0.55 * w) * Math.min(1, w / 0.09);
         const i = y * width + x;
-        if (score > soft[i]!) soft[i] = score;
+        if (mode === "max") {
+          const score = value * (0.42 + 0.58 * w) * Math.min(1, w / 0.07);
+          if (score > soft[i]!) soft[i] = score;
+        } else {
+          soft[i]! += value * w;
+          weight![i]! += w;
+        }
       }
     }
   }
 
-  // Light blur to knit neighbouring samples into continuous bands.
-  for (let pass = 0; pass < 2; pass++) {
+  if (weight) {
+    for (let i = 0; i < soft.length; i++) {
+      if (weight[i]! > 1e-6) soft[i] = soft[i]! / weight[i]!;
+      else soft[i] = 0;
+    }
+  }
+
+  return soft;
+}
+
+function blurField(
+  soft: Float32Array,
+  width: number,
+  height: number,
+  passes: number,
+) {
+  for (let pass = 0; pass < passes; pass++) {
     const src = Float32Array.from(soft);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
@@ -135,23 +154,58 @@ function buildSoftField(
       }
     }
   }
+}
 
+/** Max cores + blended fill → continuous nested corridors (TV outlook look). */
+function buildSoftField(
+  points: AutoRiskSamplePoint[],
+  width: number,
+  height: number,
+  pick: (p: AutoRiskSamplePoint) => number,
+): Float32Array {
+  const cores = splatField(
+    points,
+    width,
+    height,
+    pick,
+    SIGMA_KM,
+    CUTOFF_SIGMA,
+    "max",
+  );
+  const fill = splatField(
+    points,
+    width,
+    height,
+    pick,
+    FILL_SIGMA_KM,
+    FILL_CUTOFF,
+    "blend",
+  );
+  const soft = new Float32Array(width * height);
+  for (let i = 0; i < soft.length; i++) {
+    soft[i] = Math.max(cores[i]!, fill[i]! * 0.85);
+  }
+  blurField(soft, width, height, 5);
   return soft;
 }
 
-function quantizeRankField(
-  soft: Float32Array,
-  maxRank: number,
-): Uint8Array {
+/**
+ * Nested band quantize — higher ranks carve inside lower envelopes
+ * (green outside → yellow → orange → red cores), not round-to-nearest blobs.
+ */
+function quantizeRankField(soft: Float32Array, maxRank: number): Uint8Array {
   const field = new Uint8Array(soft.length);
+  // Threshold ladder for ranks 1…8 on a continuous soft score.
+  const thresholds = [0.38, 0.95, 1.55, 2.2, 2.95, 3.75, 4.6, 5.5];
   for (let i = 0; i < soft.length; i++) {
     const v = soft[i]!;
-    if (v < 0.4) {
-      field[i] = 0;
-      continue;
+    let rank = 0;
+    for (let r = maxRank; r >= 1; r--) {
+      if (v >= thresholds[r - 1]!) {
+        rank = r;
+        break;
+      }
     }
-    let rank = Math.min(maxRank, Math.max(1, Math.round(v)));
-    if (v < rank - 0.32 && rank > 1) rank -= 1;
     field[i] = rank;
   }
   return field;
@@ -161,11 +215,80 @@ function quantizeHatchField(soft: Float32Array): Uint8Array {
   const field = new Uint8Array(soft.length);
   for (let i = 0; i < soft.length; i++) {
     const v = soft[i]!;
-    if (v < 0.55) field[i] = 0;
-    else if (v < 1.45) field[i] = 1;
+    if (v < 0.7) field[i] = 0;
+    else if (v < 1.55) field[i] = 1;
     else field[i] = 2;
   }
   return field;
+}
+
+/** Close interior holes so bands read as solid nested polygons. */
+function closeRankHoles(
+  field: Uint8Array,
+  width: number,
+  height: number,
+  passes: number,
+) {
+  for (let pass = 0; pass < passes; pass++) {
+    const src = Uint8Array.from(field);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (src[i]! !== 0) continue;
+        const counts = new Array(AUTO_RISK_MAX_RANK + 1).fill(0) as number[];
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            counts[src[(y + dy) * width + (x + dx)]!]!++;
+          }
+        }
+        let maj = 0;
+        let majN = 0;
+        for (let r = 1; r <= AUTO_RISK_MAX_RANK; r++) {
+          if (counts[r]! > majN) {
+            majN = counts[r]!;
+            maj = r;
+          }
+        }
+        if (majN >= 6) field[i] = maj;
+      }
+    }
+  }
+}
+
+/** Soften staircase edges with a majority filter (keep nested structure). */
+function majoritySmooth(
+  field: Uint8Array,
+  width: number,
+  height: number,
+  passes: number,
+) {
+  for (let pass = 0; pass < passes; pass++) {
+    const src = Uint8Array.from(field);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (src[i]! === 0) continue;
+        const counts = new Array(AUTO_RISK_MAX_RANK + 1).fill(0) as number[];
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            counts[src[(y + dy) * width + (x + dx)]!]!++;
+          }
+        }
+        let maj = src[i]!;
+        let majN = 0;
+        for (let r = 1; r <= AUTO_RISK_MAX_RANK; r++) {
+          if (counts[r]! > majN) {
+            majN = counts[r]!;
+            maj = r;
+          }
+        }
+        // Prefer keeping or stepping down one band — avoids speckles.
+        if (majN >= 5) {
+          field[i] = maj > src[i]! ? src[i]! : maj;
+        }
+      }
+    }
+  }
 }
 
 function upsampleBilinear(
@@ -196,28 +319,6 @@ function upsampleBilinear(
     }
   }
   return out;
-}
-
-function blurField(
-  soft: Float32Array,
-  width: number,
-  height: number,
-  passes: number,
-) {
-  for (let pass = 0; pass < passes; pass++) {
-    const src = Float32Array.from(soft);
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        let sum = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            sum += src[(y + dy) * width + (x + dx)]!;
-          }
-        }
-        soft[y * width + x] = sum / 9;
-      }
-    }
-  }
 }
 
 function paintHatch(
@@ -268,10 +369,12 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     out.width,
     out.height,
   );
-  blurField(rankSoft, out.width, out.height, 1);
-  blurField(hatchSoft, out.width, out.height, 1);
+  blurField(rankSoft, out.width, out.height, 3);
+  blurField(hatchSoft, out.width, out.height, 2);
 
   const ranks = quantizeRankField(rankSoft, AUTO_RISK_MAX_RANK);
+  closeRankHoles(ranks, out.width, out.height, 2);
+  majoritySmooth(ranks, out.width, out.height, 2);
   const hatches = quantizeHatchField(hatchSoft);
   const { width, height } = out;
   const png = new PNG({ width, height });
@@ -293,6 +396,7 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     png.data[o + 3] = a;
   }
 
+  // Soft outer edge fade for organic TV-style boundaries.
   const srcA = Buffer.from(png.data);
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
@@ -307,7 +411,7 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
       if (empty > 0) {
         const o = i * 4;
         png.data[o + 3] = Math.round(
-          srcA[o + 3]! * Math.max(0.35, 1 - empty / 10),
+          srcA[o + 3]! * Math.max(0.28, 1 - empty / 9),
         );
       }
     }

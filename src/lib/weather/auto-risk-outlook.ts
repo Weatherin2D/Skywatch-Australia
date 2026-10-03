@@ -51,6 +51,15 @@ type DayMetrics = {
   precipProb: number;
   precipMm: number;
   shearKts: number;
+  /** Peak-hour wind components (m/s, meteorological → u/v). */
+  windU: number;
+  windV: number;
+  pressureHpa: number;
+  /**
+   * Spatial lift / trigger proxy 0–1 from neighbouring samples
+   * (dryline, front, convergence, moisture boundary).
+   */
+  liftTrigger: number;
 };
 
 type CacheEntry = {
@@ -192,6 +201,7 @@ async function fetchBatch(
       "wind_speed_100m",
       "wind_direction_100m",
       "wind_gusts_10m",
+      "pressure_msl",
     ].join(","),
     models: "best_match",
     forecast_days: String(FORECAST_DAYS),
@@ -241,6 +251,15 @@ function dayIndexForTime(
   return idxs;
 }
 
+function windUV(spdKmh: number, dirDeg: number): { u: number; v: number } {
+  const rad = (dirDeg * Math.PI) / 180;
+  const spdMs = spdKmh / 3.6;
+  return {
+    u: -spdMs * Math.sin(rad),
+    v: -spdMs * Math.cos(rad),
+  };
+}
+
 function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   const h = loc.hourly;
   if (!h?.time?.length || !idxs.length) return null;
@@ -254,6 +273,10 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   let precipProb = 0;
   let precipMm = 0;
   let shear = 0;
+  let windU = 0;
+  let windV = 0;
+  let pressureHpa = 1013;
+  let peakIdx = idxs[0]!;
   let n = 0;
 
   for (const i of idxs) {
@@ -265,6 +288,7 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     const cl = num(h.cloud_cover?.[i]) ?? 0;
     const pp = num(h.precipitation_probability?.[i]) ?? 0;
     const pr = num(h.precipitation?.[i]) ?? 0;
+    const pmsl = num(h.pressure_msl?.[i]);
 
     const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
@@ -272,8 +296,6 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     const d100 = num(h.wind_direction_100m?.[i]);
     const gust = num(h.wind_gusts_10m?.[i]) ?? 0;
 
-    // Approximate deep shear from near-surface layer + gust excess
-    // (pressure-level winds are omitted — they break multi-location OM batches).
     let sh = 0;
     if (s100 != null && d100 != null) {
       sh = vectorDiffKts(s100, d100, s10, d10) * 2.4;
@@ -281,7 +303,16 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     sh = Math.max(sh, Math.max(0, gust - s10) * 0.55);
     sh = Math.max(sh, clamp01(s10 / 45) * 18);
 
-    cape = Math.max(cape, c);
+    if (c >= cape) {
+      cape = c;
+      peakIdx = i;
+      const uv = windUV(s10, d10);
+      windU = uv.u;
+      windV = uv.v;
+      if (pmsl != null) pressureHpa = pmsl;
+      if (dp != null) dew = dp;
+      if (t != null) temp = t;
+    }
     cin = Math.min(cin, ci);
     if (dp != null) dew = Math.max(dew, dp);
     if (t != null) temp = Math.max(temp, t);
@@ -293,6 +324,22 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     n += 1;
   }
   if (!n) return null;
+
+  // Prefer peak-CAPE hour dew/temp/wind for boundary detection.
+  const peakDp = num(h.dew_point_2m?.[peakIdx]);
+  const peakT = num(h.temperature_2m?.[peakIdx]);
+  const peakS = num(h.wind_speed_10m?.[peakIdx]);
+  const peakD = num(h.wind_direction_10m?.[peakIdx]);
+  const peakP = num(h.pressure_msl?.[peakIdx]);
+  if (peakDp != null) dew = peakDp;
+  if (peakT != null) temp = peakT;
+  if (peakS != null && peakD != null) {
+    const uv = windUV(peakS, peakD);
+    windU = uv.u;
+    windV = uv.v;
+  }
+  if (peakP != null) pressureHpa = peakP;
+
   return {
     cape,
     cin,
@@ -303,7 +350,77 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     precipProb,
     precipMm,
     shearKts: shear,
+    windU,
+    windV,
+    pressureHpa,
+    liftTrigger: 0,
   };
+}
+
+type SiteMetrics = { lat: number; lon: number; m: DayMetrics };
+
+/**
+ * Spatial lift / triggers from neighbouring samples:
+ * dryline (dewpoint gradient), front (temp + wind shift),
+ * convergence, and moisture/pressure boundaries.
+ */
+function applyLiftTriggers(sites: SiteMetrics[]): void {
+  const NEIGHBOR_KM = 280;
+  for (let i = 0; i < sites.length; i++) {
+    const a = sites[i]!;
+    let dewGrad = 0;
+    let tempGrad = 0;
+    let pressGrad = 0;
+    let windShift = 0;
+    let conv = 0;
+    let n = 0;
+
+    for (let j = 0; j < sites.length; j++) {
+      if (i === j) continue;
+      const b = sites[j]!;
+      const dKm = approxKm(a.lat, a.lon, b.lat, b.lon);
+      if (dKm < 40 || dKm > NEIGHBOR_KM) continue;
+      n += 1;
+      dewGrad = Math.max(dewGrad, Math.abs(a.m.dewpoint - b.m.dewpoint) / dKm);
+      tempGrad = Math.max(tempGrad, Math.abs(a.m.temp - b.m.temp) / dKm);
+      pressGrad = Math.max(
+        pressGrad,
+        Math.abs(a.m.pressureHpa - b.m.pressureHpa) / dKm,
+      );
+
+      const du = a.m.windU - b.m.windU;
+      const dv = a.m.windV - b.m.windV;
+      windShift = Math.max(windShift, Math.hypot(du, dv));
+
+      // Crude convergence: inflow toward a when neighbour wind points at a.
+      const dLat = a.lat - b.lat;
+      const dLon = a.lon - b.lon;
+      const towardA = -(b.m.windU * dLon + b.m.windV * dLat);
+      if (towardA > 0) conv = Math.max(conv, towardA / Math.max(1, dKm));
+    }
+
+    if (!n) {
+      a.m.liftTrigger = 0;
+      continue;
+    }
+
+    // Normalize typical AU mesoscale boundary strengths.
+    const dryline = clamp01(dewGrad / 0.045); // ~4.5°C / 100 km
+    const front = clamp01(tempGrad / 0.04) * 0.65 + clamp01(windShift / 12) * 0.35;
+    const trough = clamp01(pressGrad / 0.08);
+    const convergence = clamp01(conv / 0.08);
+    // Moisture axis: high dew + nearby dry air (dryline-ish) scores higher.
+    const moistureAxis =
+      clamp01((a.m.dewpoint - 8) / 14) * clamp01(dryline * 1.2);
+
+    a.m.liftTrigger = clamp01(
+      dryline * 0.28 +
+        front * 0.28 +
+        trough * 0.12 +
+        convergence * 0.22 +
+        moistureAxis * 0.1,
+    );
+  }
 }
 
 /** Map environment metrics → categorical rank 0–8 + hatch 0/1/2. */
@@ -329,17 +446,20 @@ export function scoreEnvironment(m: DayMetrics): {
             ? 0.9
             : 1;
   const shear = clamp01(m.shearKts / 48);
-  const lift =
-    clamp01(m.precipProb / 100) * 0.6 +
+  const precipLift =
+    clamp01(m.precipProb / 100) * 0.55 +
     clamp01(m.cloud / 100) * 0.15 +
-    clamp01(m.precipMm / 10) * 0.25;
+    clamp01(m.precipMm / 10) * 0.3;
+  /** Boundary / front / dryline / convergence lift from spatial analysis. */
+  const trigger = clamp01(m.liftTrigger);
+  const lift = clamp01(precipLift * 0.45 + trigger * 0.55);
 
   const composite =
-    instability * 0.36 * cinBrake +
-    moisture * 0.2 +
-    rhBoost * 0.08 +
-    shear * 0.16 +
-    lift * 0.2;
+    instability * 0.32 * cinBrake +
+    moisture * 0.18 +
+    rhBoost * 0.07 +
+    shear * 0.14 +
+    lift * 0.29;
 
   let rank = 0;
   if (composite >= 0.7 && cape >= 1400) rank = 8;
@@ -351,16 +471,25 @@ export function scoreEnvironment(m: DayMetrics): {
   else if (composite >= 0.14 && cape >= 50) rank = 2;
   else if (
     composite >= 0.08 &&
-    (cape >= 20 || m.precipProb >= 35 || m.precipMm >= 2)
+    (cape >= 20 || m.precipProb >= 35 || m.precipMm >= 2 || trigger >= 0.45)
   ) {
     rank = 1;
   }
 
-  // Organised / severe bump when shear + CAPE support it.
+  // Trigger-aided bumps: fronts/drylines organise convection.
+  if (rank >= 1 && trigger >= 0.55 && cape >= 200) {
+    rank = Math.min(8, rank + 1);
+  }
   if (rank >= 2 && shear >= 0.45 && cape >= 600) {
     rank = Math.min(8, rank + 1);
   }
-  if (rank >= 4 && shear >= 0.65 && cape >= 1100 && cinBrake >= 0.7) {
+  if (
+    rank >= 3 &&
+    trigger >= 0.65 &&
+    shear >= 0.5 &&
+    cape >= 800 &&
+    cinBrake >= 0.65
+  ) {
     rank = Math.min(8, rank + 1);
   }
 
@@ -370,7 +499,8 @@ export function scoreEnvironment(m: DayMetrics): {
     m.shearKts >= 38 &&
     cin > -60 &&
     composite >= 0.48 &&
-    rank >= 4
+    rank >= 4 &&
+    trigger >= 0.35
   ) {
     hatch = 2;
   } else if (
@@ -378,7 +508,8 @@ export function scoreEnvironment(m: DayMetrics): {
     m.shearKts >= 24 &&
     cinBrake >= 0.5 &&
     composite >= 0.3 &&
-    rank >= 3
+    rank >= 3 &&
+    (trigger >= 0.25 || shear >= 0.55)
   ) {
     hatch = 1;
   }
@@ -460,6 +591,7 @@ async function computeOutlook(): Promise<CacheEntry> {
   for (let d = 0; d < FORECAST_DAYS; d++) {
     const points: AutoRiskSamplePoint[] = [];
     const dayKey = dayMeta[d]!.key;
+    const siteMetrics: SiteMetrics[] = [];
     for (const row of rows) {
       const times = (row.loc.hourly?.time ?? []) as string[];
       const idxs = dayIndexForTime(times, d, day0Key);
@@ -471,11 +603,15 @@ async function computeOutlook(): Promise<CacheEntry> {
               .filter((i) => i >= 0);
       const m = metricsForDay(row.loc, idxs2);
       if (!m) continue;
-      const scored = scoreEnvironment(m);
+      siteMetrics.push({ lat: row.lat, lon: row.lon, m });
+    }
+    applyLiftTriggers(siteMetrics);
+    for (const site of siteMetrics) {
+      const scored = scoreEnvironment(site.m);
       if (scored.rank <= 0 && scored.hatch === 0) continue;
       points.push({
-        lat: row.lat,
-        lon: row.lon,
+        lat: site.lat,
+        lon: site.lon,
         rank: scored.rank,
         hatch: scored.hatch,
       });
