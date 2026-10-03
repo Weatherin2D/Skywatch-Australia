@@ -313,61 +313,71 @@ export function scoreEnvironment(m: DayMetrics): {
   composite: number;
 } {
   const cape = Math.max(0, m.cape);
-  const moisture = clamp01((m.dewpoint - 6) / 16);
-  const rhBoost = clamp01((m.rh - 35) / 50);
-  const instability = clamp01(cape / 2800);
+  const moisture = clamp01((m.dewpoint - 8) / 14);
+  const rhBoost = clamp01((m.rh - 30) / 55);
+  // Reach high ranks sooner so the odds ladder actually lights up on storm days.
+  const instability = clamp01(cape / 2200);
   const cin = m.cin;
   const cinBrake =
-    cin <= -150
-      ? 0.25
-      : cin <= -80
-        ? 0.45
-        : cin <= -40
-          ? 0.7
-          : cin <= -15
-            ? 0.88
+    cin <= -180
+      ? 0.3
+      : cin <= -100
+        ? 0.5
+        : cin <= -50
+          ? 0.72
+          : cin <= -20
+            ? 0.9
             : 1;
-  const shear = clamp01(m.shearKts / 55);
+  const shear = clamp01(m.shearKts / 48);
   const lift =
-    clamp01(m.precipProb / 100) * 0.55 +
-    clamp01(m.cloud / 100) * 0.2 +
-    clamp01(m.precipMm / 12) * 0.25;
+    clamp01(m.precipProb / 100) * 0.6 +
+    clamp01(m.cloud / 100) * 0.15 +
+    clamp01(m.precipMm / 10) * 0.25;
 
   const composite =
-    instability * 0.38 * cinBrake +
-    moisture * 0.22 +
+    instability * 0.36 * cinBrake +
+    moisture * 0.2 +
     rhBoost * 0.08 +
-    shear * 0.18 +
-    lift * 0.14;
+    shear * 0.16 +
+    lift * 0.2;
 
   let rank = 0;
-  if (composite >= 0.82 && cape >= 1800) rank = 8;
-  else if (composite >= 0.72 && cape >= 1400) rank = 7;
-  else if (composite >= 0.62 && cape >= 1000) rank = 6;
-  else if (composite >= 0.52 && cape >= 700) rank = 5;
-  else if (composite >= 0.4 && cape >= 400) rank = 4;
-  else if (composite >= 0.3 && cape >= 250) rank = 3;
-  else if (composite >= 0.22 && cape >= 120) rank = 2;
-  else if (composite >= 0.12 && cape >= 50) rank = 1;
+  if (composite >= 0.7 && cape >= 1400) rank = 8;
+  else if (composite >= 0.58 && cape >= 1000) rank = 7;
+  else if (composite >= 0.48 && cape >= 700) rank = 6;
+  else if (composite >= 0.38 && cape >= 450) rank = 5;
+  else if (composite >= 0.3 && cape >= 250) rank = 4;
+  else if (composite >= 0.22 && cape >= 120) rank = 3;
+  else if (composite >= 0.14 && cape >= 50) rank = 2;
+  else if (
+    composite >= 0.08 &&
+    (cape >= 20 || m.precipProb >= 35 || m.precipMm >= 2)
+  ) {
+    rank = 1;
+  }
 
-  if (rank >= 2 && shear >= 0.55 && cape >= 800) {
+  // Organised / severe bump when shear + CAPE support it.
+  if (rank >= 2 && shear >= 0.45 && cape >= 600) {
+    rank = Math.min(8, rank + 1);
+  }
+  if (rank >= 4 && shear >= 0.65 && cape >= 1100 && cinBrake >= 0.7) {
     rank = Math.min(8, rank + 1);
   }
 
   let hatch: 0 | 1 | 2 = 0;
   if (
-    cape >= 2000 &&
-    m.shearKts >= 45 &&
-    cin > -50 &&
-    composite >= 0.55 &&
+    cape >= 1600 &&
+    m.shearKts >= 38 &&
+    cin > -60 &&
+    composite >= 0.48 &&
     rank >= 4
   ) {
     hatch = 2;
   } else if (
-    cape >= 1100 &&
-    m.shearKts >= 28 &&
-    cinBrake >= 0.55 &&
-    composite >= 0.36 &&
+    cape >= 900 &&
+    m.shearKts >= 24 &&
+    cinBrake >= 0.5 &&
+    composite >= 0.3 &&
     rank >= 3
   ) {
     hatch = 1;

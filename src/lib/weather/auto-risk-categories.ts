@@ -28,6 +28,10 @@ export type AutoRiskCategory = {
   blurb: string;
 };
 
+/**
+ * Odds ladder (within ~40 km of a point): storm → organised → severe → VDS.
+ * Tuned for clear escalation — each step raises hazard odds meaningfully.
+ */
 export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
   {
     id: "low_tstorm",
@@ -35,7 +39,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     rank: 1,
     color: "#3A3A3A",
     rgba: [58, 58, 58, 165],
-    blurb: "Below 10% chance of a thunderstorm.",
+    blurb: "15% chance of a thunderstorm · isolated cells only.",
   },
   {
     id: "tstorm",
@@ -43,8 +47,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     rank: 2,
     color: "#A8B89A",
     rgba: [168, 184, 154, 170],
-    blurb:
-      "25% storms · 10% organised convection · 2% severe hazards.",
+    blurb: "30% storms · 5% organised convection.",
   },
   {
     id: "low",
@@ -52,8 +55,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     rank: 3,
     color: "#9CCC65",
     rgba: [156, 204, 101, 175],
-    blurb:
-      "30% storms · 7% organised convection · 1% severe hazards.",
+    blurb: "40% storms · 15% organised · 5% severe hazards.",
   },
   {
     id: "slight",
@@ -61,8 +63,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     rank: 4,
     color: "#FFEB3B",
     rgba: [255, 235, 59, 180],
-    blurb:
-      "40% storms · 20% organised convection · 5% severe hazards.",
+    blurb: "55% storms · 25% organised · 10% severe hazards.",
   },
   {
     id: "severe",
@@ -71,7 +72,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     color: "#FF9800",
     rgba: [255, 152, 0, 185],
     blurb:
-      "50% storms · 30% organised · 15% severe · 2% very dangerous.",
+      "65% storms · 40% organised · 20% severe · 5% very dangerous.",
   },
   {
     id: "moderate",
@@ -80,7 +81,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     color: "#F44336",
     rgba: [244, 67, 54, 190],
     blurb:
-      "60% storms · 40% organised · 25% severe · 7% very dangerous.",
+      "75% storms · 55% organised · 30% severe · 10% very dangerous.",
   },
   {
     id: "high",
@@ -89,7 +90,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     color: "#E91E63",
     rgba: [233, 30, 99, 195],
     blurb:
-      "70% storms · 50% organised · 40% severe · 5% very dangerous.",
+      "85% storms · 70% organised · 45% severe · 15% very dangerous.",
   },
   {
     id: "vhigh",
@@ -98,7 +99,7 @@ export const AUTO_RISK_CATEGORIES: AutoRiskCategory[] = [
     color: "#9C27B0",
     rgba: [156, 39, 176, 200],
     blurb:
-      "75% storms · 60% organised · 50% severe · 12% very dangerous.",
+      "95% storms · 85% organised · 60% severe · 25% very dangerous.",
   },
 ];
 
