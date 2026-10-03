@@ -3,6 +3,10 @@ import {
   getMeteyeThunderstormDayPng,
   isMeteyeOutlookDay,
 } from "@/lib/weather/bom-meteye-thunderstorm";
+import {
+  getAutoRiskDayPng,
+  isAutoRiskDay,
+} from "@/lib/weather/auto-risk-outlook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,12 +17,39 @@ const EMPTY_PNG = Buffer.from(
 );
 
 /**
- * GET /api/weather/risk-image?day=1…N
- * Official BoM MetEye IDZ73094 PNG for Leaflet ImageOverlay.
+ * GET /api/weather/risk-image?source=bom|auto&day=1…N
+ * BoM MetEye PNG (default) or SkyWatch automated risk raster.
  */
 export async function GET(req: NextRequest) {
+  const sourceParam = (req.nextUrl.searchParams.get("source") || "bom")
+    .trim()
+    .toLowerCase();
+  const source = sourceParam === "auto" ? "auto" : "bom";
+  const dayNum = Number(req.nextUrl.searchParams.get("day") || "1");
+
   try {
-    const dayNum = Number(req.nextUrl.searchParams.get("day") || "1");
+    if (source === "auto") {
+      if (!isAutoRiskDay(dayNum)) {
+        return NextResponse.json(
+          { error: "day must be an automated outlook day (1–7)" },
+          { status: 400 },
+        );
+      }
+      const result = await getAutoRiskDayPng(dayNum);
+      const png = !result || result.empty ? EMPTY_PNG : result.png;
+      return new NextResponse(new Uint8Array(png), {
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
+          "X-Risk-Display": "geo",
+          "X-Risk-Source": "auto",
+          ...(result?.issuedAt
+            ? { "X-Auto-Issued-At": result.issuedAt }
+            : {}),
+        },
+      });
+    }
+
     if (!isMeteyeOutlookDay(dayNum)) {
       return NextResponse.json(
         { error: "day must be a MetEye outlook day (1–8)" },
@@ -34,6 +65,7 @@ export async function GET(req: NextRequest) {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
         "X-Risk-Display": "geo",
+        "X-Risk-Source": "bom",
         "X-BoM-Product": "IDZ73094",
         ...(result?.issuedAt ? { "X-BoM-Issued-At": result.issuedAt } : {}),
       },

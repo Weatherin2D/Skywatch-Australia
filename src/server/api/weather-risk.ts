@@ -1,21 +1,38 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { METEYE_THUNDERSTORM_CATEGORIES } from "@/lib/weather/bom-meteye-constants";
 import { getMeteyeThunderstormOutlook } from "@/lib/weather/bom-meteye-thunderstorm";
+import { getAutoRiskCatalog } from "@/lib/weather/auto-risk-outlook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * GET /api/weather/risk
- * Catalog of live BoM MetEye thunderstorm risk (same source as `/api/forecast`).
+ * GET /api/weather/risk?source=bom|auto
+ * Catalog of thunderstorm risk — BoM MetEye (default) or SkyWatch automated.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const sourceParam = (req.nextUrl.searchParams.get("source") || "bom")
+    .trim()
+    .toLowerCase();
+  const source = sourceParam === "auto" ? "auto" : "bom";
+
   try {
+    if (source === "auto") {
+      const catalog = await getAutoRiskCatalog();
+      return NextResponse.json(catalog, {
+        headers: {
+          "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
+        },
+      });
+    }
+
     const outlook = await getMeteyeThunderstormOutlook();
     return NextResponse.json(
       {
         status: outlook.status,
+        source: "bom" as const,
         updatedAt: outlook.issuedAt,
+        issuedAt: outlook.issuedAt,
         days: outlook.days.map((d) => {
           const available = (d.legend ?? []).some((item) => item.used);
           return {
@@ -24,14 +41,17 @@ export async function GET() {
             dateLabel: d.dateLabel,
             available,
             imageUrl: available
-              ? `/api/weather/risk-image?day=${d.effectiveDay}&t=${encodeURIComponent(outlook.issuedAt ?? "")}`
+              ? `/api/weather/risk-image?source=bom&day=${d.effectiveDay}&t=${encodeURIComponent(outlook.issuedAt ?? "")}`
               : null,
             issuedAt: outlook.issuedAt,
+            legend: d.legend,
           };
         }),
         legend: METEYE_THUNDERSTORM_CATEGORIES,
-        source: "Bureau of Meteorology MetEye thunderstorm forecast (IDZ73094)",
+        attribution:
+          "Bureau of Meteorology MetEye thunderstorm forecast (IDZ73094)",
         message: outlook.message,
+        outlook,
       },
       {
         headers: {
