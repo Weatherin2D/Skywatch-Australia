@@ -154,8 +154,11 @@ function ArchiveDashboardInner() {
   const [playing, setPlaying] = useState(false);
   const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [mapSettings, setMapSettings] =
-    useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
+  const [mapSettings, setMapSettings] = useState<MapSettingsState>({
+    ...DEFAULT_MAP_SETTINGS,
+    // Archive defaults to bolt glyphs so strikes read clearly over IR.
+    lightningBolts: true,
+  });
   const [lightning, setLightning] = useState<LightningStrike[]>([]);
   const [synopticGeoJson, setSynopticGeoJson] =
     useState<SynopticGeoJson | null>(null);
