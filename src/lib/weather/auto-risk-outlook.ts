@@ -430,86 +430,99 @@ export function scoreEnvironment(m: DayMetrics): {
   composite: number;
 } {
   const cape = Math.max(0, m.cape);
-  const moisture = clamp01((m.dewpoint - 8) / 14);
-  const rhBoost = clamp01((m.rh - 30) / 55);
-  // Reach high ranks sooner so the odds ladder actually lights up on storm days.
-  const instability = clamp01(cape / 2200);
+  const moisture = clamp01((m.dewpoint - 10) / 14);
+  const rhBoost = clamp01((m.rh - 40) / 50);
+  // Harder CAPE scale — ordinary storm days stay in lower bands.
+  const instability = clamp01(cape / 3200);
   const cin = m.cin;
   const cinBrake =
-    cin <= -180
-      ? 0.3
-      : cin <= -100
-        ? 0.5
-        : cin <= -50
-          ? 0.72
-          : cin <= -20
-            ? 0.9
+    cin <= -150
+      ? 0.22
+      : cin <= -80
+        ? 0.42
+        : cin <= -40
+          ? 0.65
+          : cin <= -15
+            ? 0.85
             : 1;
-  const shear = clamp01(m.shearKts / 48);
+  const shear = clamp01(m.shearKts / 60);
   const precipLift =
-    clamp01(m.precipProb / 100) * 0.55 +
+    clamp01(m.precipProb / 100) * 0.5 +
     clamp01(m.cloud / 100) * 0.15 +
-    clamp01(m.precipMm / 10) * 0.3;
-  /** Boundary / front / dryline / convergence lift from spatial analysis. */
+    clamp01(m.precipMm / 14) * 0.35;
   const trigger = clamp01(m.liftTrigger);
-  const lift = clamp01(precipLift * 0.45 + trigger * 0.55);
+  const lift = clamp01(precipLift * 0.55 + trigger * 0.45);
 
   const composite =
-    instability * 0.32 * cinBrake +
-    moisture * 0.18 +
-    rhBoost * 0.07 +
-    shear * 0.14 +
-    lift * 0.29;
+    instability * 0.38 * cinBrake +
+    moisture * 0.16 +
+    rhBoost * 0.06 +
+    shear * 0.16 +
+    lift * 0.24;
 
+  // Strict gates: High / V-High need elite CAPE + support. No easy max-outs.
   let rank = 0;
-  if (composite >= 0.7 && cape >= 1400) rank = 8;
-  else if (composite >= 0.58 && cape >= 1000) rank = 7;
-  else if (composite >= 0.48 && cape >= 700) rank = 6;
-  else if (composite >= 0.38 && cape >= 450) rank = 5;
-  else if (composite >= 0.3 && cape >= 250) rank = 4;
-  else if (composite >= 0.22 && cape >= 120) rank = 3;
-  else if (composite >= 0.14 && cape >= 50) rank = 2;
-  else if (
-    composite >= 0.08 &&
-    (cape >= 20 || m.precipProb >= 35 || m.precipMm >= 2 || trigger >= 0.45)
+  if (composite >= 0.84 && cape >= 2800 && shear >= 0.55 && trigger >= 0.45) {
+    rank = 8; // V-High — rare
+  } else if (composite >= 0.74 && cape >= 2200 && shear >= 0.45) {
+    rank = 7; // High
+  } else if (composite >= 0.64 && cape >= 1600) {
+    rank = 6; // Moderate
+  } else if (composite >= 0.52 && cape >= 1100) {
+    rank = 5; // Severe
+  } else if (composite >= 0.4 && cape >= 700) {
+    rank = 4; // Slight
+  } else if (composite >= 0.3 && cape >= 400) {
+    rank = 3; // Low
+  } else if (composite >= 0.2 && cape >= 180) {
+    rank = 2; // T-Storm
+  } else if (
+    composite >= 0.1 &&
+    (cape >= 60 || (m.precipProb >= 45 && moisture >= 0.35))
   ) {
-    rank = 1;
+    rank = 1; // Low T-Storm
   }
 
-  // Trigger-aided bumps: fronts/drylines organise convection.
-  if (rank >= 1 && trigger >= 0.55 && cape >= 200) {
-    rank = Math.min(8, rank + 1);
-  }
-  if (rank >= 2 && shear >= 0.45 && cape >= 600) {
-    rank = Math.min(8, rank + 1);
-  }
+  // At most one organised bump, and never into V-High via bump alone.
+  let bumped = false;
   if (
-    rank >= 3 &&
-    trigger >= 0.65 &&
+    !bumped &&
+    rank >= 2 &&
+    rank <= 5 &&
+    trigger >= 0.7 &&
     shear >= 0.5 &&
-    cape >= 800 &&
+    cape >= 900 &&
     cinBrake >= 0.65
   ) {
-    rank = Math.min(8, rank + 1);
+    rank += 1;
+    bumped = true;
+  } else if (
+    !bumped &&
+    rank >= 2 &&
+    rank <= 4 &&
+    shear >= 0.6 &&
+    cape >= 1000
+  ) {
+    rank += 1;
   }
 
   let hatch: 0 | 1 | 2 = 0;
   if (
-    cape >= 1600 &&
-    m.shearKts >= 38 &&
-    cin > -60 &&
-    composite >= 0.48 &&
-    rank >= 4 &&
-    trigger >= 0.35
+    cape >= 2400 &&
+    m.shearKts >= 45 &&
+    cin > -40 &&
+    composite >= 0.65 &&
+    rank >= 5 &&
+    trigger >= 0.55
   ) {
     hatch = 2;
   } else if (
-    cape >= 900 &&
-    m.shearKts >= 24 &&
-    cinBrake >= 0.5 &&
-    composite >= 0.3 &&
-    rank >= 3 &&
-    (trigger >= 0.25 || shear >= 0.55)
+    cape >= 1400 &&
+    m.shearKts >= 32 &&
+    cinBrake >= 0.65 &&
+    composite >= 0.45 &&
+    rank >= 4 &&
+    trigger >= 0.4
   ) {
     hatch = 1;
   }

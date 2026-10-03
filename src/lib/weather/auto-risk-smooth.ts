@@ -195,8 +195,8 @@ function buildSoftField(
  */
 function quantizeRankField(soft: Float32Array, maxRank: number): Uint8Array {
   const field = new Uint8Array(soft.length);
-  // Threshold ladder for ranks 1…8 on a continuous soft score.
-  const thresholds = [0.38, 0.95, 1.55, 2.2, 2.95, 3.75, 4.6, 5.5];
+  // Threshold ladder for ranks 1…8 — upper bands need strong cores.
+  const thresholds = [0.42, 1.1, 1.85, 2.7, 3.65, 4.7, 5.9, 7.2];
   for (let i = 0; i < soft.length; i++) {
     const v = soft[i]!;
     let rank = 0;
