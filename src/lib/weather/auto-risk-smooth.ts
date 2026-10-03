@@ -23,7 +23,7 @@ const AU = {
 const WORK_WIDTH = 720;
 const OUT_WIDTH = 2400;
 /** Outline thickness in output pixels (black band borders). */
-const OUTLINE_PX = 2;
+const OUTLINE_PX = 3;
 /** Large kernel merges samples into continuous frontal-style corridors. */
 const SIGMA_KM = 300;
 const CUTOFF_SIGMA = 2.4;
