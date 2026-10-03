@@ -22,8 +22,10 @@ import {
   type AestParts,
 } from "@/lib/weather/archive-time";
 import {
+  ARCHIVE_LOOP_OPTIONS,
   archiveFrameUrl,
   buildArchiveScrubFrames,
+  type ArchiveLoopLength,
 } from "@/lib/weather/archive-client";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
@@ -145,6 +147,7 @@ function ArchiveDashboardInner() {
   const [parts, setParts] = useState<AestParts | null>(null);
   const [showLightning, setShowLightning] = useState(true);
   const [showSynoptic, setShowSynoptic] = useState(true);
+  const [loopLength, setLoopLength] = useState<ArchiveLoopLength>("4h");
   const [playing, setPlaying] = useState(false);
   const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
   const [frameIndex, setFrameIndex] = useState(0);
@@ -194,6 +197,10 @@ function ArchiveDashboardInner() {
           }
           if (searchParams.get("lightning") === "0") setShowLightning(false);
           if (searchParams.get("synoptic") === "0") setShowSynoptic(false);
+          const loop = searchParams.get("loop");
+          if (loop === "4h" || loop === "12h" || loop === "24h") {
+            setLoopLength(loop);
+          }
           hydrated.current = true;
         }
       } catch (err) {
@@ -249,22 +256,29 @@ function ArchiveDashboardInner() {
 
   const frames: WeatherFrame[] = useMemo(() => {
     if (!selectedUnix || !catalog) return [];
-    // Prefer archived frames; fall back to expected slots so scrubber still works.
-    const withAvail = buildArchiveScrubFrames(
-      product,
-      selectedUnix,
-      catalog.epochUnix,
-      catalog.tipUnix,
-      availableSet.size > 0 ? availableSet : undefined,
-    );
-    if (withAvail.length > 0) return withAvail;
+    // Always use expected 10-min slots; frame API captures on demand.
     return buildArchiveScrubFrames(
       product,
       selectedUnix,
       catalog.epochUnix,
       catalog.tipUnix,
+      loopLength,
     );
-  }, [selectedUnix, catalog, product, availableSet]);
+  }, [selectedUnix, catalog, product, loopLength]);
+
+  // Prefetch a few upcoming frames so play/scrub stays smooth.
+  useEffect(() => {
+    if (frames.length === 0) return;
+    const urls: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const f = frames[(frameIndex + i) % frames.length];
+      if (f?.imageUrl) urls.push(f.imageUrl);
+    }
+    for (const url of urls) {
+      const img = new window.Image();
+      img.src = url;
+    }
+  }, [frames, frameIndex]);
 
   // Keep frame index near selected time
   useEffect(() => {
@@ -391,6 +405,7 @@ function ArchiveDashboardInner() {
     else params.set("lightning", "0");
     if (showSynoptic) params.set("synoptic", "1");
     else params.set("synoptic", "0");
+    params.set("loop", loopLength);
     const next = `?${params.toString()}`;
     if (window.location.search !== next) {
       window.history.replaceState(null, "", `/archive${next}`);
@@ -403,6 +418,7 @@ function ArchiveDashboardInner() {
     regionId,
     showLightning,
     showSynoptic,
+    loopLength,
   ]);
 
   useEffect(() => {
@@ -476,9 +492,11 @@ function ArchiveDashboardInner() {
   const edges = timelineEdgeLabels(frames);
   const scrub = frameIndexToScrub(frameIndex, frames.length);
   const frameArchived =
-    activeTime != null && availableSet.size > 0
-      ? availableSet.has(activeTime)
-      : frames.length > 0;
+    activeTime == null
+      ? false
+      : availableSet.size === 0
+        ? true // unknown until day index loads; on-demand API will capture
+        : availableSet.has(activeTime);
 
   const synopticFrames: SynopticFrame[] =
     synopticValidTime != null
@@ -574,6 +592,22 @@ function ArchiveDashboardInner() {
           onChange={(v) => updatePart("minute", v)}
           options={minuteOptions}
         />
+        <SelectField
+          label="Loop length"
+          value={
+            loopLength === "24h" ? 24 : loopLength === "12h" ? 12 : 4
+          }
+          onChange={(v) => {
+            const next: ArchiveLoopLength =
+              v >= 24 ? "24h" : v >= 12 ? "12h" : "4h";
+            setLoopLength(next);
+            setPlaying(false);
+          }}
+          options={ARCHIVE_LOOP_OPTIONS.map((o) => ({
+            value: o.hours,
+            label: o.label,
+          }))}
+        />
         <div className="min-w-[10rem] flex-1 text-sm text-white/70">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-white/55">
             Selected
@@ -582,6 +616,9 @@ function ArchiveDashboardInner() {
             {selectedUnix
               ? formatArchiveDateTimeLabel(selectedUnix)
               : "—"}
+          </div>
+          <div className="text-[11px] text-white/45">
+            {frames.length} frames · every {ARCHIVE_STEP_SEC / 60} min
           </div>
         </div>
       </div>
@@ -608,8 +645,8 @@ function ArchiveDashboardInner() {
             />
           </div>
           <p className="text-[11px] leading-relaxed text-white/45">
-            Frames archive every {ARCHIVE_STEP_SEC / 60} minutes (national).
-            Region zoom is view-only.
+            Frames every {ARCHIVE_STEP_SEC / 60} minutes (national). Full day
+            loops the selected AEST calendar day. Region zoom is view-only.
           </p>
         </aside>
 
@@ -778,7 +815,7 @@ function ArchiveDashboardInner() {
             {!frameArchived && activeTime != null ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-12 z-[40] flex justify-center px-3">
                 <span className="rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-amber-200">
-                  Not archived yet — ingest catches up every 10 minutes
+                  Capturing this frame from live satellite…
                 </span>
               </div>
             ) : null}

@@ -2,7 +2,6 @@
  * Archive ingest: satellite frames, synoptic fields, lightning snapshots.
  */
 
-import sharp from "sharp";
 import {
   ARCHIVE_STEP_SEC,
   enumerateStamps,
@@ -15,22 +14,18 @@ import {
   getSynopticRecord,
   hourStartAestUnix,
   mergeLightningHour,
-  putSatFrame,
   putSynopticRecord,
   satFrameExists,
   writeArchiveMeta,
   type ArchiveMeta,
 } from "@/lib/weather/archive-storage";
+import { ensureArchiveSatFrame } from "@/lib/weather/archive-sat";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
 import {
   BOM_FRONTS_ATTRIBUTION,
   getBomFrontFeatures,
 } from "@/lib/weather/bom-fronts";
-import { fetchAndCacheFrameResilient } from "@/lib/weather/fetch-frame";
-import {
-  GIBS_AU_BOUNDS,
-  type SatelliteProductId,
-} from "@/lib/weather/maps";
+import { type SatelliteProductId } from "@/lib/weather/maps";
 import { contourPressureGrid } from "@/lib/weather/synoptic-contour";
 import {
   getSynopticFieldAt,
@@ -42,7 +37,6 @@ import {
   unixToSynopticStamp,
 } from "@/lib/weather/synoptic";
 
-const JPEG_QUALITY = 72;
 /** Keep each cron invocation under Vercel maxDuration (~60s). */
 const BUDGET_MS = 45_000;
 const MAX_BACKFILL_IR_STAMPS = 2;
@@ -66,29 +60,15 @@ export type IngestResult = {
 
 let lazyIngestInFlight: Promise<IngestResult | null> | null = null;
 
-async function toJpeg(body: Buffer, contentType: string): Promise<Buffer> {
-  if (contentType.includes("jpeg") || contentType.includes("jpg")) {
-    return sharp(body).jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
-  }
-  return sharp(body).jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
-}
-
 async function ingestSatStamp(
   product: SatelliteProductId,
   timeUnix: number,
 ): Promise<"stored" | "skipped" | "failed"> {
   if (await satFrameExists(product, timeUnix)) return "skipped";
   try {
-    const got = await fetchAndCacheFrameResilient(
-      product,
-      timeUnix,
-      GIBS_AU_BOUNDS,
-      "national",
-    );
+    const got = await ensureArchiveSatFrame(product, timeUnix);
     if (!got) return "failed";
-    const jpeg = await toJpeg(got.body, got.contentType);
-    await putSatFrame(product, timeUnix, jpeg);
-    return "stored";
+    return got.captured ? "stored" : "skipped";
   } catch (err) {
     console.error(`[archive] sat ${product} @ ${timeUnix}`, err);
     return "failed";

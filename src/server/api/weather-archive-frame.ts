@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSatFrame } from "@/lib/weather/archive-storage";
+import { ensureArchiveSatFrame } from "@/lib/weather/archive-sat";
 import {
   isSatelliteProductId,
   type SatelliteProductId,
@@ -8,10 +8,11 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /**
  * GET /api/weather/archive/frame?product=&time=
+ * Serves stored JPEG; captures on demand when inside the archive epoch.
  */
 export async function GET(request: NextRequest) {
   const productRaw = request.nextUrl.searchParams.get("product") ?? "";
@@ -22,17 +23,20 @@ export async function GET(request: NextRequest) {
   }
   const product = productRaw as SatelliteProductId;
   try {
-    const body = await getSatFrame(product, Math.floor(time));
-    if (!body) {
+    const got = await ensureArchiveSatFrame(product, Math.floor(time));
+    if (!got) {
       return NextResponse.json(
         { error: "Not archived yet" },
         { status: 404 },
       );
     }
-    return new NextResponse(new Uint8Array(body), {
+    return new NextResponse(new Uint8Array(got.body), {
       headers: {
         "Content-Type": "image/jpeg",
-        "Cache-Control": "public, max-age=86400, immutable",
+        "Cache-Control": got.captured
+          ? "public, max-age=300"
+          : "public, max-age=86400, immutable",
+        "X-Archive-Capture": got.captured ? "1" : "0",
       },
     });
   } catch (err) {

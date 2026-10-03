@@ -289,6 +289,10 @@ function SatelliteFrameView({
     let cancelled = false;
     let attempts = 0;
     loadingRef.current = url;
+    setFailed(false);
+    const isArchive = url.includes("/api/weather/archive/frame");
+    const maxAttempts = isArchive ? 5 : 2;
+    const retryDelayMs = isArchive ? 2000 : 400;
 
     const commit = () => {
       if (cancelled) return;
@@ -305,8 +309,8 @@ function SatelliteFrameView({
       img.onload = commit;
       img.onerror = () => {
         if (cancelled) return;
-        if (attempts < 2) {
-          window.setTimeout(load, 400);
+        if (attempts < maxAttempts) {
+          window.setTimeout(load, retryDelayMs);
           return;
         }
         loadingRef.current = null;
@@ -332,11 +336,16 @@ function SatelliteFrameView({
   }, [url]);
 
   if (!displayUrl) {
+    const archive = url?.includes("/api/weather/archive/frame");
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-[#0a1628] px-4 text-center text-sm text-white/70">
         {failed
-          ? "Satellite frame unavailable — scrub or wait for the next refresh…"
-          : "Loading satellite frames…"}
+          ? archive
+            ? "Archive frame still capturing — scrub slightly or wait a moment…"
+            : "Satellite frame unavailable — scrub or wait for the next refresh…"
+          : archive
+            ? "Loading archive frame…"
+            : "Loading satellite frames…"}
       </div>
     );
   }
