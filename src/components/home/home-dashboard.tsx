@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Link2, Pause, Play } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
@@ -228,6 +228,7 @@ function HomeDashboardInner({
 }: {
   focus?: HomeDashboardFocus;
 } = {}) {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   /** False until URL params have been applied — sync must wait for this render. */
   const [urlReady, setUrlReady] = useState(false);
@@ -302,9 +303,16 @@ function HomeDashboardInner({
     }
   }, [focus]);
 
-  // Sync shareable map state into the URL (replace, no remount).
+  // Sync shareable map query params on the current dashboard route only.
+  // Never rewrite the path — that fought Next.js <Link> navigations and left
+  // users stuck on Home/Radar/Satellite when clicking Warnings, Forecast, etc.
   useEffect(() => {
     if (!urlReady) return;
+    const path =
+      focus === "radar" ? "/radar" : focus === "satellite" ? "/satellite" : "/";
+    if (pathname !== path) return;
+    if (window.location.pathname !== path) return;
+
     const params = new URLSearchParams();
     if (regionId !== DEFAULT_MAP_REGION) params.set("region", regionId);
     const defaultMode: MapMode =
@@ -321,17 +329,13 @@ function HomeDashboardInner({
       params.set("product", satProduct);
     }
     const qs = params.toString();
-    const path =
-      focus === "radar" ? "/radar" : focus === "satellite" ? "/satellite" : "/";
     const next = qs ? `${path}?${qs}` : path;
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== next) {
-      // Prefer history.replaceState over router.replace so syncing shareable
-      // params does not remount the Suspense tree / restart the map dynamic
-      // import (that was leaving the radar pane stuck on “Loading map…”).
+      // Query-only replaceState keeps the map mounted; path is unchanged above.
       window.history.replaceState(window.history.state, "", next);
     }
-  }, [urlReady, regionId, mode, layers, satProduct, focus]);
+  }, [urlReady, pathname, regionId, mode, layers, satProduct, focus]);
 
   async function copyShareLink() {
     try {

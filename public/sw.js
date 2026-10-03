@@ -1,7 +1,8 @@
 /* SkyWatch Australia — offline shell + cache-first immutable weather assets */
-const SHELL_CACHE = "skywatch-shell-v2";
-const FRAME_CACHE = "skywatch-frames-v2";
-const SHELL_URLS = ["/", "/radar", "/satellite", "/manifest.webmanifest"];
+const SHELL_CACHE = "skywatch-shell-v3";
+const FRAME_CACHE = "skywatch-frames-v3";
+/** Do not precache HTML routes — that trapped navigations on stale shells. */
+const SHELL_URLS = ["/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -93,20 +94,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigation / shell: network first, cache fallback
+  // Navigation: always network. Do not cache HTML documents — serving a
+  // cached "/" /radar shell for other routes breaks client-side routing.
   if (req.mode === "navigate") {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(SHELL_CACHE).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() =>
-          caches.match(req).then((c) => c || caches.match("/")),
-        ),
+      fetch(req).catch(() =>
+        caches.match(req).then((c) => c || caches.match("/")),
+      ),
     );
   }
 });
