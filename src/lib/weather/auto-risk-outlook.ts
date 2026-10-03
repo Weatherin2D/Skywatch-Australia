@@ -12,7 +12,7 @@ import {
   autoRiskCategoryBlurbs,
   autoRiskLegendItems,
 } from "@/lib/weather/auto-risk-categories";
-import { BOM_RISK_SITES } from "@/lib/weather/bom-risk-sites";
+import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
 import {
   renderAutoRiskPng,
   summarizeUsed,
@@ -24,9 +24,11 @@ import {
 } from "@/lib/weather/archive-time";
 
 const CACHE_MS = 20 * 60_000;
-const BATCH = 55;
-const BATCH_CONCURRENCY = 3;
+const BATCH = 70;
+const BATCH_CONCURRENCY = 4;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
+/** Minimum spacing for national sample grid (~120–160 points). */
+const MIN_SITE_KM = 105;
 
 type HourlyLoc = {
   latitude?: number;
@@ -67,6 +69,35 @@ function num(v: unknown): number | null {
 function clamp01(n: number) {
   return Math.min(1, Math.max(0, n));
 }
+
+function approxKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const dLat = (lat1 - lat2) * 111.0;
+  const dLon =
+    (lon1 - lon2) * 111.0 * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
+  return Math.hypot(dLat, dLon);
+}
+
+/** Thin BoM town list into a national ~120–160 point sample grid. */
+function buildSampleSites(): BomRiskSite[] {
+  const kept: BomRiskSite[] = [];
+  for (const site of BOM_RISK_SITES) {
+    if (
+      kept.every(
+        (k) => approxKm(site.lat, site.lon, k.lat, k.lon) >= MIN_SITE_KM,
+      )
+    ) {
+      kept.push(site);
+    }
+  }
+  return kept;
+}
+
+const SAMPLE_SITES = buildSampleSites();
 
 function sydneyDayKey(ms: number): string {
   const p = unixToAestParts(Math.floor(ms / 1000));
@@ -123,14 +154,9 @@ async function fetchBatch(
       "convective_inhibition",
       "wind_speed_10m",
       "wind_direction_10m",
-      "wind_speed_100m",
-      "wind_direction_100m",
-      "wind_speed_850hPa",
-      "wind_direction_850hPa",
       "wind_speed_500hPa",
       "wind_direction_500hPa",
     ].join(","),
-    // best_match blends GFS / ICON / ECMWF where available (Open-Meteo).
     models: "best_match",
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
@@ -139,12 +165,12 @@ async function fetchBatch(
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(350 * attempt);
+    if (attempt > 0) await sleep(400 * attempt);
     try {
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
-        signal: AbortSignal.timeout(28_000),
+        signal: AbortSignal.timeout(22_000),
       });
       if (res.status === 429) {
         lastErr = new Error("Open-Meteo 429");
@@ -206,21 +232,14 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
 
     const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
-    const s850 = num(h.wind_speed_850hPa?.[i]);
-    const d850 = num(h.wind_direction_850hPa?.[i]);
     const s500 = num(h.wind_speed_500hPa?.[i]);
     const d500 = num(h.wind_direction_500hPa?.[i]);
-    const s100 = num(h.wind_speed_100m?.[i]) ?? s10;
-    const d100 = num(h.wind_direction_100m?.[i]) ?? d10;
 
     let sh = 0;
     if (s500 != null && d500 != null) {
       sh = vectorDiffKts(s500, d500, s10, d10);
-    } else if (s850 != null && d850 != null) {
-      sh = vectorDiffKts(s850, d850, s10, d10);
     } else {
-      void d100;
-      sh = Math.abs(s100 - s10) * 0.54;
+      sh = clamp01(s10 / 45) * 20;
     }
 
     cape = Math.max(cape, c);
@@ -321,15 +340,14 @@ export function scoreEnvironment(m: DayMetrics): {
 async function loadAllSites(): Promise<
   { lat: number; lon: number; loc: HourlyLoc }[]
 > {
-  const sites = BOM_RISK_SITES;
+  const sites = SAMPLE_SITES;
   const out: { lat: number; lon: number; loc: HourlyLoc }[] = [];
-  const batches: { lats: number[]; lons: number[]; start: number }[] = [];
+  const batches: { lats: number[]; lons: number[] }[] = [];
   for (let i = 0; i < sites.length; i += BATCH) {
     const slice = sites.slice(i, i + BATCH);
     batches.push({
       lats: slice.map((s) => s.lat),
       lons: slice.map((s) => s.lon),
-      start: i,
     });
   }
 
@@ -352,7 +370,7 @@ async function loadAllSites(): Promise<
         out.push({ lat: b.lats[j]!, lon: b.lons[j]!, loc });
       }
     }
-    if (i + BATCH_CONCURRENCY < batches.length) await sleep(200);
+    if (i + BATCH_CONCURRENCY < batches.length) await sleep(120);
   }
   return out;
 }
@@ -414,7 +432,7 @@ async function computeOutlook(): Promise<CacheEntry> {
       });
     }
     dayPoints[d + 1] = points;
-    dayPng[d + 1] = renderAutoRiskPng(points);
+    // PNG rendered lazily on first image request (keeps catalog under Vercel budget).
     const used = summarizeUsed(points);
     const legend = autoRiskLegendItems({
       usedRanks: used.ranks,
@@ -447,6 +465,10 @@ async function computeOutlook(): Promise<CacheEntry> {
       : "No elevated thunderstorm risk in the automated model guidance.",
   };
 
+  console.info(
+    `[auto-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites, days=${FORECAST_DAYS}`,
+  );
+
   return { at: Date.now(), outlook, dayPoints, dayPng };
 }
 
@@ -474,9 +496,12 @@ export async function getAutoRiskDayPng(
 ): Promise<{ png: Buffer; empty: boolean; issuedAt: string | null } | null> {
   if (!Number.isInteger(day) || day < 1 || day > FORECAST_DAYS) return null;
   const entry = await ensureCache();
-  const png = entry.dayPng[day];
   const points = entry.dayPoints[day] ?? [];
-  if (!png) return null;
+  let png = entry.dayPng[day];
+  if (!png) {
+    png = renderAutoRiskPng(points);
+    entry.dayPng[day] = png;
+  }
   return {
     png,
     empty: points.every((p) => p.rank <= 0),
@@ -518,7 +543,10 @@ export async function getAutoRiskCatalog() {
     attribution:
       "SkyWatch automated guidance from Open-Meteo model fields (GFS/ICON/ECMWF blend via best_match). Guidance only — not an official warning.",
     message: outlook.message,
-    /** Full PublicForecastResponse shape for the Risk dashboard. */
     outlook,
   };
+}
+
+export function getAutoRiskSampleSiteCount(): number {
+  return SAMPLE_SITES.length;
 }

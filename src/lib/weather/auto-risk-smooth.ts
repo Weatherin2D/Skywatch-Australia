@@ -19,10 +19,10 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-const WORK_WIDTH = 360;
-const OUT_WIDTH = 900;
-const SIGMA_KM = 320;
-const CUTOFF_SIGMA = 2.35;
+const WORK_WIDTH = 280;
+const OUT_WIDTH = 720;
+const SIGMA_KM = 300;
+const CUTOFF_SIGMA = 2.2;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
