@@ -35,6 +35,8 @@ const MAX_EDGE_RATIO = 2.45;
 const CLOSE_PX = 4;
 /** Opening radius — strips thin ribbon snakes while keeping bulky areas. */
 const OPEN_PX = 4;
+/** Guaranteed width (px) of each outer band around the next-higher core. */
+const NEST_GAP_PX = 6;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -441,12 +443,15 @@ function pruneSnakeComponents(
       const box = bw * bh;
       const fill = cells.length / Math.max(1, box);
       const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
-      // Thin elongated snakes: low bbox fill + high aspect, or fails a thickness probe.
+      // Thickness-first: hairline corridors die under a light erode.
+      // Avoid bbox-fill heuristics alone — nested rings look "hollow" too.
       const eroded = erodeMaskCells(field, cells, width, height, minThicknessPx);
       const snake =
-        (aspect >= 3.2 && fill < 0.28) ||
-        (aspect >= 2.4 && fill < 0.18) ||
-        (cells.length > 80 && eroded < cells.length * 0.08);
+        (cells.length > 40 && eroded === 0) ||
+        (cells.length > 100 &&
+          eroded < cells.length * 0.04 &&
+          aspect >= 3.8 &&
+          fill < 0.12);
       if (snake) {
         for (const i of cells) field[i] = 0;
       }
@@ -498,6 +503,11 @@ function buildMeshRankField(
   const field = new Uint8Array(width * height);
   if (!points.length) return field;
 
+  const bands: (Uint8Array | null)[] = Array.from(
+    { length: AUTO_RISK_MAX_RANK + 1 },
+    () => null,
+  );
+
   for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
     const mesh: MeshPt[] = [];
     for (const p of points) {
@@ -526,19 +536,41 @@ function buildMeshRankField(
       height,
       Math.max(1, CLOSE_PX - 1),
     );
-    const opened = dilate(
+    bands[rank] = dilate(
       erode(closed, width, height, OPEN_PX),
       width,
       height,
       OPEN_PX,
     );
+  }
 
-    for (let i = 0; i < field.length; i++) {
-      if (opened[i]) field[i] = rank;
+  // Enforce nesting with a real ring width so outer categories never
+  // collapse into a one-pixel snake around higher cores.
+  for (let rank = AUTO_RISK_MAX_RANK - 1; rank >= 1; rank--) {
+    const outer = bands[rank];
+    const inner = bands[rank + 1];
+    if (!inner) continue;
+    const halo = dilate(inner, width, height, NEST_GAP_PX);
+    if (!outer) {
+      bands[rank] = halo;
+      continue;
+    }
+    for (let i = 0; i < outer.length; i++) {
+      if (halo[i]) outer[i] = 1;
     }
   }
 
-  pruneSmallComponents(field, width, height, 90);
+  // Paint low → high so cores sit inside padded envelopes.
+  for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
+    const band = bands[rank];
+    if (!band) continue;
+    for (let i = 0; i < field.length; i++) {
+      if (band[i]) field[i] = rank;
+    }
+  }
+
+  pruneSmallComponents(field, width, height, 120);
+  pruneSnakeComponents(field, width, height, 3);
   pruneSnakeComponents(field, width, height, 2);
   return field;
 }
