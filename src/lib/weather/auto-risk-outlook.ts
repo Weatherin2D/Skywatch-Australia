@@ -1562,13 +1562,13 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v5/${kind}.json`;
+  return `model-risk/v6/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v5",
+    "skywatch-model-risk-v6",
     `${kind}.json`,
   );
 }

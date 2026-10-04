@@ -82,6 +82,7 @@ export function scoreHazardChances(
   const diurnal = clamp01(m.diurnalHeating);
   const thunder = thunderCodeBoost(m.weatherCode);
   const tropical = lat >= -23.5;
+  const subtrop = lat >= -28 && lat < -23.5;
   const organised = shear >= 0.35 || synoptic >= 0.4 || thunder >= 0.85;
   const convectivePrecip = Math.max(
     m.showersMm,
@@ -169,22 +170,34 @@ export function scoreHazardChances(
   if (cape < 100 && convectivePrecip < 2) rain = Math.min(rain, 5);
 
   // —— Tornado ——
-  // Needs storm likelihood + shear + low-level moisture (small dew depression)
-  // + some lift; hatch from categorical risk is a strong prior.
-  const lowLcl = clamp01((14 - m.dewDepression) / 10);
+  // Rare: needs organised storms + deep shear + low LCL + lift.
+  // Kept deliberately low vs hail/wind so ordinary CAPE days stay near zero.
+  const lowLcl = clamp01((12 - m.dewDepression) / 9);
   const torCore =
-    clamp01(cape / 2200) * 0.22 +
-    shear * 0.32 +
-    moisture * 0.15 +
-    lowLcl * 0.15 +
+    clamp01(cape / 2600) * 0.18 +
+    shear * 0.38 +
+    moisture * 0.12 +
+    lowLcl * 0.18 +
     synoptic * 0.1 +
-    (risk.hatch >= 2 ? 0.12 : risk.hatch >= 1 ? 0.08 : 0);
-  let tornado = torCore * suppress * (organised ? 1 : 0.45) * 42;
-  if (risk.rank < 3 || cape < 800 || shear < 0.3) tornado *= 0.25;
-  if (risk.hatch >= 2) tornado = Math.max(tornado, 12);
-  else if (risk.hatch >= 1) tornado = Math.max(tornado, 6);
-  if (m.peakCin <= -50 && synoptic < 0.45) tornado *= 0.4;
-  if (tropical && shear < 0.4) tornado *= 0.35; // rare true tornado environments
+    (risk.hatch >= 2 ? 0.1 : risk.hatch >= 1 ? 0.05 : 0);
+  let tornado =
+    torCore * suppress * (organised ? 0.85 : 0.25) * (risk.rank >= 5 ? 1 : 0.7) * 18;
+  // Soft environments: essentially no tornado contour.
+  if (risk.rank < 4 || cape < 1100 || shear < 0.4 || moisture < 0.3) {
+    tornado *= 0.12;
+  }
+  if (risk.rank < 3 || cape < 900 || shear < 0.35) tornado = 0;
+  // Hatch is a hint, not a free 10%+ floor.
+  if (risk.hatch >= 2 && shear >= 0.45 && cape >= 1400) {
+    tornado = Math.max(tornado, 5);
+  } else if (risk.hatch >= 1 && shear >= 0.4 && cape >= 1200) {
+    tornado = Math.max(tornado, 2);
+  }
+  if (m.peakCin <= -40 && synoptic < 0.5) tornado *= 0.3;
+  if (tropical && shear < 0.5) tornado *= 0.2;
+  if (subtrop && shear < 0.45) tornado *= 0.45;
+  // Hard ceiling — AU tornado probs should almost never look “high”.
+  tornado = Math.min(tornado, 18);
 
   return {
     tstorm: clampPct(tstorm),
