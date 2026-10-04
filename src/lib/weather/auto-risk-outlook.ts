@@ -1157,7 +1157,11 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
     days: incomplete
       ? rolled.map((d) => ({
           ...d,
-          legend: autoRiskLegendItems(),
+          // Empty used-sets — default autoRiskLegendItems() marks everything used.
+          legend: autoRiskLegendItems({
+            usedRanks: new Set(),
+            usedHatches: new Set(),
+          }),
         }))
       : rolled,
     defaultDay: 1,
