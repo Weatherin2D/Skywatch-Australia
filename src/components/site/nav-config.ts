@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Satellite,
   ThermometerSun,
+  Wind,
 } from "lucide-react";
 
 export const PRIMARY_NAV = [
@@ -22,6 +23,7 @@ export const PRIMARY_NAV = [
 export const SECONDARY_NAV = [
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/models", label: "Models", icon: Layers },
+  { href: "/soundings", label: "Soundings", icon: Wind },
   { href: "/climate", label: "Climate", icon: ThermometerSun },
   { href: "/risk", label: "Risk", icon: CloudLightning },
 ] as const;
@@ -29,6 +31,7 @@ export const SECONDARY_NAV = [
 export const MORE_NAV = [
   { href: "/archive", label: "Archive" },
   { href: "/models", label: "Models" },
+  { href: "/soundings", label: "Soundings" },
   { href: "/climate", label: "Climate" },
   { href: "/risk", label: "Risk outlook" },
   { href: "/hazards", label: "Hazards (UV · Fire · Marine)" },

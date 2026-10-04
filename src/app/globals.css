@@ -450,6 +450,17 @@
   animation: glow-pulse 3.2s ease-in-out infinite;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .sw-hero-title {
   background-image: linear-gradient(
     185deg,

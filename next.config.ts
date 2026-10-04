@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
       { source: "/disclaimer", destination: "/", permanent: false },
       { source: "/learn", destination: "/", permanent: false },
       { source: "/observations", destination: "/", permanent: false },
-      { source: "/soundings", destination: "/", permanent: false },
       { source: "/weather-map", destination: "/", permanent: false },
       { source: "/severe-weather", destination: "/risk", permanent: false },
     ];

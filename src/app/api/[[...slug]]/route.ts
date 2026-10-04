@@ -12,6 +12,7 @@ import * as weatherCapitals from "@/server/api/weather-capitals";
 import * as weatherStormActivity from "@/server/api/weather-storm-activity";
 import * as weatherModels from "@/server/api/weather-models";
 import * as weatherUpperAir from "@/server/api/weather-upper-air";
+import * as weatherSounding from "@/server/api/weather-sounding";
 import * as weatherRadarTile from "@/server/api/weather-radar-tile";
 import * as weatherRisk from "@/server/api/weather-risk";
 import * as weatherRiskImage from "@/server/api/weather-risk-image";
@@ -52,6 +53,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/storm-activity": weatherStormActivity as RouteHandlers,
   "weather/models": weatherModels as RouteHandlers,
   "weather/upper-air": weatherUpperAir as RouteHandlers,
+  "weather/sounding": weatherSounding as RouteHandlers,
   "weather/radar-tile": weatherRadarTile as RouteHandlers,
   "weather/risk": weatherRisk as RouteHandlers,
   "weather/risk-image": weatherRiskImage as RouteHandlers,

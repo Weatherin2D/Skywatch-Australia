@@ -14,6 +14,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
 | `/models` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
+| `/soundings` | Observed UWYO radiosondes + model Skew-T / hodograph / storm params |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
@@ -35,6 +36,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | CAPE/CIN/shear + temp profile (Open-Meteo pressure levels) |
+| `/api/weather/sounding` | Full sounding profile (`mode=observed|model`) — UWYO BUFR or Open-Meteo levels |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
 | `/api/weather/warnings` | Live BoM warning list (category-ranked); `/api/weather/warnings/:id` for detail |
