@@ -207,8 +207,8 @@ export function EcmwfModelsDashboard() {
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="sw-panel flex max-h-[70vh] flex-col overflow-hidden p-2 lg:max-h-[calc(100vh-10rem)]">
-            <div className="flex flex-wrap gap-1 border-b border-white/10 pb-2">
+          <aside className="sw-panel flex h-[min(70vh,720px)] flex-col overflow-hidden p-2">
+            <div className="flex shrink-0 flex-wrap gap-1 border-b border-white/10 pb-2">
               <button
                 type="button"
                 onClick={() => setGroupFilter("all")}
@@ -237,7 +237,12 @@ export function EcmwfModelsDashboard() {
                 </button>
               ))}
             </div>
-            <ul className="mt-2 flex-1 space-y-0.5 overflow-y-auto pr-1">
+            <ul className="mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
+              {loadingCatalog && !catalog ? (
+                <li className="px-2.5 py-2 text-xs text-white/55">
+                  Loading products…
+                </li>
+              ) : null}
               {products.map((p) => (
                 <li key={p.id}>
                   <button
