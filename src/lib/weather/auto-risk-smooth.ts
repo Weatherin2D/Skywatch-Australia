@@ -31,12 +31,12 @@ const OUTLINE_PX = 2;
 const MAX_EDGE_KM = 185;
 /** Reject skinny triangles (longest/shortest edge). Stops coastline “snakes”. */
 const MAX_EDGE_RATIO = 2.45;
-/** Morphological close after fill — knits triangle joints. */
-const CLOSE_PX = 4;
-/** Opening radius — strips thin ribbon snakes while keeping bulky areas. */
-const OPEN_PX = 4;
+/** Morphological close after fill — knits triangle joints / seals pinholes. */
+const CLOSE_PX = 5;
+/** Light opening — strips hairline snakes without punching interior holes. */
+const OPEN_PX = 2;
 /** Guaranteed width (px) of each outer band around the next-higher core. */
-const NEST_GAP_PX = 6;
+const NEST_GAP_PX = 5;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -290,6 +290,71 @@ function erode(
   return cur;
 }
 
+/**
+ * Fill enclosed zeros (donut holes). Exterior is whatever touches the border.
+ */
+function fillMaskHoles(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+): void {
+  const exterior = new Uint8Array(mask.length);
+  const qx = new Int32Array(mask.length);
+  const qy = new Int32Array(mask.length);
+  let qh = 0;
+  let qt = 0;
+
+  const push = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const i = y * width + x;
+    if (mask[i] || exterior[i]) return;
+    exterior[i] = 1;
+    qx[qt] = x;
+    qy[qt] = y;
+    qt += 1;
+  };
+
+  for (let x = 0; x < width; x++) {
+    push(x, 0);
+    push(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    push(0, y);
+    push(width - 1, y);
+  }
+
+  while (qh < qt) {
+    const x = qx[qh]!;
+    const y = qy[qh]!;
+    qh += 1;
+    push(x - 1, y);
+    push(x + 1, y);
+    push(x, y - 1);
+    push(x, y + 1);
+  }
+
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i] && !exterior[i]) mask[i] = 1;
+  }
+}
+
+/** Ensure field[i] >= R everywhere inside a solid ≥R region (no nested dips). */
+function fillRankHoles(
+  field: Uint8Array,
+  width: number,
+  height: number,
+  rank: number,
+): void {
+  const mask = new Uint8Array(field.length);
+  for (let i = 0; i < field.length; i++) {
+    if (field[i]! >= rank) mask[i] = 1;
+  }
+  fillMaskHoles(mask, width, height);
+  for (let i = 0; i < field.length; i++) {
+    if (mask[i] && field[i]! < rank) field[i] = rank;
+  }
+}
+
 function blurFloat(
   soft: Float32Array,
   width: number,
@@ -529,19 +594,23 @@ function buildMeshRankField(
       fillTriangle(mask, width, height, a.x, a.y, b.x, b.y, c.x, c.y);
     }
 
-    // Knit joints, then open to kill thin corridor snakes.
+    // Knit joints / seal pinholes, fill donuts, then light-open hairlines.
+    fillMaskHoles(mask, width, height);
     const closed = erode(
       dilate(mask, width, height, CLOSE_PX),
       width,
       height,
       Math.max(1, CLOSE_PX - 1),
     );
-    bands[rank] = dilate(
+    fillMaskHoles(closed, width, height);
+    const opened = dilate(
       erode(closed, width, height, OPEN_PX),
       width,
       height,
       OPEN_PX,
     );
+    fillMaskHoles(opened, width, height);
+    bands[rank] = opened;
   }
 
   // Enforce nesting with a real ring width so outer categories never
@@ -550,6 +619,7 @@ function buildMeshRankField(
     const outer = bands[rank];
     const inner = bands[rank + 1];
     if (!inner) continue;
+    fillMaskHoles(inner, width, height);
     const halo = dilate(inner, width, height, NEST_GAP_PX);
     if (!outer) {
       bands[rank] = halo;
@@ -558,20 +628,30 @@ function buildMeshRankField(
     for (let i = 0; i < outer.length; i++) {
       if (halo[i]) outer[i] = 1;
     }
+    fillMaskHoles(outer, width, height);
   }
 
   // Paint low → high so cores sit inside padded envelopes.
   for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
     const band = bands[rank];
     if (!band) continue;
+    fillMaskHoles(band, width, height);
     for (let i = 0; i < field.length; i++) {
       if (band[i]) field[i] = rank;
     }
   }
 
+  // Kill inverted dips: a higher band must stay solid (no lower-rank islands).
+  for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
+    fillRankHoles(field, width, height, rank);
+  }
+
   pruneSmallComponents(field, width, height, 120);
   pruneSnakeComponents(field, width, height, 3);
-  pruneSnakeComponents(field, width, height, 2);
+  // Re-seal any holes opened by pruning.
+  for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
+    fillRankHoles(field, width, height, rank);
+  }
   return field;
 }
 
@@ -749,6 +829,10 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
 
   const ranks = quantizeFromSoft(rankSoft, AUTO_RISK_MAX_RANK);
   pruneSmallComponents(ranks, out.width, out.height, 140);
+  // Blur/quantize can re-open donuts — reseal nested bands.
+  for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
+    fillRankHoles(ranks, out.width, out.height, rank);
+  }
 
   const hatches = new Uint8Array(hatchSoft.length);
   for (let i = 0; i < hatchSoft.length; i++) {
