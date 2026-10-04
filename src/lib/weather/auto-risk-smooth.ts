@@ -613,18 +613,14 @@ function buildMeshRankField(
     bands[rank] = opened;
   }
 
-  // Enforce nesting with a real ring width so outer categories never
-  // collapse into a one-pixel snake around higher cores.
+  // Thicken existing outer bands around higher cores — but never invent a
+  // lower-rank bullseye ring from a lone high-rank speck (outer must exist).
   for (let rank = AUTO_RISK_MAX_RANK - 1; rank >= 1; rank--) {
     const outer = bands[rank];
     const inner = bands[rank + 1];
-    if (!inner) continue;
+    if (!inner || !outer) continue;
     fillMaskHoles(inner, width, height);
     const halo = dilate(inner, width, height, NEST_GAP_PX);
-    if (!outer) {
-      bands[rank] = halo;
-      continue;
-    }
     for (let i = 0; i < outer.length; i++) {
       if (halo[i]) outer[i] = 1;
     }
@@ -647,12 +643,64 @@ function buildMeshRankField(
   }
 
   pruneSmallComponents(field, width, height, 120);
+  // Drop tiny high-rank islands (orange “specks”) with little surrounding mass.
+  pruneTinyHighRankSpecks(field, width, height);
   pruneSnakeComponents(field, width, height, 3);
   // Re-seal any holes opened by pruning.
   for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
     fillRankHoles(field, width, height, rank);
   }
   return field;
+}
+
+/** Demote/remove bullseye specks: small rank≥4 cores without a real footprint. */
+function pruneTinyHighRankSpecks(
+  field: Uint8Array,
+  width: number,
+  height: number,
+) {
+  const seen = new Uint8Array(field.length);
+  const qx = new Int32Array(field.length);
+  const qy = new Int32Array(field.length);
+  const minCore = Math.max(180, Math.round((width * height) / 18_000));
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = y * width + x;
+      const rank = field[start]!;
+      if (rank < 4 || seen[start]) continue;
+      let qh = 0;
+      let qt = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt += 1;
+      seen[start] = 1;
+      const cells: number[] = [start];
+      while (qh < qt) {
+        const cx = qx[qh]!;
+        const cy = qy[qh]!;
+        qh += 1;
+        for (const [nx, ny] of [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ] as const) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (seen[ni] || field[ni] !== rank) continue;
+          seen[ni] = 1;
+          qx[qt] = nx;
+          qy[qt] = ny;
+          qt += 1;
+          cells.push(ni);
+        }
+      }
+      if (cells.length >= minCore) continue;
+      // Remove bullseye pinpricks — broad tropical coverage comes from ranks 1–3.
+      for (const i of cells) field[i] = 0;
+    }
+  }
 }
 
 function fieldToSoft(field: Uint8Array): Float32Array {

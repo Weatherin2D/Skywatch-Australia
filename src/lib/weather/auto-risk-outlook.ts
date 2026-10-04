@@ -384,12 +384,13 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     Number.isFinite(morningMinT) && Number.isFinite(afternoonMaxT)
       ? afternoonMaxT - morningMinT
       : 0;
-  const moistPulse = clamp01(((afternoonDew > -19 ? afternoonDew : dew) - 14) / 10);
+  const moistPulse = clamp01(((afternoonDew > -19 ? afternoonDew : dew) - 12) / 12);
+  // Weight insolation + moisture so tropics still pulse with modest CAPE.
   const diurnalHeating = clamp01(
-    clamp01(deltaT / 11) * 0.35 +
-      clamp01(maxShortwave / 750) * 0.3 +
-      clamp01(afternoonCape / 1400) * 0.25 +
-      moistPulse * 0.1,
+    clamp01(deltaT / 10) * 0.28 +
+      clamp01(maxShortwave / 650) * 0.34 +
+      clamp01(afternoonCape / 900) * 0.22 +
+      moistPulse * 0.16,
   );
 
   return {
@@ -538,34 +539,41 @@ export function scoreEnvironment(
   const tropical = lat >= -23.5;
   const subtrop = lat >= -28 && lat < -23.5;
   const diurnal = clamp01(m.diurnalHeating);
+  // Tropics often run LI +2…+6 with still-active afternoon CAPE — don't zero them out.
+  const liSuppEff =
+    tropical && cape >= 250 ? Math.max(liSupp, 0.55) : liSupp;
   // Daylight heating is a valid trigger — especially tropics/subtropics.
   const heatTrigger =
     diurnal *
-    (tropical ? 1.2 : subtrop ? 1.0 : 0.75) *
-    clamp01(0.55 + moisture * 0.45);
+    (tropical ? 1.25 : subtrop ? 1.05 : 0.75) *
+    clamp01(0.5 + moisture * 0.5);
   const synopticTrigger = clamp01(m.liftTrigger);
   const trigger = clamp01(Math.max(synopticTrigger, heatTrigger * 0.95));
-  const lift = clamp01(precipLift * 0.45 + trigger * 0.55);
+  const lift = clamp01(precipLift * 0.4 + trigger * 0.6);
 
-  // Ordinary pulse cells: moist afternoon heating, workable CIN/LI, weak shear OK.
+  // Ordinary pulse cells: moist afternoon heating. Tropical LI can sit mildly +.
+  const pulseLiMax = tropical ? 6.5 : subtrop ? 5 : 3.5;
   const pulse =
-    diurnal >= 0.38 &&
-    moisture >= 0.38 &&
-    cape >= 220 &&
-    li <= 3.5 &&
-    cinBrake >= 0.5 &&
-    liSupp >= 0.7;
+    diurnal >= (tropical ? 0.28 : 0.38) &&
+    moisture >= (tropical ? 0.28 : 0.38) &&
+    cape >= (tropical ? 120 : 220) &&
+    li <= pulseLiMax &&
+    cinBrake >= (tropical ? 0.35 : 0.5) &&
+    liSuppEff >= (tropical ? 0.45 : 0.7);
 
   // Pulse storms don't need deep shear in the composite.
-  const shearTerm = pulse ? shear * 0.06 + 0.08 : shear * 0.15;
+  const shearTerm = pulse ? shear * 0.05 + 0.1 : shear * 0.15;
 
   const composite =
-    (instability * 0.38 * cinBrake * liSupp +
-      moisture * 0.14 +
+    (instability * 0.38 * cinBrake * liSuppEff +
+      moisture * 0.16 +
       rhBoost * 0.05 +
       shearTerm +
       lift * 0.28) *
-    (pulse && (tropical || subtrop) ? 1.08 : 1);
+    (pulse && (tropical || subtrop) ? 1.12 : 1);
+
+  // Organised severe tiers need shear or a real boundary — not lone CAPE spikes.
+  const organised = shear >= 0.35 || synopticTrigger >= 0.4;
 
   // Every tier is gated hard — no free climbs from bumps.
   // Higher ranks still need organised shear/synoptic signals; pulse fills 1–3.
@@ -584,19 +592,26 @@ export function scoreEnvironment(
     cape >= 2400 &&
     shear >= 0.5 &&
     moisture >= 0.4 &&
-    li <= 1
+    li <= 1 &&
+    organised
   ) {
     rank = 7; // High
   } else if (
     composite >= 0.68 &&
     cape >= 1800 &&
     moisture >= 0.35 &&
-    li <= 2
+    li <= 2 &&
+    organised
   ) {
     rank = 6; // Moderate
-  } else if (composite >= 0.58 && cape >= 1300 && moisture >= 0.3) {
+  } else if (
+    composite >= 0.58 &&
+    cape >= 1300 &&
+    moisture >= 0.3 &&
+    organised
+  ) {
     rank = 5; // Severe
-  } else if (composite >= 0.44 && cape >= 750) {
+  } else if (composite >= 0.44 && cape >= 750 && (organised || !tropical)) {
     rank = 4; // Slight
   } else if (composite >= 0.32 && cape >= 400) {
     rank = 3; // Low
@@ -610,26 +625,51 @@ export function scoreEnvironment(
   }
 
   // Daylight / tropical pulse path — ordinary cells without a front/dryline.
+  // Kept to ranks 1–3 so tropics get area coverage, not orange specks.
   if (pulse) {
     if (
       rank < 3 &&
       (tropical || subtrop) &&
-      cape >= 700 &&
-      moisture >= 0.5 &&
-      li <= 2.5 &&
-      diurnal >= 0.45
+      cape >= 450 &&
+      moisture >= 0.4 &&
+      li <= 5 &&
+      diurnal >= 0.32
     ) {
       rank = 3; // Low
     } else if (
       rank < 2 &&
-      cape >= 320 &&
-      moisture >= 0.4 &&
-      (tropical || subtrop || diurnal >= 0.55)
+      cape >= (tropical ? 160 : 280) &&
+      moisture >= (tropical ? 0.3 : 0.4) &&
+      (tropical || subtrop || diurnal >= 0.5)
     ) {
       rank = 2; // T-Storm
-    } else if (rank < 1 && cape >= 140 && moisture >= 0.32) {
+    } else if (
+      rank < 1 &&
+      cape >= (tropical ? 80 : 140) &&
+      moisture >= (tropical ? 0.22 : 0.32)
+    ) {
       rank = 1; // Low T-Storm
     }
+  }
+
+  // Pulse-only tropics/subtropics never jump above Low — stops lone Severe specks.
+  if ((tropical || subtrop) && !organised && rank > 3) {
+    rank = 3;
+  }
+
+  // Broad tropical floor: moist columns with any daytime heating / showers.
+  if (tropical && rank < 1 && moisture >= 0.3 && cape >= 90 && (diurnal >= 0.2 || m.precipProb >= 30)) {
+    rank = 1;
+  }
+  if (
+    tropical &&
+    rank < 2 &&
+    moisture >= 0.4 &&
+    cape >= 200 &&
+    diurnal >= 0.25 &&
+    li <= 6.5
+  ) {
+    rank = 2;
   }
 
   let hatch: 0 | 1 | 2 = 0;
