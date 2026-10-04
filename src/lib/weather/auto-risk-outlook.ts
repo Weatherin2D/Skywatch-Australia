@@ -79,6 +79,8 @@ type DayMetrics = {
   pressureHpa: number;
   /** Min vapour pressure deficit (kPa) — lower = moister column. */
   vpdMin: number;
+  /** Max vapour pressure deficit (kPa) — higher = drier/hostile BL. */
+  vpdMax: number;
   /** Peak surface soil temperature (°C). */
   soilTemp: number;
   /** Peak near-surface soil moisture (m³/m³); 0 when unavailable. */
@@ -91,6 +93,20 @@ type DayMetrics = {
   sunshineSec: number;
   /** Peak direct shortwave (W/m²). */
   directRadiation: number;
+  /** CIN at the peak-CAPE hour (J/kg, ≤0). Cap that must be broken to initiate. */
+  peakCin: number;
+  /** Temp − dewpoint at peak CAPE (°C). Large = dry BL. */
+  dewDepression: number;
+  /** Min afternoon RH (%). */
+  afternoonRhMin: number;
+  /** Mean morning (05–10) total cloud cover (%). High values block heating. */
+  morningCloud: number;
+  /** Morning/early precip (mm) before peak heating — stabilises the column. */
+  morningPrecipMm: number;
+  /** Afternoon−morning MSLP change (hPa). Rising = subsidence / weakening. */
+  pressureRiseHpa: number;
+  /** Peak 10 m wind (km/h). Very strong mean flow can tear up pulse cells. */
+  peakWindKmh: number;
   /**
    * Spatial lift / trigger proxy 0–1 from neighbouring samples
    * (dryline, front, convergence, moisture boundary).
@@ -168,7 +184,7 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "best_match",
     label: "Pulse",
     attribution:
-      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE, LI, CIN, cloud layers, showers, shear ladder, soil/BL, VPD, weather codes, boundaries, daylight heating). Guidance only — not an official warning.",
+      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE/LI/CIN, cloud layers, showers, shear, soil/BL, VPD, weather codes, boundaries, daylight heating — plus cap/dry-air/blocked-heating suppressors). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch Pulse guidance.",
     hourlyFields: [
       ...HOURLY_CORE,
@@ -182,7 +198,7 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "bom_access_global",
     label: "Access",
     attribution:
-      "SkyWatch Access · BoM ACCESS-G via Open-Meteo (~15 km; CAPE/LI/CIN, cloud layers, soil/BL, VPD when the feed is live). Guidance only — not an official warning.",
+      "SkyWatch Access · BoM ACCESS-G via Open-Meteo (~15 km; CAPE/LI/CIN, cloud layers, soil/BL, VPD and storm suppressors when the feed is live). Guidance only — not an official warning.",
     emptyMessage:
       "BoM ACCESS-G open data is currently unavailable (or shows no elevated risk). Access will populate when the feed resumes.",
     // ACCESS-G often omits elevated winds on the open feed — still ask for LI/BL/soil.
@@ -197,7 +213,7 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "ecmwf_ifs",
     label: "IFS",
     attribution:
-      "SkyWatch IFS · ECMWF IFS HRES via Open-Meteo (~9 km; CAPE/CIN, cloud layers, showers, 80–180 m shear, BL height, VPD, weather codes). Guidance only — not an official warning.",
+      "SkyWatch IFS · ECMWF IFS HRES via Open-Meteo (~9 km; CAPE/CIN, cloud layers, showers, shear, BL/VPD, weather codes, and suppressors that weaken/prevent storms). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch IFS guidance.",
     // IFS on Open-Meteo regularly leaves LI / soil moisture / freezing level null.
     hourlyFields: [
@@ -211,7 +227,7 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "ukmo_global_deterministic_10km",
     label: "UKMO",
     attribution:
-      "SkyWatch UKMO · UK Met Office Global via Open-Meteo (~10 km; CAPE/CIN, cloud layers, rain, gust shear, soil temp, VPD, weather codes — no elevated winds/LI on the open feed). Guidance only — not an official warning.",
+      "SkyWatch UKMO · UK Met Office Global via Open-Meteo (~10 km; CAPE/CIN, cloud layers, rain, gust shear, soil/VPD, weather codes, and storm suppressors — no elevated winds/LI on the open feed). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch UKMO guidance.",
     hourlyFields: [...HOURLY_CORE],
   },
@@ -499,12 +515,23 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   let windV = 0;
   let pressureHpa = 1013;
   let vpdMin = Number.POSITIVE_INFINITY;
+  let vpdMax = 0;
   let soilTemp = -20;
   let soilMoisture = 0;
   let blHeight = 0;
   let freezingLevelM = 0;
   let sunshineSec = 0;
   let directRadiation = 0;
+  let peakCin = 0;
+  let afternoonRhMin = 100;
+  let morningCloudSum = 0;
+  let morningCloudN = 0;
+  let morningPrecipMm = 0;
+  let morningPmslSum = 0;
+  let morningPmslN = 0;
+  let afternoonPmslSum = 0;
+  let afternoonPmslN = 0;
+  let peakWindKmh = 0;
   /** Most unstable (minimum) LI; null until a real value arrives. */
   let liftedIndex: number | null = null;
   let morningMinT = Number.POSITIVE_INFINITY;
@@ -546,9 +573,14 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
     const sh = shearFromHour(h, i);
 
+    // CIN: keep the most inhibiting (most negative) value; some models
+    // publish positive CIN — treat those as uncapped (0).
+    const cinVal = ci > 0 ? 0 : ci;
+
     if (c >= cape) {
       cape = c;
       peakIdx = i;
+      peakCin = cinVal;
       const uv = windUV(s10, d10);
       windU = uv.u;
       windV = uv.v;
@@ -556,9 +588,6 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
       if (dp != null) dew = dp;
       if (t != null) temp = t;
     }
-    // CIN: keep the most inhibiting (most negative) value; some models
-    // publish positive CIN — treat those as uncapped (0).
-    const cinVal = ci > 0 ? 0 : ci;
     cin = Math.min(cin, cinVal);
     if (li != null) {
       liftedIndex = liftedIndex == null ? li : Math.min(liftedIndex, li);
@@ -578,10 +607,14 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
       weatherCode = wcode;
     }
     shear = Math.max(shear, sh);
+    peakWindKmh = Math.max(peakWindKmh, s10);
     maxShortwave = Math.max(maxShortwave, sw);
     directRadiation = Math.max(directRadiation, dirRad);
     sunshineSec = Math.max(sunshineSec, sun);
-    if (vpd != null) vpdMin = Math.min(vpdMin, vpd);
+    if (vpd != null) {
+      vpdMin = Math.min(vpdMin, vpd);
+      vpdMax = Math.max(vpdMax, vpd);
+    }
     if (soilT != null) soilTemp = Math.max(soilTemp, soilT);
     if (soilM != null) soilMoisture = Math.max(soilMoisture, soilM);
     if (blh != null) blHeight = Math.max(blHeight, blh);
@@ -591,15 +624,27 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     }
 
     if (hour != null && t != null) {
-      if (hour >= 5 && hour <= 9) {
+      if (hour >= 5 && hour <= 10) {
         morningMinT = Math.min(morningMinT, t);
+        morningCloudSum += cl;
+        morningCloudN += 1;
+        morningPrecipMm += Math.max(0, pr, rain, showers);
+        if (pmsl != null) {
+          morningPmslSum += pmsl;
+          morningPmslN += 1;
+        }
       }
       if (hour >= 11 && hour <= 17) {
         afternoonMaxT = Math.max(afternoonMaxT, t);
         afternoonCape = Math.max(afternoonCape, c);
+        afternoonRhMin = Math.min(afternoonRhMin, r);
         if (dp != null) afternoonDew = Math.max(afternoonDew, dp);
         if (li != null) {
           liftedIndex = liftedIndex == null ? li : Math.min(liftedIndex, li);
+        }
+        if (pmsl != null) {
+          afternoonPmslSum += pmsl;
+          afternoonPmslN += 1;
         }
       }
     }
@@ -613,6 +658,7 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   const peakS = num(h.wind_speed_10m?.[peakIdx]);
   const peakD = num(h.wind_direction_10m?.[peakIdx]);
   const peakP = num(h.pressure_msl?.[peakIdx]);
+  const peakCiRaw = num(h.convective_inhibition?.[peakIdx]);
   if (peakDp != null) dew = peakDp;
   if (peakT != null) temp = peakT;
   if (peakS != null && peakD != null) {
@@ -621,9 +667,22 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     windV = uv.v;
   }
   if (peakP != null) pressureHpa = peakP;
+  if (peakCiRaw != null) peakCin = peakCiRaw > 0 ? 0 : peakCiRaw;
   if (!Number.isFinite(vpdMin)) vpdMin = 2.5;
+  if (!Number.isFinite(afternoonRhMin) || afternoonRhMin > 100) {
+    afternoonRhMin = rh > 0 ? Math.min(rh, 55) : 40;
+  }
+  const morningCloud =
+    morningCloudN > 0 ? morningCloudSum / morningCloudN : cloud * 0.5;
+  const morningPmsl =
+    morningPmslN > 0 ? morningPmslSum / morningPmslN : pressureHpa;
+  const afternoonPmsl =
+    afternoonPmslN > 0 ? afternoonPmslSum / afternoonPmslN : pressureHpa;
+  const pressureRiseHpa = afternoonPmsl - morningPmsl;
+  const dewDepression = Math.max(0, temp - dew);
 
-  // Daylight heating pulse: insolation + soil heat + BL growth + moist CAPE.
+  // Daylight heating pulse: insolation + soil heat + BL growth + moist CAPE,
+  // reduced when morning cloud / early rain blocks the heating cycle.
   const deltaT =
     Number.isFinite(morningMinT) && Number.isFinite(afternoonMaxT)
       ? afternoonMaxT - morningMinT
@@ -632,15 +691,19 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   const soilHeat = clamp01((soilTemp - 28) / 18);
   const blGrowth = clamp01(blHeight / 2200);
   const sunFrac = clamp01(sunshineSec / 3600);
+  const cloudBlock = clamp01(morningCloud / 100);
+  const earlyRainBlock = clamp01(morningPrecipMm / 8);
   const diurnalHeating = clamp01(
-    clamp01(deltaT / 10) * 0.2 +
+    (clamp01(deltaT / 10) * 0.2 +
       clamp01(maxShortwave / 650) * 0.22 +
       clamp01(directRadiation / 550) * 0.12 +
       sunFrac * 0.08 +
       soilHeat * 0.1 +
       blGrowth * 0.08 +
       clamp01(afternoonCape / 900) * 0.12 +
-      moistPulse * 0.08,
+      moistPulse * 0.08) *
+      (1 - cloudBlock * 0.45) *
+      (1 - earlyRainBlock * 0.35),
   );
 
   return {
@@ -663,12 +726,20 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     windV,
     pressureHpa,
     vpdMin,
+    vpdMax,
     soilTemp,
     soilMoisture,
     blHeight,
     freezingLevelM,
     sunshineSec,
     directRadiation,
+    peakCin,
+    dewDepression,
+    afternoonRhMin,
+    morningCloud,
+    morningPrecipMm,
+    pressureRiseHpa,
+    peakWindKmh,
     liftTrigger: 0,
     // Models without LI (IFS/UKMO on Open-Meteo) stay neutral — don't fake stable.
     liftedIndex: liftedIndex ?? 0,
@@ -774,10 +845,139 @@ function liBrake(li: number): number {
 }
 
 /**
+ * Factors that prevent / weaken storms → multiplier in [0.12, 1].
+ * 1 = no meaningful suppression; lower values cut initiation and intensity.
+ */
+function stormSuppression(
+  m: DayMetrics,
+  opts: {
+    tropical: boolean;
+    subtrop: boolean;
+    synopticTrigger: number;
+    thunderCode: number;
+  },
+): number {
+  const { tropical, subtrop, synopticTrigger, thunderCode } = opts;
+  // Cap at peak CAPE — the inhibition that must actually be broken.
+  const peakCin = Math.min(0, m.peakCin);
+  const cinSupp =
+    peakCin <= -150
+      ? 0.12
+      : peakCin <= -90
+        ? 0.28
+        : peakCin <= -50
+          ? 0.48
+          : peakCin <= -25
+            ? 0.68
+            : peakCin <= -12
+              ? 0.85
+              : 1;
+
+  // Dry boundary layer / large dewpoint depression / high VPD.
+  const dryVpd = clamp01((m.vpdMax - 1.6) / 2.4);
+  const dryDep = clamp01((m.dewDepression - 10) / 16);
+  const dryRh = clamp01((42 - m.afternoonRhMin) / 30);
+  const drySoil =
+    m.soilMoisture > 0 ? clamp01((0.06 - m.soilMoisture) / 0.06) : 0;
+  const drySupp = 1 - clamp01(dryVpd * 0.4 + dryDep * 0.35 + dryRh * 0.2 + drySoil * 0.05) * 0.78;
+
+  // Morning cloud + early rain kill the diurnal heating cycle (pulse days).
+  const cloudSupp = 1 - clamp01(m.morningCloud / 100) * 0.45;
+  const earlyRainSupp = 1 - clamp01(m.morningPrecipMm / 10) * 0.5;
+  // Weak peak insolation with thick morning cover → little destabilisation.
+  const insolationSupp =
+    m.directRadiation < 180 && m.morningCloud >= 60
+      ? 0.55
+      : m.directRadiation < 280 && m.morningCloud >= 75
+        ? 0.7
+        : 1;
+
+  // Rising MSLP through the day ≈ subsidence / ridge building.
+  const rise = m.pressureRiseHpa;
+  const pressureSupp =
+    rise >= 4 ? 0.45 : rise >= 2.5 ? 0.62 : rise >= 1.2 ? 0.8 : rise >= 0.6 ? 0.9 : 1;
+
+  // Very strong low-level flow tears up ordinary pulse cells (less for organised).
+  const windTear =
+    m.peakWindKmh >= 55
+      ? 0.55
+      : m.peakWindKmh >= 42
+        ? 0.72
+        : m.peakWindKmh >= 34
+          ? 0.88
+          : 1;
+  const windSupp = synopticTrigger >= 0.45 || m.shearKts >= 35 ? Math.max(windTear, 0.85) : windTear;
+
+  // Shallow BL with CAPE but no growth → capped / poorly mixed.
+  const shallowBl =
+    m.blHeight > 0 && m.blHeight < 700 && m.cape >= 400 && synopticTrigger < 0.35
+      ? 0.65
+      : m.blHeight > 0 && m.blHeight < 1100 && m.cape >= 800 && synopticTrigger < 0.25
+        ? 0.8
+        : 1;
+
+  // Stable LI already handled elsewhere; reinforce for mid-latitude ridge days.
+  const liSuppExtra =
+    !tropical && !subtrop && m.liftedIndex >= 5 ? 0.55 : !tropical && m.liftedIndex >= 3 ? 0.75 : 1;
+
+  // No initiation pathway: CAPE present but no heat, no boundary, no model thunder.
+  const diurnal = clamp01(m.diurnalHeating);
+  const noTrigger =
+    m.cape >= 500 &&
+    synopticTrigger < 0.22 &&
+    diurnal < 0.22 &&
+    thunderCode < 0.4
+      ? 0.4
+      : m.cape >= 300 &&
+          synopticTrigger < 0.15 &&
+          diurnal < 0.15 &&
+          thunderCode < 0.3
+        ? 0.55
+        : 1;
+
+  // Mid/high cloud debris without low-level moisture can look stormy but starve inflow.
+  const anvilStarve =
+    m.cloudMid >= 70 &&
+    m.cloudHigh >= 70 &&
+    m.cloudLow < 25 &&
+    m.dewpoint < 10 &&
+    thunderCode < 0.4
+      ? 0.6
+      : 1;
+
+  let factor =
+    cinSupp *
+    drySupp *
+    cloudSupp *
+    earlyRainSupp *
+    insolationSupp *
+    pressureSupp *
+    windSupp *
+    shallowBl *
+    liSuppExtra *
+    noTrigger *
+    anvilStarve;
+
+  // Synoptic lift / model thunder can punch through a modest cap or dry layer.
+  if (synopticTrigger >= 0.55 || thunderCode >= 0.85) {
+    factor = Math.max(factor, 0.55);
+  } else if (synopticTrigger >= 0.4 || thunderCode >= 0.55) {
+    factor = Math.max(factor, 0.4);
+  }
+
+  // Tropics: dry-air / CIN brakes a bit less absolute (everyday moisture).
+  if (tropical) factor = Math.max(factor, 0.28);
+  else if (subtrop) factor = Math.max(factor, 0.22);
+
+  return clamp01(Math.max(0.12, Math.min(1, factor)));
+}
+
+/**
  * Map environment metrics → categorical rank 0–8 + hatch 0/1/2.
  * Uses the full surface/near-surface Open-Meteo suite each model provides:
  * CAPE/CIN/LI, cloud layers, rain/showers, weather codes, VPD, soil/BL,
- * shear ladder, synoptic boundaries, and daylight heating.
+ * shear ladder, synoptic boundaries, daylight heating — and suppressors
+ * that prevent or weaken storms (cap, dry air, blocked heating, etc.).
  */
 export function scoreEnvironment(
   m: DayMetrics,
@@ -802,7 +1002,8 @@ export function scoreEnvironment(
   const liSupp = liBrake(li);
   // CAPE + LI together — LI catches unstable columns that CAPE alone underplays.
   const instability = clamp01(clamp01(cape / 3600) * 0.55 + liInstab * 0.45);
-  const cin = m.cin;
+  // Day-min CIN still matters for deep-layer inhibition; peak CIN is in suppression.
+  const cin = Math.min(m.cin, m.peakCin);
   const cinBrake =
     cin <= -120
       ? 0.18
@@ -843,20 +1044,31 @@ export function scoreEnvironment(
     (tropical ? 1.25 : subtrop ? 1.05 : 0.75) *
     clamp01(0.5 + moisture * 0.5);
   const synopticTrigger = clamp01(m.liftTrigger);
+  const suppress = stormSuppression(m, {
+    tropical,
+    subtrop,
+    synopticTrigger,
+    thunderCode,
+  });
   const trigger = clamp01(
-    Math.max(synopticTrigger, heatTrigger * 0.95, thunderCode * 0.7),
+    Math.max(synopticTrigger, heatTrigger * 0.95, thunderCode * 0.7) * suppress,
   );
   const lift = clamp01(precipLift * 0.42 + trigger * 0.58);
 
   // Ordinary pulse cells: moist afternoon heating. Tropical LI can sit mildly +.
+  // Suppressors (cap, dry air, blocked sun) can veto the pulse path entirely.
   const pulseLiMax = tropical ? 6.5 : subtrop ? 5 : 3.5;
   const pulse =
+    suppress >= 0.45 &&
     diurnal >= (tropical ? 0.28 : 0.38) &&
     moisture >= (tropical ? 0.28 : 0.38) &&
     cape >= (tropical ? 120 : 220) &&
     li <= pulseLiMax &&
     cinBrake >= (tropical ? 0.35 : 0.5) &&
-    liSuppEff >= (tropical ? 0.45 : 0.7);
+    liSuppEff >= (tropical ? 0.45 : 0.7) &&
+    m.peakCin > -60 &&
+    m.dewDepression < 18 &&
+    m.morningCloud < 85;
 
   // Pulse storms don't need deep shear in the composite.
   const shearTerm = pulse ? shear * 0.05 + 0.1 : shear * 0.15;
@@ -867,6 +1079,7 @@ export function scoreEnvironment(
       rhBoost * 0.04 +
       shearTerm +
       lift * 0.3) *
+    suppress *
     (pulse && (tropical || subtrop) ? 1.12 : 1) *
     (thunderCode >= 0.85 ? 1.08 : 1);
 
@@ -882,7 +1095,8 @@ export function scoreEnvironment(
     shear >= 0.6 &&
     synopticTrigger >= 0.5 &&
     moisture >= 0.45 &&
-    li <= 0
+    li <= 0 &&
+    suppress >= 0.55
   ) {
     rank = 8; // V-High
   } else if (
@@ -891,7 +1105,8 @@ export function scoreEnvironment(
     shear >= 0.5 &&
     moisture >= 0.4 &&
     li <= 1 &&
-    organised
+    organised &&
+    suppress >= 0.45
   ) {
     rank = 7; // High
   } else if (
@@ -899,24 +1114,32 @@ export function scoreEnvironment(
     cape >= 1800 &&
     moisture >= 0.35 &&
     li <= 2 &&
-    organised
+    organised &&
+    suppress >= 0.4
   ) {
     rank = 6; // Moderate
   } else if (
     composite >= 0.58 &&
     cape >= 1300 &&
     moisture >= 0.3 &&
-    organised
+    organised &&
+    suppress >= 0.35
   ) {
     rank = 5; // Severe
-  } else if (composite >= 0.44 && cape >= 750 && (organised || !tropical)) {
+  } else if (
+    composite >= 0.44 &&
+    cape >= 750 &&
+    (organised || !tropical) &&
+    suppress >= 0.3
+  ) {
     rank = 4; // Slight
-  } else if (composite >= 0.32 && cape >= 400) {
+  } else if (composite >= 0.32 && cape >= 400 && suppress >= 0.28) {
     rank = 3; // Low
-  } else if (composite >= 0.22 && cape >= 180) {
+  } else if (composite >= 0.22 && cape >= 180 && suppress >= 0.25) {
     rank = 2; // T-Storm
   } else if (
     composite >= 0.1 &&
+    suppress >= 0.22 &&
     (cape >= 70 ||
       (m.precipProb >= 40 && moisture >= 0.2) ||
       thunderCode >= 0.4 ||
@@ -925,10 +1148,13 @@ export function scoreEnvironment(
     rank = 1; // Low T-Storm
   }
 
-  // Explicit model thunder weather codes punch through weak CAPE underestimates.
-  if (thunderCode >= 0.85 && rank < 3) rank = 3;
-  if (thunderCode >= 0.55 && rank < 2) rank = 2;
-  if (thunderCode >= 0.4 && rank < 1) rank = 1;
+  // Explicit model thunder weather codes punch through weak CAPE underestimates,
+  // but not through a hard cap / extremely dry BL.
+  if (suppress >= 0.35) {
+    if (thunderCode >= 0.85 && rank < 3) rank = 3;
+    if (thunderCode >= 0.55 && rank < 2) rank = 2;
+    if (thunderCode >= 0.4 && rank < 1) rank = 1;
+  }
 
   // Daylight / tropical pulse path — ordinary cells without a front/dryline.
   // Kept to ranks 1–3 so tropics get area coverage, not orange specks.
@@ -963,9 +1189,11 @@ export function scoreEnvironment(
     rank = 3;
   }
 
-  // Broad tropical floor: moist columns with any daytime heating / showers.
+  // Broad tropical floor: moist columns with any daytime heating / showers —
+  // skipped when suppressors say the column won't fire.
   if (
     tropical &&
+    suppress >= 0.35 &&
     rank < 1 &&
     moisture >= 0.3 &&
     cape >= 90 &&
@@ -975,6 +1203,7 @@ export function scoreEnvironment(
   }
   if (
     tropical &&
+    suppress >= 0.4 &&
     rank < 2 &&
     moisture >= 0.4 &&
     cape >= 200 &&
@@ -984,12 +1213,27 @@ export function scoreEnvironment(
     rank = 2;
   }
 
+  // Hard vetoes: extreme dry air / unbroken cap with no model thunder.
+  if (
+    thunderCode < 0.4 &&
+    ((m.peakCin <= -120 && synopticTrigger < 0.5) ||
+      (m.vpdMax >= 4.2 && m.dewDepression >= 20 && moisture < 0.25) ||
+      (m.liftedIndex >= 8 && !tropical && cape < 1200))
+  ) {
+    rank = 0;
+  } else if (suppress < 0.2 && thunderCode < 0.55 && synopticTrigger < 0.45) {
+    rank = Math.min(rank, 1);
+  } else if (suppress < 0.3 && thunderCode < 0.55) {
+    rank = Math.min(rank, 3);
+  }
+
   // Hail-friendly column: low freezing level + strong CAPE/shear.
   const hailFriendly =
     m.freezingLevelM > 0 &&
     m.freezingLevelM <= 3800 &&
     cape >= 1400 &&
-    shear >= 0.35;
+    shear >= 0.35 &&
+    suppress >= 0.4;
 
   let hatch: 0 | 1 | 2 = 0;
   if (
@@ -999,7 +1243,8 @@ export function scoreEnvironment(
     composite >= 0.72 &&
     rank >= 5 &&
     synopticTrigger >= 0.55 &&
-    li <= -1
+    li <= -1 &&
+    suppress >= 0.5
   ) {
     hatch = 2;
   } else if (
@@ -1009,7 +1254,8 @@ export function scoreEnvironment(
       composite >= 0.52 &&
       rank >= 4 &&
       trigger >= 0.45 &&
-      li <= 1) ||
+      li <= 1 &&
+      suppress >= 0.4) ||
     (hailFriendly && rank >= 4 && thunderCode >= 0.55)
   ) {
     hatch = 1;
@@ -1201,13 +1447,13 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v3/${kind}.json`;
+  return `model-risk/v4/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v3",
+    "skywatch-model-risk-v4",
     `${kind}.json`,
   );
 }

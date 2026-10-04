@@ -168,13 +168,13 @@ function sourceBlurb(source: RiskSource): string {
     case "bom":
       return "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon.";
     case "access":
-      return "SkyWatch Access — BoM ACCESS-G fields (~15 km): CAPE/LI/CIN, cloud layers, soil/BL, VPD when the feed is live.";
+      return "SkyWatch Access — BoM ACCESS-G (~15 km): storm ingredients plus cap, dry air, and blocked-heating suppressors when the feed is live.";
     case "ifs":
-      return "SkyWatch IFS — ECMWF IFS HRES (~9 km): CAPE/CIN, cloud layers, showers, 80–180 m shear, BL height, weather codes.";
+      return "SkyWatch IFS — ECMWF IFS HRES (~9 km): ingredients and suppressors (CIN/dry air/rising pressure/blocked sun) that weaken or prevent storms.";
     case "ukmo":
-      return "SkyWatch UKMO — UKMO Global (~10 km): CAPE/CIN, cloud layers, rain, gust shear, soil heat, VPD, weather codes.";
+      return "SkyWatch UKMO — UKMO Global (~10 km): ingredients and suppressors (CIN/dry air/cloud cover/pressure rise) that weaken or prevent storms.";
     default:
-      return "SkyWatch Pulse — multi-model blend using CAPE/LI/CIN, cloud layers, showers, shear ladder, soil/BL, VPD, and boundary triggers.";
+      return "SkyWatch Pulse — multi-model blend of storm ingredients and suppressors (cap, dry air, blocked heating, subsidence, no-trigger).";
   }
 }
 
