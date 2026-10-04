@@ -1,27 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { METEYE_THUNDERSTORM_CATEGORIES } from "@/lib/weather/bom-meteye-constants";
 import { getMeteyeThunderstormOutlook } from "@/lib/weather/bom-meteye-thunderstorm";
-import { getAutoRiskCatalog } from "@/lib/weather/auto-risk-outlook";
+import {
+  getModelRiskCatalog,
+  resolveModelRiskKind,
+} from "@/lib/weather/auto-risk-outlook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * GET /api/weather/risk?source=bom|auto
- * Catalog of thunderstorm risk — BoM MetEye (default) or SkyWatch automated.
+ * GET /api/weather/risk?source=bom|pulse|access|auto
+ * Catalog of thunderstorm risk — BoM MetEye (default), SkyWatch Pulse, or Access.
+ * `auto` is accepted as a legacy alias for `pulse`.
  */
 export async function GET(req: NextRequest) {
   const sourceParam = (req.nextUrl.searchParams.get("source") || "bom")
     .trim()
     .toLowerCase();
-  const source = sourceParam === "auto" ? "auto" : "bom";
+  const modelKind = resolveModelRiskKind(sourceParam);
 
   try {
-    if (source === "auto") {
+    if (modelKind) {
       const force =
         req.nextUrl.searchParams.get("force") === "1" ||
         req.nextUrl.searchParams.get("refresh") === "1";
-      const catalog = await getAutoRiskCatalog({ force });
+      const catalog = await getModelRiskCatalog(modelKind, { force });
       const cacheControl =
         catalog.status === "ok"
           ? "public, max-age=120, stale-while-revalidate=600"

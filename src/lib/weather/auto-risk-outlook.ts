@@ -1,5 +1,7 @@
 /**
- * Automated national convective risk outlook from Open-Meteo model fields.
+ * SkyWatch model-risk outlooks from Open-Meteo fields.
+ * - Pulse: multi-model best_match blend (CAPE/LI/triggers/daylight heating)
+ * - Access: BoM ACCESS-G (`bom_access_global`) when the open feed is live
  * Same day horizon as MetEye (~7 Sydney-local days). Guidance only.
  */
 
@@ -69,6 +71,41 @@ type DayMetrics = {
   diurnalHeating: number;
 };
 
+export type ModelRiskKind = "pulse" | "access";
+
+type ModelRiskConfig = {
+  kind: ModelRiskKind;
+  /** Open-Meteo `models=` value */
+  openMeteoModels: string;
+  label: string;
+  attribution: string;
+  emptyMessage: string;
+  /** ACCESS-G does not expose 100 m winds on Open-Meteo. */
+  include100mWinds: boolean;
+};
+
+const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
+  pulse: {
+    kind: "pulse",
+    openMeteoModels: "best_match",
+    label: "Pulse",
+    attribution:
+      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE, LI, CIN, shear, boundaries, daylight heating). Guidance only — not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in SkyWatch Pulse guidance.",
+    include100mWinds: true,
+  },
+  access: {
+    kind: "access",
+    openMeteoModels: "bom_access_global",
+    label: "Access",
+    attribution:
+      "SkyWatch Access · BoM ACCESS-G via Open-Meteo (~15 km). Guidance only — not an official warning.",
+    emptyMessage:
+      "BoM ACCESS-G open data is currently unavailable (or shows no elevated risk). Access will populate when the feed resumes.",
+    include100mWinds: false,
+  },
+};
+
 type CacheEntry = {
   at: number;
   outlook: PublicForecastResponse;
@@ -76,8 +113,14 @@ type CacheEntry = {
   dayPng: Record<number, Buffer>;
 };
 
-let cache: CacheEntry | null = null;
-let inflight: Promise<CacheEntry> | null = null;
+const caches: Record<ModelRiskKind, CacheEntry | null> = {
+  pulse: null,
+  access: null,
+};
+const inflightByKind: Record<ModelRiskKind, Promise<CacheEntry> | null> = {
+  pulse: null,
+  access: null,
+};
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -187,32 +230,35 @@ function vectorDiffKts(
 async function fetchBatch(
   lats: number[],
   lons: number[],
+  config: ModelRiskConfig,
 ): Promise<HourlyLoc[]> {
   // NOTE: Do NOT request pressure-level winds (500hPa etc.) in multi-location
   // batches — Open-Meteo regularly hangs on those and every site times out,
   // which previously left production stuck on an empty outlook.
+  const hourly = [
+    "temperature_2m",
+    "dew_point_2m",
+    "relative_humidity_2m",
+    "cloud_cover",
+    "precipitation_probability",
+    "precipitation",
+    "cape",
+    "convective_inhibition",
+    "lifted_index",
+    "shortwave_radiation",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    ...(config.include100mWinds
+      ? (["wind_speed_100m", "wind_direction_100m"] as const)
+      : []),
+    "wind_gusts_10m",
+    "pressure_msl",
+  ];
   const params = new URLSearchParams({
     latitude: lats.map((v) => v.toFixed(4)).join(","),
     longitude: lons.map((v) => v.toFixed(4)).join(","),
-    hourly: [
-      "temperature_2m",
-      "dew_point_2m",
-      "relative_humidity_2m",
-      "cloud_cover",
-      "precipitation_probability",
-      "precipitation",
-      "cape",
-      "convective_inhibition",
-      "lifted_index",
-      "shortwave_radiation",
-      "wind_speed_10m",
-      "wind_direction_10m",
-      "wind_speed_100m",
-      "wind_direction_100m",
-      "wind_gusts_10m",
-      "pressure_msl",
-    ].join(","),
-    models: "best_match",
+    hourly: hourly.join(","),
+    models: config.openMeteoModels,
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
     cell_selection: "nearest",
@@ -239,6 +285,21 @@ async function fetchBatch(
     }
   }
   throw lastErr ?? new Error("Open-Meteo failed");
+}
+
+/** True when Open-Meteo returned a usable surface timeseries (not an empty ACCESS shell). */
+function locHasUsableData(loc: HourlyLoc): boolean {
+  const h = loc.hourly;
+  if (!h?.time?.length) return false;
+  const temps = h.temperature_2m ?? [];
+  const capes = h.cape ?? [];
+  const dews = h.dew_point_2m ?? [];
+  for (let i = 0; i < h.time.length; i++) {
+    if (num(temps[i]) != null || num(capes[i]) != null || num(dews[i]) != null) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function dayIndexForTime(
@@ -698,9 +759,9 @@ export function scoreEnvironment(
   return { rank, hatch, composite };
 }
 
-async function loadAllSites(): Promise<
-  { lat: number; lon: number; loc: HourlyLoc }[]
-> {
+async function loadAllSites(
+  config: ModelRiskConfig,
+): Promise<{ lat: number; lon: number; loc: HourlyLoc }[]> {
   const sites = SAMPLE_SITES;
   const out: { lat: number; lon: number; loc: HourlyLoc }[] = [];
   const batches: { lats: number[]; lons: number[] }[] = [];
@@ -717,9 +778,9 @@ async function loadAllSites(): Promise<
     const results = await Promise.all(
       wave.map(async (b) => {
         try {
-          return { b, locs: await fetchBatch(b.lats, b.lons) };
+          return { b, locs: await fetchBatch(b.lats, b.lons, config) };
         } catch (err) {
-          console.warn("[auto-risk] batch failed", err);
+          console.warn(`[${config.kind}-risk] batch failed`, err);
           return { b, locs: [] as HourlyLoc[] };
         }
       }),
@@ -727,7 +788,7 @@ async function loadAllSites(): Promise<
     for (const { b, locs } of results) {
       for (let j = 0; j < b.lats.length; j++) {
         const loc = locs[j];
-        if (!loc?.hourly?.time?.length) continue;
+        if (!loc?.hourly?.time?.length || !locHasUsableData(loc)) continue;
         out.push({ lat: b.lats[j]!, lon: b.lons[j]!, loc });
       }
     }
@@ -759,8 +820,8 @@ function buildDayLabels(
   return days;
 }
 
-async function computeOutlook(): Promise<CacheEntry> {
-  const rows = await loadAllSites();
+async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
+  const rows = await loadAllSites(config);
   const now = Date.now();
   const day0Key = sydneyDayKey(startOfSydneyDayMs(now));
   const dayMeta = buildDayLabels(day0Key);
@@ -820,6 +881,7 @@ async function computeOutlook(): Promise<CacheEntry> {
   const anyRisk = rolled.some((r) =>
     r.legend.some((i) => i.used && i.order < 100),
   );
+  const feedDown = rows.length === 0;
   const outlook: PublicForecastResponse = {
     status: anyRisk ? "ok" : "empty",
     issuedAt: new Date().toISOString(),
@@ -828,11 +890,13 @@ async function computeOutlook(): Promise<CacheEntry> {
     defaultDay: 1,
     message: anyRisk
       ? undefined
-      : "No elevated thunderstorm risk in the automated model guidance.",
+      : feedDown
+        ? config.emptyMessage
+        : `No elevated thunderstorm risk in SkyWatch ${config.label} guidance.`,
   };
 
   console.info(
-    `[auto-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites, days=${FORECAST_DAYS}`,
+    `[${config.kind}-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites, days=${FORECAST_DAYS}`,
   );
 
   return { at: Date.now(), outlook, dayPoints, dayPng };
@@ -842,39 +906,53 @@ function cacheTtlMs(entry: CacheEntry): number {
   return entry.outlook.status === "ok" ? CACHE_MS : EMPTY_CACHE_MS;
 }
 
-async function ensureCache(opts: { force?: boolean } = {}): Promise<CacheEntry> {
+async function ensureCache(
+  kind: ModelRiskKind,
+  opts: { force?: boolean } = {},
+): Promise<CacheEntry> {
+  const config = MODEL_CONFIG[kind];
+  const cached = caches[kind];
   if (
     !opts.force &&
-    cache &&
-    Date.now() - cache.at < cacheTtlMs(cache)
+    cached &&
+    Date.now() - cached.at < cacheTtlMs(cached)
   ) {
-    return cache;
+    return cached;
   }
-  if (!opts.force && inflight) return inflight;
-  inflight = computeOutlook()
+  if (!opts.force && inflightByKind[kind]) return inflightByKind[kind]!;
+  inflightByKind[kind] = computeOutlook(config)
     .then((entry) => {
-      cache = entry;
+      caches[kind] = entry;
       return entry;
     })
     .finally(() => {
-      inflight = null;
+      inflightByKind[kind] = null;
     });
-  return inflight;
+  return inflightByKind[kind]!;
 }
 
-export async function getAutoRiskOutlook(
+export async function getModelRiskOutlook(
+  kind: ModelRiskKind,
   opts: { force?: boolean } = {},
 ): Promise<PublicForecastResponse> {
-  const entry = await ensureCache(opts);
+  const entry = await ensureCache(kind, opts);
   return entry.outlook;
 }
 
-export async function getAutoRiskDayPng(
+/** @deprecated use getModelRiskOutlook("pulse") */
+export async function getAutoRiskOutlook(
+  opts: { force?: boolean } = {},
+): Promise<PublicForecastResponse> {
+  return getModelRiskOutlook("pulse", opts);
+}
+
+export async function getModelRiskDayPng(
+  kind: ModelRiskKind,
   day: number,
   opts: { force?: boolean } = {},
 ): Promise<{ png: Buffer; empty: boolean; issuedAt: string | null } | null> {
   if (!Number.isInteger(day) || day < 1 || day > FORECAST_DAYS) return null;
-  const entry = await ensureCache(opts);
+  const entry = await ensureCache(kind, opts);
   const points = entry.dayPoints[day] ?? [];
   let png = entry.dayPng[day];
   if (!png) {
@@ -888,17 +966,34 @@ export async function getAutoRiskDayPng(
   };
 }
 
-export function isAutoRiskDay(n: number): boolean {
+/** @deprecated use getModelRiskDayPng("pulse", day) */
+export async function getAutoRiskDayPng(
+  day: number,
+  opts: { force?: boolean } = {},
+): Promise<{ png: Buffer; empty: boolean; issuedAt: string | null } | null> {
+  return getModelRiskDayPng("pulse", day, opts);
+}
+
+export function isModelRiskDay(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= FORECAST_DAYS;
 }
 
-/** Catalog payload for /api/weather/risk?source=auto */
-export async function getAutoRiskCatalog(opts: { force?: boolean } = {}) {
-  const outlook = await getAutoRiskOutlook(opts);
+/** @deprecated use isModelRiskDay */
+export function isAutoRiskDay(n: number): boolean {
+  return isModelRiskDay(n);
+}
+
+/** Catalog payload for /api/weather/risk?source=pulse|access|auto */
+export async function getModelRiskCatalog(
+  kind: ModelRiskKind,
+  opts: { force?: boolean } = {},
+) {
+  const config = MODEL_CONFIG[kind];
+  const outlook = await getModelRiskOutlook(kind, opts);
   const issued = outlook.issuedAt ?? new Date().toISOString();
   return {
     status: outlook.status,
-    source: "auto" as const,
+    source: kind,
     updatedAt: issued,
     issuedAt: issued,
     days: outlook.days.map((d) => {
@@ -911,7 +1006,7 @@ export async function getAutoRiskCatalog(opts: { force?: boolean } = {}) {
         dateLabel: d.dateLabel,
         available,
         imageUrl: available
-          ? `/api/weather/risk-image?source=auto&day=${d.effectiveDay}&t=${encodeURIComponent(issued)}`
+          ? `/api/weather/risk-image?source=${kind}&day=${d.effectiveDay}&t=${encodeURIComponent(issued)}`
           : null,
         issuedAt: issued,
         legend: d.legend,
@@ -919,13 +1014,26 @@ export async function getAutoRiskCatalog(opts: { force?: boolean } = {}) {
     }),
     legend: autoRiskLegendItems(),
     blurbs: autoRiskCategoryBlurbs(),
-    attribution:
-      "SkyWatch automated guidance from Open-Meteo model fields (CAPE, LI, CIN, shear, boundaries, and daylight heating). Guidance only — not an official warning.",
+    attribution: config.attribution,
     message: outlook.message,
     outlook,
   };
 }
 
+/** @deprecated use getModelRiskCatalog("pulse") — `auto` URL alias */
+export async function getAutoRiskCatalog(opts: { force?: boolean } = {}) {
+  return getModelRiskCatalog("pulse", opts);
+}
+
 export function getAutoRiskSampleSiteCount(): number {
   return SAMPLE_SITES.length;
+}
+
+export function resolveModelRiskKind(
+  sourceParam: string | null | undefined,
+): ModelRiskKind | null {
+  const s = (sourceParam || "").trim().toLowerCase();
+  if (s === "pulse" || s === "auto") return "pulse";
+  if (s === "access") return "access";
+  return null;
 }

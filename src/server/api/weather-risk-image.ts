@@ -4,8 +4,9 @@ import {
   isMeteyeOutlookDay,
 } from "@/lib/weather/bom-meteye-thunderstorm";
 import {
-  getAutoRiskDayPng,
-  isAutoRiskDay,
+  getModelRiskDayPng,
+  isModelRiskDay,
+  resolveModelRiskKind,
 } from "@/lib/weather/auto-risk-outlook";
 
 export const dynamic = "force-dynamic";
@@ -17,28 +18,28 @@ const EMPTY_PNG = Buffer.from(
 );
 
 /**
- * GET /api/weather/risk-image?source=bom|auto&day=1…N
- * BoM MetEye PNG (default) or SkyWatch automated risk raster.
+ * GET /api/weather/risk-image?source=bom|pulse|access|auto&day=1…N
+ * BoM MetEye PNG (default) or SkyWatch Pulse / Access risk raster.
  */
 export async function GET(req: NextRequest) {
   const sourceParam = (req.nextUrl.searchParams.get("source") || "bom")
     .trim()
     .toLowerCase();
-  const source = sourceParam === "auto" ? "auto" : "bom";
+  const modelKind = resolveModelRiskKind(sourceParam);
   const dayNum = Number(req.nextUrl.searchParams.get("day") || "1");
 
   try {
-    if (source === "auto") {
-      if (!isAutoRiskDay(dayNum)) {
+    if (modelKind) {
+      if (!isModelRiskDay(dayNum)) {
         return NextResponse.json(
-          { error: "day must be an automated outlook day (1–7)" },
+          { error: "day must be a model outlook day (1–7)" },
           { status: 400 },
         );
       }
       const force =
         req.nextUrl.searchParams.get("force") === "1" ||
         req.nextUrl.searchParams.get("refresh") === "1";
-      const result = await getAutoRiskDayPng(dayNum, { force });
+      const result = await getModelRiskDayPng(modelKind, dayNum, { force });
       const png = !result || result.empty ? EMPTY_PNG : result.png;
       return new NextResponse(new Uint8Array(png), {
         headers: {
@@ -48,9 +49,9 @@ export async function GET(req: NextRequest) {
               ? "no-store"
               : "public, max-age=120, stale-while-revalidate=600",
           "X-Risk-Display": "geo",
-          "X-Risk-Source": "auto",
+          "X-Risk-Source": modelKind,
           ...(result?.issuedAt
-            ? { "X-Auto-Issued-At": result.issuedAt }
+            ? { "X-Model-Issued-At": result.issuedAt }
             : {}),
         },
       });

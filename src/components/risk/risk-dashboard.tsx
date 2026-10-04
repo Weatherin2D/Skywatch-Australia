@@ -35,11 +35,11 @@ const RISK_MAP_SETTINGS: MapSettingsState = {
   satelliteBasemap: false,
 };
 
-type RiskSource = "bom" | "auto";
+type RiskSource = "bom" | "pulse" | "access";
 
 type RiskCatalog = {
   status: "ok" | "empty";
-  source: RiskSource;
+  source: RiskSource | "auto";
   issuedAt: string | null;
   message?: string;
   outlook?: PublicForecastResponse;
@@ -130,15 +130,22 @@ function AutoRiskBlurbList({
 function readSourceFromUrl(): RiskSource {
   if (typeof window === "undefined") return "bom";
   const sp = new URLSearchParams(window.location.search);
-  return sp.get("source") === "auto" ? "auto" : "bom";
+  const s = (sp.get("source") || "").toLowerCase();
+  if (s === "pulse" || s === "auto") return "pulse";
+  if (s === "access") return "access";
+  return "bom";
 }
 
 function syncSourceToUrl(source: RiskSource) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  if (source === "auto") url.searchParams.set("source", "auto");
-  else url.searchParams.delete("source");
+  if (source === "bom") url.searchParams.delete("source");
+  else url.searchParams.set("source", source);
   window.history.replaceState({}, "", url.toString());
+}
+
+function isModelSource(source: RiskSource): boolean {
+  return source === "pulse" || source === "access";
 }
 
 export function RiskDashboard() {
@@ -237,7 +244,7 @@ export function RiskDashboard() {
   const dayHasRisk = (day: RolledDay | null | undefined) =>
     Boolean(
       day?.legend?.some((item) =>
-        source === "auto" ? item.used && item.order < 100 : item.used,
+        isModelSource(source) ? item.used && item.order < 100 : item.used,
       ),
     );
 
@@ -271,7 +278,9 @@ export function RiskDashboard() {
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
             {source === "bom"
               ? "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon."
-              : "SkyWatch automated thunderstorm outlook from model guidance — categorical risk with L1/L2 hatch overlays."}
+              : source === "access"
+                ? "SkyWatch Access — categorical risk from BoM ACCESS-G model fields (~15 km)."
+                : "SkyWatch Pulse — multi-model convective guidance with daylight heating, LI, and boundary triggers."}
           </p>
         </div>
 
@@ -280,30 +289,27 @@ export function RiskDashboard() {
           role="group"
           aria-label="Risk outlook source"
         >
-          <button
-            type="button"
-            onClick={() => setSourceAndUrl("bom")}
-            className={cn(
-              "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition",
-              source === "bom"
-                ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
-                : "text-white/65 hover:text-white",
-            )}
-          >
-            BoM
-          </button>
-          <button
-            type="button"
-            onClick={() => setSourceAndUrl("auto")}
-            className={cn(
-              "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition",
-              source === "auto"
-                ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
-                : "text-white/65 hover:text-white",
-            )}
-          >
-            Automated
-          </button>
+          {(
+            [
+              { id: "bom" as const, label: "BoM" },
+              { id: "pulse" as const, label: "Pulse" },
+              { id: "access" as const, label: "Access" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setSourceAndUrl(opt.id)}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition",
+                source === opt.id
+                  ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
+                  : "text-white/65 hover:text-white",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -391,7 +397,9 @@ export function RiskDashboard() {
               <div className="flex h-full items-center justify-center text-sm text-white/60">
                 {source === "bom"
                   ? "Loading MetEye thunderstorm forecast…"
-                  : "Building automated risk outlook…"}
+                  : source === "access"
+                    ? "Building Access risk outlook…"
+                    : "Building Pulse risk outlook…"}
               </div>
             ) : error ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
@@ -421,7 +429,9 @@ export function RiskDashboard() {
                       {data.message ??
                         (source === "bom"
                           ? "No thunderstorm areas in the current BoM MetEye forecast."
-                          : "No elevated thunderstorm risk in the automated guidance.")}
+                          : source === "access"
+                            ? "No elevated thunderstorm risk in SkyWatch Access guidance."
+                            : "No elevated thunderstorm risk in SkyWatch Pulse guidance.")}
                     </p>
                   </div>
                 ) : null}
@@ -443,7 +453,9 @@ export function RiskDashboard() {
             {source === "bom"
               ? "Source: BoM MetEye thunderstorm layer (IDZ73094)"
               : catalog?.attribution ??
-                "Source: SkyWatch automated model guidance (Open-Meteo)"}
+                (source === "access"
+                  ? "Source: SkyWatch Access · BoM ACCESS-G via Open-Meteo"
+                  : "Source: SkyWatch Pulse · Open-Meteo multi-model blend")}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",
@@ -463,7 +475,11 @@ export function RiskDashboard() {
               Key
             </p>
             <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-bold text-white">
-              {source === "bom" ? "Thunderstorms" : "Auto risk"}
+              {source === "bom"
+                ? "Thunderstorms"
+                : source === "access"
+                  ? "Access risk"
+                  : "Pulse risk"}
             </h2>
           </div>
           {source === "bom" ? (
@@ -478,9 +494,9 @@ export function RiskDashboard() {
             <>
               <RiskLegend items={autoLegendItems} />
               <p className="text-xs leading-relaxed text-white/50">
-                Categorical colours follow the SkyWatch ladder. L1/L2 hatches
-                overlay supercell-interesting environments — guidance only, not
-                an official warning.
+                {source === "access"
+                  ? "Same SkyWatch ladder as Pulse, driven by BoM ACCESS-G fields when the open feed is live."
+                  : "Categorical colours follow the SkyWatch ladder. L1/L2 hatches overlay supercell-interesting environments — guidance only, not an official warning."}
               </p>
               <AutoRiskBlurbList usedIds={usedCategoryIds} />
             </>
