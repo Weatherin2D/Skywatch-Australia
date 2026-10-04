@@ -3,6 +3,7 @@
  * categorical risk. Values are SPC-style “within ~40 km” guidance odds.
  */
 
+import { australWetSeasonWeight } from "@/lib/weather/auto-risk-climate";
 import {
   chanceBandsFor,
   chancePctToRank,
@@ -73,17 +74,24 @@ export function scoreHazardChances(
   m: DayMetricsLike,
   lat: number,
   risk: { rank: number; hatch: 0 | 1 | 2; composite: number; suppress: number },
+  opts?: { month?: number },
 ): HazardChances {
+  const month = opts?.month ?? new Date().getUTCMonth() + 1;
+  const wetSeason = australWetSeasonWeight(month, lat);
   const cape = Math.max(0, m.cape);
   const shear = clamp01(m.shearKts / 65);
-  const moisture = clamp01((m.dewpoint - 12) / 12);
+  const tropical = lat >= -23.5;
+  const subtrop = lat >= -28 && lat < -23.5;
+  const moisture = clamp01((m.dewpoint - (tropical ? 14 : 12)) / (tropical ? 10 : 12));
   const suppress = clamp01(risk.suppress);
   const synoptic = clamp01(m.liftTrigger);
   const diurnal = clamp01(m.diurnalHeating);
   const thunder = thunderCodeBoost(m.weatherCode);
-  const tropical = lat >= -23.5;
-  const subtrop = lat >= -28 && lat < -23.5;
-  const organised = shear >= 0.35 || synoptic >= 0.4 || thunder >= 0.85;
+  const organised =
+    shear >= 0.35 ||
+    synoptic >= 0.4 ||
+    thunder >= 0.85 ||
+    (tropical && m.showersMm + m.rainMm >= 12 && cape >= 800);
   const convectivePrecip = Math.max(
     m.showersMm,
     m.rainMm * 0.85,
@@ -98,8 +106,26 @@ export function scoreHazardChances(
   if (thunder >= 0.85) tstorm = Math.max(tstorm, 55);
   else if (thunder >= 0.55) tstorm = Math.max(tstorm, 35);
   else if (thunder >= 0.4) tstorm = Math.max(tstorm, 20);
-  if (tropical && cape >= 200 && moisture >= 0.35 && suppress >= 0.35) {
-    tstorm = Math.max(tstorm, 18 + diurnal * 25);
+  // Tropical daylight / monsoon pulse floor — stronger in wet season.
+  if (
+    tropical &&
+    cape >= (wetSeason >= 0.55 ? 120 : 200) &&
+    moisture >= (wetSeason >= 0.55 ? 0.28 : 0.35) &&
+    suppress >= (wetSeason >= 0.55 ? 0.28 : 0.35)
+  ) {
+    tstorm = Math.max(
+      tstorm,
+      14 + wetSeason * 8 + diurnal * (22 + wetSeason * 10),
+    );
+  } else if (
+    subtrop &&
+    wetSeason >= 0.35 &&
+    cape >= 220 &&
+    moisture >= 0.32 &&
+    diurnal >= 0.3 &&
+    suppress >= 0.35
+  ) {
+    tstorm = Math.max(tstorm, 12 + diurnal * 18);
   }
   if (risk.rank <= 0 && thunder < 0.4) tstorm = Math.min(tstorm, 8);
 

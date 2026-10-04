@@ -16,6 +16,7 @@ import {
   autoRiskCategoryBlurbs,
   autoRiskLegendItems,
 } from "@/lib/weather/auto-risk-categories";
+import { australWetSeasonWeight } from "@/lib/weather/auto-risk-climate";
 import {
   hazardChanceToSampleRank,
   hazardPctForProduct,
@@ -31,6 +32,7 @@ import {
   resolveModelRiskProduct,
   type ModelRiskProduct,
 } from "@/lib/weather/auto-risk-products";
+export { australWetSeasonWeight } from "@/lib/weather/auto-risk-climate";
 import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
 import {
   renderAutoRiskPng,
@@ -202,7 +204,7 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "best_match",
     label: "Pulse",
     attribution:
-      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE/LI/CIN, cloud layers, showers, shear, soil/BL, VPD, weather codes, boundaries, daylight heating — plus cap/dry-air/blocked-heating suppressors). Guidance only — not an official warning.",
+      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE/LI/CIN, cloud layers, showers, shear, soil/BL, VPD, weather codes, boundaries, lat/lon/month daylight heating, tropical wet-season pulse — plus cap/dry-air/blocked-heating suppressors). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch Pulse guidance.",
     hourlyFields: [
       ...HOURLY_CORE,
@@ -418,7 +420,9 @@ async function fetchBatch(
     hourly: config.hourlyFields.join(","),
     models: config.openMeteoModels,
     forecast_days: String(FORECAST_DAYS),
-    timezone: "Australia/Sydney",
+    // Per-location civil time so morning/afternoon heating windows match
+    // local sun (Darwin/Perth vs Sydney), not a single national clock.
+    timezone: "auto",
     cell_selection: "nearest",
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
@@ -501,6 +505,76 @@ function hourFromIso(t: string): number | null {
   return Number.isFinite(h) ? h : null;
 }
 
+/** Hour + fraction from an Open-Meteo local ISO timestamp (HH:MM). */
+function hourFracFromIso(t: string): number | null {
+  if (t.length < 16) return hourFromIso(t);
+  const h = Number(t.slice(11, 13));
+  const m = Number(t.slice(14, 16));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hourFromIso(t);
+  return h + m / 60;
+}
+
+function dayOfYearFromKey(dayKey: string): number {
+  const y = Number(dayKey.slice(0, 4));
+  const mo = Number(dayKey.slice(5, 7));
+  const d = Number(dayKey.slice(8, 10));
+  if (![y, mo, d].every(Number.isFinite)) return 180;
+  const utc = Date.UTC(y, mo - 1, d);
+  const start = Date.UTC(y, 0, 0);
+  return Math.max(1, Math.min(366, Math.round((utc - start) / 86_400_000)));
+}
+
+function monthFromKey(dayKey: string): number {
+  const mo = Number(dayKey.slice(5, 7));
+  return Number.isFinite(mo) && mo >= 1 && mo <= 12 ? mo : 1;
+}
+
+/**
+ * Solar declination (rad) for day-of-year — Cooper approximation.
+ * Sets how high the sun can get for a given latitude + month.
+ */
+function solarDeclinationRad(dayOfYear: number): number {
+  return (
+    ((23.45 * Math.PI) / 180) *
+    Math.sin((2 * Math.PI * (284 + dayOfYear)) / 365)
+  );
+}
+
+/**
+ * sin(solar elevation) at lat + local civil/solar hour.
+ * Local timestamps from timezone=auto are close enough to solar time for
+ * heating windows; longitude still shapes the day via the location clock.
+ */
+function solarElevationSin(
+  latDeg: number,
+  dayOfYear: number,
+  localHour: number,
+): number {
+  const lat = (latDeg * Math.PI) / 180;
+  const dec = solarDeclinationRad(dayOfYear);
+  const hourAngle = ((localHour - 12) * 15 * Math.PI) / 180;
+  return (
+    Math.sin(lat) * Math.sin(dec) +
+    Math.cos(lat) * Math.cos(dec) * Math.cos(hourAngle)
+  );
+}
+
+/** Peak clear-sky shortwave proxy (W/m²) for lat + day-of-year near noon. */
+function clearSkyPeakWm2(latDeg: number, dayOfYear: number): number {
+  let peakSin = 0;
+  for (let h = 9.5; h <= 14.5; h += 0.25) {
+    peakSin = Math.max(0, peakSin, solarElevationSin(latDeg, dayOfYear, h));
+  }
+  // ~1000 W/m² at overhead sun after rough atmospheric attenuation.
+  return peakSin * 1000;
+}
+
+type DayMetricContext = {
+  lat: number;
+  lon: number;
+  dayKey: string;
+};
+
 /** Deepest available low-level shear ladder (10 m → 80/100/180 m), else gust proxy. */
 function shearFromHour(
   h: Record<string, unknown[]>,
@@ -536,9 +610,21 @@ function thunderWeatherBoost(code: number): number {
   return 0;
 }
 
-function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
+function metricsForDay(
+  loc: HourlyLoc,
+  idxs: number[],
+  ctx: DayMetricContext,
+): DayMetrics | null {
   const h = loc.hourly;
   if (!h?.time?.length || !idxs.length) return null;
+
+  const lat = ctx.lat;
+  const dayOfYear = dayOfYearFromKey(ctx.dayKey);
+  const month = monthFromKey(ctx.dayKey);
+  const wet = australWetSeasonWeight(month, lat);
+  const tropical = lat >= -23.5;
+  const subtrop = lat >= -28 && lat < -23.5;
+  const clearPeak = Math.max(220, clearSkyPeakWm2(lat, dayOfYear));
 
   let cape = 0;
   let cin = 0;
@@ -583,6 +669,8 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   let afternoonCape = 0;
   let afternoonDew = -20;
   let maxShortwave = 0;
+  let peakSolarSin = 0;
+  let daylightHours = 0;
   let peakIdx = idxs[0]!;
   let n = 0;
 
@@ -611,7 +699,15 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     const blh = num(h.boundary_layer_height?.[i]);
     const fz = num(h.freezing_level_height?.[i]);
     const sun = num(h.sunshine_duration?.[i]) ?? 0;
-    const hour = hourFromIso(String(h.time[i] ?? ""));
+    const iso = String(h.time[i] ?? "");
+    const hour = hourFromIso(iso);
+    const hourFrac = hourFracFromIso(iso);
+    const elevSin =
+      hourFrac != null
+        ? Math.max(0, solarElevationSin(lat, dayOfYear, hourFrac))
+        : 0;
+    peakSolarSin = Math.max(peakSolarSin, elevSin);
+    if (elevSin > 0.05) daylightHours += 1;
 
     const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
@@ -667,6 +763,8 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
         freezingLevelM <= 0 ? fz : Math.min(freezingLevelM, fz);
     }
 
+    // Local civil morning / afternoon (timezone=auto). Heating windows follow
+    // sun-up at the sample lon, not Sydney wall-clock.
     if (hour != null && t != null) {
       if (hour >= 5 && hour <= 10) {
         morningMinT = Math.min(morningMinT, t);
@@ -725,29 +823,54 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   const pressureRiseHpa = afternoonPmsl - morningPmsl;
   const dewDepression = Math.max(0, temp - dew);
 
-  // Daylight heating pulse: insolation + soil heat + BL growth + moist CAPE,
-  // reduced when morning cloud / early rain blocks the heating cycle.
+  // Daylight heating: observed insolation + ΔT normalised to what this
+  // lat/month can deliver (solar geometry), then cloud/early-rain blocks.
+  // Tropics in wet season still heat under thin monsoon cloud; mid-lat
+  // winter days with a low sun stay suppressed.
   const deltaT =
     Number.isFinite(morningMinT) && Number.isFinite(afternoonMaxT)
       ? afternoonMaxT - morningMinT
       : 0;
-  const moistPulse = clamp01(((afternoonDew > -19 ? afternoonDew : dew) - 12) / 12);
-  const soilHeat = clamp01((soilTemp - 28) / 18);
-  const blGrowth = clamp01(blHeight / 2200);
+  const moistPulse = clamp01(
+    ((afternoonDew > -19 ? afternoonDew : dew) - (tropical ? 16 : 12)) /
+      (tropical ? 10 : 12),
+  );
+  // Soil baseline is warmer in the tropics — avoid saturating every Top End day.
+  const soilBase = tropical ? 24 + wet * 2 : subtrop ? 26 : 28;
+  const soilHeat = clamp01((soilTemp - soilBase) / 18);
+  const blGrowth = clamp01(blHeight / (tropical ? 1800 : 2200));
   const sunFrac = clamp01(sunshineSec / 3600);
-  const cloudBlock = clamp01(morningCloud / 100);
-  const earlyRainBlock = clamp01(morningPrecipMm / 8);
+  // Monsoon mornings are often cloudy — lighter block when wet-season tropics.
+  const cloudBlock =
+    clamp01(morningCloud / 100) * (tropical && wet >= 0.55 ? 0.55 : 1);
+  const earlyRainBlock =
+    clamp01(morningPrecipMm / (tropical && wet >= 0.55 ? 12 : 8)) *
+    (tropical && wet >= 0.55 ? 0.7 : 1);
+  const solarGeometry = clamp01(peakSolarSin / 0.82);
+  const dayLengthNorm = clamp01(daylightHours / (tropical ? 11 : 9.5));
+  // Expected diurnal range: humid tropics smaller ΔT; dry inland / midlat larger.
+  const expectedDeltaT =
+    (tropical ? 5.5 + (1 - wet) * 3.5 : subtrop ? 7.5 : 9) *
+    (0.65 + 0.35 * solarGeometry);
+  const deltaTEff = clamp01(deltaT / Math.max(3.5, expectedDeltaT));
+  const insolationEff = clamp01(maxShortwave / Math.max(200, clearPeak * 0.88));
+  const directEff = clamp01(
+    directRadiation / Math.max(160, clearPeak * 0.72),
+  );
   const diurnalHeating = clamp01(
-    (clamp01(deltaT / 10) * 0.2 +
-      clamp01(maxShortwave / 650) * 0.22 +
-      clamp01(directRadiation / 550) * 0.12 +
-      sunFrac * 0.08 +
-      soilHeat * 0.1 +
-      blGrowth * 0.08 +
-      clamp01(afternoonCape / 900) * 0.12 +
-      moistPulse * 0.08) *
-      (1 - cloudBlock * 0.45) *
-      (1 - earlyRainBlock * 0.35),
+    (deltaTEff * 0.16 +
+      insolationEff * 0.18 +
+      directEff * 0.12 +
+      solarGeometry * 0.14 +
+      dayLengthNorm * 0.06 +
+      sunFrac * 0.06 +
+      soilHeat * 0.08 +
+      blGrowth * 0.07 +
+      clamp01(afternoonCape / (tropical ? 700 : 900)) * 0.09 +
+      moistPulse * 0.04) *
+      (0.5 + 0.5 * solarGeometry) *
+      (1 - cloudBlock * 0.4) *
+      (1 - earlyRainBlock * 0.3),
   );
 
   return {
@@ -899,9 +1022,11 @@ function stormSuppression(
     subtrop: boolean;
     synopticTrigger: number;
     thunderCode: number;
+    wetSeason: number;
   },
 ): number {
-  const { tropical, subtrop, synopticTrigger, thunderCode } = opts;
+  const { tropical, subtrop, synopticTrigger, thunderCode, wetSeason } = opts;
+  const monsoon = tropical && wetSeason >= 0.55;
   // Cap at peak CAPE — the inhibition that must actually be broken.
   const peakCin = Math.min(0, m.peakCin);
   const cinSupp =
@@ -919,21 +1044,31 @@ function stormSuppression(
 
   // Dry boundary layer / large dewpoint depression / high VPD.
   const dryVpd = clamp01((m.vpdMax - 1.6) / 2.4);
-  const dryDep = clamp01((m.dewDepression - 10) / 16);
-  const dryRh = clamp01((42 - m.afternoonRhMin) / 30);
+  const dryDep = clamp01((m.dewDepression - (tropical ? 12 : 10)) / 16);
+  const dryRh = clamp01(((tropical ? 38 : 42) - m.afternoonRhMin) / 30);
   const drySoil =
     m.soilMoisture > 0 ? clamp01((0.06 - m.soilMoisture) / 0.06) : 0;
   const drySupp = 1 - clamp01(dryVpd * 0.4 + dryDep * 0.35 + dryRh * 0.2 + drySoil * 0.05) * 0.78;
 
   // Morning cloud + early rain kill the diurnal heating cycle (pulse days).
-  const cloudSupp = 1 - clamp01(m.morningCloud / 100) * 0.45;
-  const earlyRainSupp = 1 - clamp01(m.morningPrecipMm / 10) * 0.5;
+  // Wet-season tropics: monsoon cloud/showers are normal — don't erase the day.
+  const cloudSupp =
+    1 - clamp01(m.morningCloud / 100) * (monsoon ? 0.22 : tropical ? 0.32 : 0.45);
+  const earlyRainSupp =
+    1 -
+    clamp01(m.morningPrecipMm / (monsoon ? 14 : 10)) *
+      (monsoon ? 0.28 : tropical ? 0.38 : 0.5);
   // Weak peak insolation with thick morning cover → little destabilisation.
   const insolationSupp =
-    m.directRadiation < 180 && m.morningCloud >= 60
-      ? 0.55
-      : m.directRadiation < 280 && m.morningCloud >= 75
-        ? 0.7
+    m.directRadiation < (monsoon ? 120 : 180) && m.morningCloud >= (monsoon ? 80 : 60)
+      ? monsoon
+        ? 0.72
+        : 0.55
+      : m.directRadiation < (monsoon ? 200 : 280) &&
+          m.morningCloud >= (monsoon ? 88 : 75)
+        ? monsoon
+          ? 0.85
+          : 0.7
         : 1;
 
   // Rising MSLP through the day ≈ subsidence / ridge building.
@@ -966,16 +1101,19 @@ function stormSuppression(
 
   // No initiation pathway: CAPE present but no heat, no boundary, no model thunder.
   const diurnal = clamp01(m.diurnalHeating);
+  const noTriggerDiurnal = monsoon ? 0.16 : tropical ? 0.18 : 0.22;
   const noTrigger =
     m.cape >= 500 &&
     synopticTrigger < 0.22 &&
-    diurnal < 0.22 &&
-    thunderCode < 0.4
+    diurnal < noTriggerDiurnal &&
+    thunderCode < 0.4 &&
+    !(monsoon && m.dewpoint >= 20 && m.cape >= 400)
       ? 0.4
       : m.cape >= 300 &&
           synopticTrigger < 0.15 &&
-          diurnal < 0.15 &&
-          thunderCode < 0.3
+          diurnal < (monsoon ? 0.1 : 0.15) &&
+          thunderCode < 0.3 &&
+          !(tropical && m.dewpoint >= 18 && diurnal >= 0.12)
         ? 0.55
         : 1;
 
@@ -984,7 +1122,7 @@ function stormSuppression(
     m.cloudMid >= 70 &&
     m.cloudHigh >= 70 &&
     m.cloudLow < 25 &&
-    m.dewpoint < 10 &&
+    m.dewpoint < (tropical ? 14 : 10) &&
     thunderCode < 0.4
       ? 0.6
       : 1;
@@ -1008,9 +1146,15 @@ function stormSuppression(
   } else if (synopticTrigger >= 0.4 || thunderCode >= 0.55) {
     factor = Math.max(factor, 0.4);
   }
+  // Wet tropical moisture + any daytime heating: keep a usable suppress floor.
+  if (monsoon && m.dewpoint >= 20 && diurnal >= 0.18) {
+    factor = Math.max(factor, 0.42);
+  } else if (tropical && m.dewpoint >= 18 && diurnal >= 0.22) {
+    factor = Math.max(factor, 0.34);
+  }
 
   // Tropics: dry-air / CIN brakes a bit less absolute (everyday moisture).
-  if (tropical) factor = Math.max(factor, 0.28);
+  if (tropical) factor = Math.max(factor, monsoon ? 0.34 : 0.28);
   else if (subtrop) factor = Math.max(factor, 0.22);
 
   return clamp01(Math.max(0.12, Math.min(1, factor)));
@@ -1026,14 +1170,23 @@ function stormSuppression(
 export function scoreEnvironment(
   m: DayMetrics,
   lat = -25,
+  opts?: { month?: number; lon?: number },
 ): {
   rank: number;
   hatch: 0 | 1 | 2;
   composite: number;
   suppress: number;
 } {
+  const month = opts?.month ?? new Date().getUTCMonth() + 1;
+  const lon = opts?.lon ?? 134;
+  const wetSeason = australWetSeasonWeight(month, lat);
   const cape = Math.max(0, m.cape);
-  const dewMoisture = clamp01((m.dewpoint - 12) / 12);
+  const tropical = lat >= -23.5;
+  const subtrop = lat >= -28 && lat < -23.5;
+  // Kimberley → Top End → Cape York / Coral Sea coast — classic monsoon pulse belt.
+  const northCoast = tropical && lat >= -18 && lon >= 120 && lon <= 152;
+  const dewFloor = tropical ? 14 : 12;
+  const dewMoisture = clamp01((m.dewpoint - dewFloor) / (tropical ? 10 : 12));
   const rhBoost = clamp01((m.rh - 45) / 45);
   // Low VPD = moist boundary layer (kPa). Typical storm days < ~1.2.
   const vpdMoisture = clamp01((2.2 - m.vpdMin) / 2.0);
@@ -1077,23 +1230,27 @@ export function scoreEnvironment(
     clamp01(convectivePrecip / 14) * 0.28 +
     thunderCode * 0.18;
 
-  const tropical = lat >= -23.5;
-  const subtrop = lat >= -28 && lat < -23.5;
   const diurnal = clamp01(m.diurnalHeating);
   // Tropics often run LI +2…+6 with still-active afternoon CAPE — don't zero them out.
   const liSuppEff =
-    tropical && cape >= 250 ? Math.max(liSupp, 0.55) : liSupp;
-  // Daylight heating is a valid trigger — especially tropics/subtropics.
-  const heatTrigger =
-    diurnal *
-    (tropical ? 1.25 : subtrop ? 1.05 : 0.75) *
-    clamp01(0.5 + moisture * 0.5);
+    tropical && cape >= 200
+      ? Math.max(liSupp, wetSeason >= 0.55 ? 0.62 : 0.55)
+      : liSupp;
+  // Daylight heating is a valid trigger — especially wet-season tropics/subtropics.
+  const heatScale =
+    (tropical
+      ? 1.15 + 0.3 * wetSeason + (northCoast ? 0.08 : 0)
+      : subtrop
+        ? 1.0 + 0.15 * wetSeason
+        : 0.75) * clamp01(0.45 + moisture * 0.55);
+  const heatTrigger = diurnal * heatScale;
   const synopticTrigger = clamp01(m.liftTrigger);
   const suppress = stormSuppression(m, {
     tropical,
     subtrop,
     synopticTrigger,
     thunderCode,
+    wetSeason,
   });
   const trigger = clamp01(
     Math.max(synopticTrigger, heatTrigger * 0.95, thunderCode * 0.7) * suppress,
@@ -1101,19 +1258,34 @@ export function scoreEnvironment(
   const lift = clamp01(precipLift * 0.42 + trigger * 0.58);
 
   // Ordinary pulse cells: moist afternoon heating. Tropical LI can sit mildly +.
-  // Suppressors (cap, dry air, blocked sun) can veto the pulse path entirely.
-  const pulseLiMax = tropical ? 6.5 : subtrop ? 5 : 3.5;
+  // Wet season: lower diurnal/CAPE gates. Dry season: need stronger solar heating.
+  const pulseLiMax = tropical ? 7 : subtrop ? 5.5 : 3.5;
+  const pulseDiurnalMin = tropical
+    ? 0.2 + (1 - wetSeason) * 0.14
+    : subtrop
+      ? 0.3 + (1 - wetSeason) * 0.08
+      : 0.38;
+  const pulseMoistureMin = tropical
+    ? 0.22 + (1 - wetSeason) * 0.1
+    : subtrop
+      ? 0.32
+      : 0.38;
+  const pulseCapeMin = tropical
+    ? 70 + (1 - wetSeason) * 110
+    : subtrop
+      ? 160
+      : 220;
   const pulse =
-    suppress >= 0.45 &&
-    diurnal >= (tropical ? 0.28 : 0.38) &&
-    moisture >= (tropical ? 0.28 : 0.38) &&
-    cape >= (tropical ? 120 : 220) &&
+    suppress >= (tropical && wetSeason >= 0.55 ? 0.32 : 0.45) &&
+    diurnal >= pulseDiurnalMin &&
+    moisture >= pulseMoistureMin &&
+    cape >= pulseCapeMin &&
     li <= pulseLiMax &&
-    cinBrake >= (tropical ? 0.35 : 0.5) &&
-    liSuppEff >= (tropical ? 0.45 : 0.7) &&
-    m.peakCin > -60 &&
-    m.dewDepression < 18 &&
-    m.morningCloud < 85;
+    cinBrake >= (tropical ? 0.3 : 0.5) &&
+    liSuppEff >= (tropical ? 0.4 : 0.7) &&
+    m.peakCin > (tropical ? -75 : -60) &&
+    m.dewDepression < (tropical ? 20 : 18) &&
+    m.morningCloud < (tropical && wetSeason >= 0.55 ? 92 : 85);
 
   // Pulse storms don't need deep shear in the composite.
   const shearTerm = pulse ? shear * 0.05 + 0.1 : shear * 0.15;
@@ -1125,11 +1297,16 @@ export function scoreEnvironment(
       shearTerm +
       lift * 0.3) *
     suppress *
-    (pulse && (tropical || subtrop) ? 1.12 : 1) *
+    (pulse && (tropical || subtrop) ? 1.1 + 0.08 * wetSeason : 1) *
     (thunderCode >= 0.85 ? 1.08 : 1);
 
   // Organised severe tiers need shear or a real boundary — not lone CAPE spikes.
-  const organised = shear >= 0.35 || synopticTrigger >= 0.4 || thunderCode >= 0.85;
+  // Tropical organised proxy: strong convective precip / thunder codes count too.
+  const organised =
+    shear >= 0.35 ||
+    synopticTrigger >= 0.4 ||
+    thunderCode >= 0.85 ||
+    (tropical && convectivePrecip >= 12 && cape >= 800 && moisture >= 0.45);
 
   // Every tier is gated hard — no free climbs from bumps.
   // Higher ranks still need organised shear/synoptic signals; pulse fills 1–3.
@@ -1207,23 +1384,23 @@ export function scoreEnvironment(
     if (
       rank < 3 &&
       (tropical || subtrop) &&
-      cape >= 450 &&
-      moisture >= 0.4 &&
-      li <= 5 &&
-      diurnal >= 0.32
+      cape >= (tropical ? 320 - wetSeason * 80 : 450) &&
+      moisture >= (tropical ? 0.34 : 0.4) &&
+      li <= (tropical ? 6 : 5) &&
+      diurnal >= (tropical ? 0.26 - wetSeason * 0.04 : 0.32)
     ) {
       rank = 3; // Low
     } else if (
       rank < 2 &&
-      cape >= (tropical ? 160 : 280) &&
-      moisture >= (tropical ? 0.3 : 0.4) &&
+      cape >= (tropical ? 110 + (1 - wetSeason) * 80 : 280) &&
+      moisture >= (tropical ? 0.26 : 0.4) &&
       (tropical || subtrop || diurnal >= 0.5)
     ) {
       rank = 2; // T-Storm
     } else if (
       rank < 1 &&
-      cape >= (tropical ? 80 : 140) &&
-      moisture >= (tropical ? 0.22 : 0.32)
+      cape >= (tropical ? 60 + (1 - wetSeason) * 50 : 140) &&
+      moisture >= (tropical ? 0.18 : 0.32)
     ) {
       rank = 1; // Low T-Storm
     }
@@ -1234,28 +1411,47 @@ export function scoreEnvironment(
     rank = 3;
   }
 
-  // Broad tropical floor: moist columns with any daytime heating / showers —
-  // skipped when suppressors say the column won't fire.
+  // Broad tropical floor: moist columns with daytime heating / showers.
+  // Wet season: easier floor so Top End / Cape York aren't blanked by suppressors.
+  // Dry season: still allow heat-burst storms when solar heating + CAPE align.
+  const floor1Diurnal = tropical ? 0.14 + (1 - wetSeason) * 0.1 : 0.2;
+  const floor2Diurnal = tropical ? 0.18 + (1 - wetSeason) * 0.12 : 0.25;
   if (
     tropical &&
-    suppress >= 0.35 &&
+    suppress >= (wetSeason >= 0.55 ? 0.28 : 0.35) &&
     rank < 1 &&
-    moisture >= 0.3 &&
-    cape >= 90 &&
-    (diurnal >= 0.2 || m.precipProb >= 30 || convectivePrecip >= 1)
+    moisture >= (wetSeason >= 0.55 ? 0.24 : 0.3) &&
+    cape >= (wetSeason >= 0.55 ? 60 : 90) &&
+    (diurnal >= floor1Diurnal ||
+      m.precipProb >= (wetSeason >= 0.55 ? 22 : 30) ||
+      convectivePrecip >= (wetSeason >= 0.55 ? 0.5 : 1) ||
+      thunderCode >= 0.3 ||
+      (northCoast && wetSeason >= 0.55 && moisture >= 0.3 && cape >= 80))
   ) {
     rank = 1;
   }
   if (
     tropical &&
-    suppress >= 0.4 &&
+    suppress >= (wetSeason >= 0.55 ? 0.32 : 0.4) &&
     rank < 2 &&
-    moisture >= 0.4 &&
-    cape >= 200 &&
-    diurnal >= 0.25 &&
-    li <= 6.5
+    moisture >= (wetSeason >= 0.55 ? 0.32 : 0.4) &&
+    cape >= (wetSeason >= 0.55 ? 140 : 200) &&
+    diurnal >= floor2Diurnal &&
+    li <= 7
   ) {
     rank = 2;
+  }
+  // Subtropical summer corridor (SEQ / northern NSW) — light pulse floor.
+  if (
+    subtrop &&
+    wetSeason >= 0.35 &&
+    suppress >= 0.35 &&
+    rank < 1 &&
+    moisture >= 0.32 &&
+    cape >= 140 &&
+    diurnal >= 0.28
+  ) {
+    rank = 1;
   }
 
   // Hard vetoes: extreme dry air / unbroken cap with no model thunder.
@@ -1263,7 +1459,14 @@ export function scoreEnvironment(
     thunderCode < 0.4 &&
     ((m.peakCin <= -120 && synopticTrigger < 0.5) ||
       (m.vpdMax >= 4.2 && m.dewDepression >= 20 && moisture < 0.25) ||
-      (m.liftedIndex >= 8 && !tropical && cape < 1200))
+      (m.liftedIndex >= 8 && !tropical && cape < 1200) ||
+      // Dry-season tropics with no moisture and no heating stay clear.
+      (tropical &&
+        wetSeason < 0.25 &&
+        moisture < 0.2 &&
+        diurnal < 0.2 &&
+        cape < 250 &&
+        synopticTrigger < 0.3))
   ) {
     rank = 0;
   } else if (suppress < 0.2 && thunderCode < 0.55 && synopticTrigger < 0.45) {
@@ -1434,7 +1637,11 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
           : times
               .map((t, i) => (t.startsWith(dayKey) ? i : -1))
               .filter((i) => i >= 0);
-      const m = metricsForDay(row.loc, idxs2);
+      const m = metricsForDay(row.loc, idxs2, {
+        lat: row.lat,
+        lon: row.lon,
+        dayKey,
+      });
       if (!m) continue;
       siteMetrics.push({ lat: row.lat, lon: row.lon, m });
     }
@@ -1448,10 +1655,14 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
       rain: [],
       tornado: [],
     };
+    const month = monthFromKey(dayKey);
 
     for (const site of siteMetrics) {
-      const scored = scoreEnvironment(site.m, site.lat);
-      const chances = scoreHazardChances(site.m, site.lat, scored);
+      const scored = scoreEnvironment(site.m, site.lat, {
+        month,
+        lon: site.lon,
+      });
+      const chances = scoreHazardChances(site.m, site.lat, scored, { month });
 
       if (scored.rank > 0 || scored.hatch > 0) {
         pointsByProduct.risk.push({
