@@ -30,14 +30,17 @@ import {
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
 const EMPTY_CACHE_MS = 90_000;
-const BATCH = 45;
-const BATCH_CONCURRENCY = 2;
+/** Open-Meteo multi-location batches — keep under Vercel 60s budget. */
+const BATCH = 80;
+const BATCH_CONCURRENCY = 4;
+/** Abort remaining waves so the handler can return before the platform 504s. */
+const FETCH_BUDGET_MS = 45_000;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
-/** Dense national fill (~0.7° / ~75 km). Towns kept as anchors. */
-const GRID_STEP_DEG = 0.7;
-const MIN_FILL_KM = 55;
+/** National fill (~1.2° / ~130 km). Towns kept as anchors. Target ~450–550 sites. */
+const GRID_STEP_DEG = 1.2;
+const MIN_FILL_KM = 100;
 /** Drop ocean/fill points farther than this from any known AU site. */
-const NEAR_LAND_KM = 260;
+const NEAR_LAND_KM = 220;
 
 type HourlyLoc = {
   latitude?: number;
@@ -171,8 +174,8 @@ function approxKm(
 }
 
 /**
- * Dense national sample grid: all BoM towns plus a regular fill over land.
- * Target ~400–550 points for sharper automatic risk maps.
+ * National sample grid: all BoM towns plus a regular fill over land.
+ * Kept near ~450–550 points so cold Open-Meteo fetches stay under Vercel’s 60s limit.
  */
 function buildSampleSites(): BomRiskSite[] {
   const sites: BomRiskSite[] = BOM_RISK_SITES.map((s) => ({ ...s }));
@@ -289,13 +292,13 @@ async function fetchBatch(
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (attempt > 0) await sleep(Math.min(8000, 700 * 2 ** attempt));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(Math.min(2500, 400 * 2 ** attempt));
     try {
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(18_000),
       });
       if (res.status === 429) {
         lastErr = new Error("Open-Meteo 429");
@@ -802,7 +805,14 @@ async function loadAllSites(
     });
   }
 
+  const started = Date.now();
   for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
+    if (Date.now() - started > FETCH_BUDGET_MS) {
+      console.warn(
+        `[${config.kind}-risk] fetch budget hit after ${out.length} sites (${i}/${batches.length} batches)`,
+      );
+      break;
+    }
     const wave = batches.slice(i, i + BATCH_CONCURRENCY);
     const results = await Promise.all(
       wave.map(async (b) => {
@@ -821,7 +831,7 @@ async function loadAllSites(
         out.push({ lat: b.lats[j]!, lon: b.lons[j]!, loc });
       }
     }
-    if (i + BATCH_CONCURRENCY < batches.length) await sleep(280);
+    if (i + BATCH_CONCURRENCY < batches.length) await sleep(80);
   }
   return out;
 }
