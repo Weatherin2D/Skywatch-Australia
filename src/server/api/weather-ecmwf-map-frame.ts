@@ -34,20 +34,27 @@ export async function GET(req: NextRequest) {
       diffModel,
     });
     const png = result.empty ? EMPTY_PNG : result.png;
+    // HTTP headers must be ByteString (Latin-1); strip non-ASCII (e.g. Δ, °).
+    const headerSafe = (s: string) =>
+      s.replace(/[^\x20-\x7E]/g, (ch) => {
+        if (ch === "°") return "deg";
+        if (ch === "Δ" || ch === "∆") return "d";
+        return "";
+      });
     return new NextResponse(new Uint8Array(png), {
       headers: {
         "Content-Type": "image/png",
         "Cache-Control": result.empty
           ? "no-store"
           : "public, max-age=90, stale-while-revalidate=300",
-        "X-Ecmwf-Product": result.productId,
-        "X-Ecmwf-Time": result.time ?? "",
-        "X-Ecmwf-Units": result.units,
+        "X-Ecmwf-Product": headerSafe(result.productId),
+        "X-Ecmwf-Time": headerSafe(result.time ?? ""),
+        "X-Ecmwf-Units": headerSafe(result.units),
         "X-Ecmwf-Min": result.min == null ? "" : String(result.min),
         "X-Ecmwf-Max": result.max == null ? "" : String(result.max),
         "X-Ecmwf-Empty": result.empty ? "1" : "0",
-        "X-Ecmwf-Model": model ?? "ecmwf",
-        "X-Ecmwf-Diff": diffModel ?? "",
+        "X-Ecmwf-Model": headerSafe(model ?? "ecmwf"),
+        "X-Ecmwf-Diff": headerSafe(diffModel ?? ""),
       },
     });
   } catch (err) {
