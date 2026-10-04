@@ -295,17 +295,19 @@ function liftParcel(
     .map(([p, t]) => ({ p, t }))
     .sort((a, b) => b.p - a.p);
 
-  // CAPE / CIN / LFC / EL via virtual-temp approx (use T)
+  // CAPE / CIN / LFC / EL via buoyancy ≈ g (Tp − Te) / Te
   let cape = 0;
   let cin = 0;
   let lfc: number | null = null;
   let el: number | null = null;
-  let belowLfc = true;
-  let buoyant = false;
+  let foundLfc = false;
+  let foundEl = false;
 
   for (let i = 0; i < path.length - 1; i++) {
     const a = path[i]!;
     const b = path[i + 1]!;
+    // Only integrate above LCL; stop deep in the stratosphere.
+    if (a.p > pLcl + 0.5) continue;
     if (a.p < 100) break;
     const envA = interpTemp(levels, a.p);
     const envB = interpTemp(levels, b.p);
@@ -317,37 +319,32 @@ function liftParcel(
     if (zA == null || zB == null || zB <= zA) continue;
     const dz = zB - zA;
     const meanBuoy = 0.5 * (buoyA + buoyB);
-    // Convert °C buoyancy to m/s² ≈ g * (Tp-Te)/Te
-    const te = envA + K0;
-    const accel = (G * meanBuoy) / te;
-    const work = accel * dz;
+    const te = Math.max(envA + K0, 200);
+    const work = ((G * meanBuoy) / te) * dz;
 
-    if (a.p <= pLcl) {
-      if (belowLfc) {
-        if (meanBuoy > 0 && buoyA <= 0 && buoyB > 0) {
-          lfc = b.p;
-          belowLfc = false;
-          buoyant = true;
-        } else if (meanBuoy > 0 && buoyA > 0) {
-          lfc = lfc ?? a.p;
-          belowLfc = false;
-          buoyant = true;
-        }
-        if (belowLfc && work < 0) cin += -work;
-        else if (!belowLfc && work > 0) cape += work;
-      } else {
-        if (work > 0) {
-          cape += work;
-          buoyant = true;
-        } else if (buoyant && meanBuoy < 0 && el == null) {
-          el = a.p;
-        }
+    if (!foundLfc) {
+      if (meanBuoy > 0 && (buoyA <= 0 || buoyB > 0)) {
+        // Crossing into positive buoyancy → LFC
+        if (buoyA <= 0 && buoyB > 0) lfc = b.p;
+        else lfc = a.p;
+        foundLfc = true;
+        if (work > 0) cape += work;
+      } else if (work < 0) {
+        // CIN only from LCL to LFC (cap runaway on deeply stable profiles)
+        cin += -work;
+      }
+    } else if (!foundEl) {
+      if (work > 0) cape += work;
+      else if (meanBuoy < 0) {
+        el = a.p;
+        foundEl = true;
       }
     }
   }
 
   row.cape = Math.round(Math.max(0, cape));
-  row.cin = Math.round(Math.max(0, cin));
+  // No LFC ⇒ no free convection; leave CIN blank rather than whole-column integral.
+  row.cin = foundLfc ? Math.round(Math.max(0, Math.min(cin, 1000))) : null;
   row.lfcHpa = lfc != null ? Math.round(lfc * 10) / 10 : null;
   row.elHpa = el != null ? Math.round(el * 10) / 10 : null;
 
