@@ -439,7 +439,7 @@ export function EcmwfModelsDashboard() {
     return () => ac.abort();
   }, [probe, place, productId, modelId]);
 
-  // Mini Skew-T when enabled + probe set
+  // Mini Skew-T when enabled + probe set (IFS preferred; fall back to pulse).
   useEffect(() => {
     if (!showSkewt || !probe || transectMode) {
       if (!showSkewt) {
@@ -451,34 +451,47 @@ export function EcmwfModelsDashboard() {
     const ac = new AbortController();
     setSoundingLoading(true);
     setSoundingError(null);
-    const qs = new URLSearchParams({
-      mode: "model",
-      model: mapModelToSounding(modelId),
-      lat: String(probe.lat),
-      lon: String(probe.lng),
-    });
-    if (activeTime) qs.set("time", activeTime);
-    void fetch(`/api/weather/sounding?${qs}`, {
-      cache: "no-store",
-      signal: ac.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Sounding unavailable (${res.status})`);
-        return (await res.json()) as SoundingPayload;
-      })
-      .then((json) => {
+    const preferred = mapModelToSounding(modelId);
+    const modelsToTry =
+      preferred === "pulse" ? (["pulse"] as const) : ([preferred, "pulse"] as const);
+
+    void (async () => {
+      let lastErr: string | null = null;
+      for (const model of modelsToTry) {
         if (ac.signal.aborted) return;
-        setSounding(json);
-        setSoundingLoading(false);
-      })
-      .catch((err) => {
-        if (ac.signal.aborted) return;
-        setSounding(null);
-        setSoundingLoading(false);
-        setSoundingError(
-          err instanceof Error ? err.message : "Sounding unavailable",
-        );
-      });
+        try {
+          const qs = new URLSearchParams({
+            mode: "model",
+            model,
+            lat: String(probe.lat),
+            lon: String(probe.lng),
+          });
+          if (activeTime) qs.set("time", activeTime);
+          const res = await fetch(`/api/weather/sounding?${qs}`, {
+            cache: "no-store",
+            signal: ac.signal,
+          });
+          if (!res.ok) throw new Error(`Sounding unavailable (${res.status})`);
+          const json = (await res.json()) as SoundingPayload;
+          if (ac.signal.aborted) return;
+          if (json.status === "ok" && json.levels.length) {
+            setSounding(json);
+            setSoundingLoading(false);
+            setSoundingError(null);
+            return;
+          }
+          lastErr = json.message ?? "No sounding levels";
+        } catch (err) {
+          if (ac.signal.aborted) return;
+          lastErr = err instanceof Error ? err.message : "Sounding unavailable";
+        }
+      }
+      if (ac.signal.aborted) return;
+      setSounding(null);
+      setSoundingLoading(false);
+      setSoundingError(lastErr);
+    })();
+
     return () => ac.abort();
   }, [showSkewt, probe, modelId, activeTime, transectMode]);
 
