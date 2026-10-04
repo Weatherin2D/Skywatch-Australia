@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { LocationSearch } from "@/components/forecast/location-search";
 import { HodographChart } from "@/components/soundings/hodograph";
 import { SkewTChart } from "@/components/soundings/skew-t";
+import { SoundingLocationMapDynamic } from "@/components/soundings/sounding-location-map-dynamic";
 import { SoundingParamsTables } from "@/components/soundings/sounding-params";
 import { SiteShell } from "@/components/site/site-shell";
 import { useSavedPlace } from "@/hooks/use-saved-place";
@@ -279,6 +280,12 @@ export function SoundingsDashboard() {
                   : station
                 : place.label)}
           </span>
+          {mode === "model" ? (
+            <span>
+              <span className="text-white/35">Point · </span>
+              {place.lat.toFixed(2)}°, {place.lon.toFixed(2)}°
+            </span>
+          ) : null}
           <span>
             <span className="text-white/35">Valid · </span>
             {formatValid(data?.validTime ?? null)}
@@ -293,6 +300,16 @@ export function SoundingsDashboard() {
             <span className="text-amber-300/90">{error}</span>
           ) : null}
         </div>
+
+        {mode === "model" ? (
+          <SoundingLocationMapDynamic
+            place={place}
+            onPick={(next) => {
+              setPlace(next);
+              setMode("model");
+            }}
+          />
+        ) : null}
 
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)_minmax(240px,0.7fr)]">
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#070b16] shadow-[0_0_0_1px_rgba(34,211,238,0.06)]">
