@@ -39,8 +39,8 @@ const BATCH = 50;
 const BATCH_CONCURRENCY = 3;
 /** Abort remaining waves so the handler can return before the platform 504s. */
 const FETCH_BUDGET_MS = 45_000;
-/** Below this fraction of SAMPLE_SITES, treat the outlook as incomplete (short TTL). */
-const MIN_SITE_COVERAGE = 0.4;
+/** Below this fraction of SAMPLE_SITES, don't trust a clear/no-risk outlook. */
+const MIN_SITE_COVERAGE = 0.3;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
 /** National fill (~1.2° / ~130 km). Towns kept as anchors. Target ~450–550 sites. */
 const GRID_STEP_DEG = 1.2;
@@ -1150,11 +1150,14 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
   const feedDown = rows.length === 0;
   const coverage = rows.length / Math.max(1, SAMPLE_SITES.length);
   const incomplete = !feedDown && coverage < MIN_SITE_COVERAGE;
+  // Partial coverage with real risk still ships a map. Only suppress a
+  // “no risk” result when the fetch was too thin to trust.
+  const suppressClear = incomplete && !anyRisk;
   const outlook: PublicForecastResponse = {
-    status: anyRisk && !incomplete ? "ok" : "empty",
+    status: anyRisk ? "ok" : "empty",
     issuedAt: new Date().toISOString(),
     mapView: { center: [-25.5, 134.5], zoom: 4 },
-    days: incomplete
+    days: suppressClear
       ? rolled.map((d) => ({
           ...d,
           // Empty used-sets — default autoRiskLegendItems() marks everything used.
@@ -1165,21 +1168,25 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
         }))
       : rolled,
     defaultDay: 1,
-    message:
-      incomplete
+    message: anyRisk
+      ? undefined
+      : suppressClear
         ? `SkyWatch ${config.label} guidance is still refreshing — try again in a moment.`
-        : anyRisk
-          ? undefined
-          : feedDown
-            ? config.emptyMessage
-            : `No elevated thunderstorm risk in SkyWatch ${config.label} guidance.`,
+        : feedDown
+          ? config.emptyMessage
+          : `No elevated thunderstorm risk in SkyWatch ${config.label} guidance.`,
   };
 
   console.info(
     `[${config.kind}-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites (coverage=${coverage.toFixed(2)}), days=${FORECAST_DAYS}, status=${outlook.status}`,
   );
 
-  return { at: Date.now(), outlook, dayPoints: incomplete ? {} : dayPoints, dayPng };
+  return {
+    at: Date.now(),
+    outlook,
+    dayPoints: suppressClear ? {} : dayPoints,
+    dayPng,
+  };
 }
 
 function cacheTtlMs(entry: CacheEntry): number {
