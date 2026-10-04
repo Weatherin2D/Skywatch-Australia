@@ -26,6 +26,7 @@ import {
   aestPartsToUnix,
   unixToAestParts,
 } from "@/lib/weather/archive-time";
+import { unstable_cache } from "next/cache";
 
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
@@ -945,6 +946,27 @@ function cacheTtlMs(entry: CacheEntry): number {
   return entry.outlook.status === "ok" ? CACHE_MS : EMPTY_CACHE_MS;
 }
 
+/** Shared across Vercel instances so catalog + risk-image see the same dayPoints. */
+type SharedPayload = {
+  at: number;
+  outlook: PublicForecastResponse;
+  dayPoints: Record<number, AutoRiskSamplePoint[]>;
+};
+
+const loadSharedModelRisk = unstable_cache(
+  async (kind: ModelRiskKind): Promise<SharedPayload> => {
+    const entry = await computeOutlook(MODEL_CONFIG[kind]);
+    return {
+      at: entry.at,
+      outlook: entry.outlook,
+      dayPoints: entry.dayPoints,
+    };
+  },
+  ["model-risk-shared-v2"],
+  // Short enough that ACCESS empty shells recover; long enough to stop 504 storms.
+  { revalidate: 180 },
+);
+
 async function ensureCache(
   kind: ModelRiskKind,
   opts: { force?: boolean } = {},
@@ -959,14 +981,24 @@ async function ensureCache(
     return cached;
   }
   if (!opts.force && inflightByKind[kind]) return inflightByKind[kind]!;
-  inflightByKind[kind] = computeOutlook(config)
-    .then((entry) => {
-      caches[kind] = entry;
-      return entry;
-    })
-    .finally(() => {
-      inflightByKind[kind] = null;
-    });
+  inflightByKind[kind] = (async () => {
+    let entry: CacheEntry;
+    if (opts.force) {
+      entry = await computeOutlook(config);
+    } else {
+      const shared = await loadSharedModelRisk(kind);
+      entry = {
+        at: shared.at,
+        outlook: shared.outlook,
+        dayPoints: shared.dayPoints,
+        dayPng: {},
+      };
+    }
+    caches[kind] = entry;
+    return entry;
+  })().finally(() => {
+    inflightByKind[kind] = null;
+  });
   return inflightByKind[kind]!;
 }
 
