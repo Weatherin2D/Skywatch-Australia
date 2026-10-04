@@ -102,33 +102,38 @@ type Props = {
   levels: SoundingLevel[];
   parcelTraces: ParcelTrace[];
   activeParcel?: "SFC" | "ML" | "MU";
+  /** Slimmer chart for 3×3 box cells (no barbs / chrome). */
+  compact?: boolean;
 };
 
 export function SkewTChart({
   levels,
   parcelTraces,
   activeParcel = "SFC",
+  compact = false,
 }: Props) {
   const { tPath, tdPath, barbs, isotherms, isobars, adiabats, mixLines, parcelPath } =
     useMemo(() => {
       const tPath = pathFrom(levels.map((l) => ({ t: l.t, p: l.p })));
       const tdPath = pathFrom(levels.map((l) => ({ t: l.td, p: l.p })));
       const barbX = W - PAD.r + 28;
-      const barbs = levels
-        .filter(
-          (l, i) =>
-            l.windDir != null &&
-            l.windSpd != null &&
-            l.p <= 1000 &&
-            (i % Math.max(1, Math.floor(levels.length / 18)) === 0 ||
-              l.p === 850 ||
-              l.p === 700 ||
-              l.p === 500 ||
-              l.p === 300),
-        )
-        .map((l) =>
-          windBarb(barbX, yOfP(l.p), l.windDir!, l.windSpd!),
-        );
+      const barbs = compact
+        ? []
+        : levels
+            .filter(
+              (l, i) =>
+                l.windDir != null &&
+                l.windSpd != null &&
+                l.p <= 1000 &&
+                (i % Math.max(1, Math.floor(levels.length / 18)) === 0 ||
+                  l.p === 850 ||
+                  l.p === 700 ||
+                  l.p === 500 ||
+                  l.p === 300),
+            )
+            .map((l) =>
+              windBarb(barbX, yOfP(l.p), l.windDir!, l.windSpd!),
+            );
 
       const isotherms: string[] = [];
       for (let t = T_MIN; t <= T_MAX; t += 10) {
@@ -158,18 +163,18 @@ export function SkewTChart({
         barbs,
         isotherms,
         isobars,
-        adiabats,
-        mixLines,
+        adiabats: compact ? adiabats.filter((_, i) => i % 2 === 0) : adiabats,
+        mixLines: compact ? mixLines.filter((_, i) => i % 2 === 0) : mixLines,
         parcelPath,
       };
-    }, [levels, parcelTraces, activeParcel]);
+    }, [levels, parcelTraces, activeParcel, compact]);
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className="h-full w-full"
       role="img"
-      aria-label="Skew-T log-P diagram"
+      aria-label={compact ? "Mini Skew-T" : "Skew-T log-P diagram"}
     >
       <rect width={W} height={H} fill="#070b16" />
       <rect
@@ -218,30 +223,33 @@ export function SkewTChart({
             y2={y}
             stroke="rgba(255,255,255,0.12)"
           />
-          <text
-            x={PAD.l - 8}
-            y={y + 4}
-            textAnchor="end"
-            fill="rgba(255,255,255,0.55)"
-            fontSize={11}
-            fontFamily="ui-monospace, monospace"
-          >
-            {p}
-          </text>
+          {!compact ? (
+            <text
+              x={PAD.l - 8}
+              y={y + 4}
+              textAnchor="end"
+              fill="rgba(255,255,255,0.55)"
+              fontSize={11}
+              fontFamily="ui-monospace, monospace"
+            >
+              {p}
+            </text>
+          ) : null}
         </g>
       ))}
 
-      {/* 0°C isotherm label */}
-      <text
-        x={xOfT(0, 1000)}
-        y={H - 10}
-        textAnchor="middle"
-        fill="rgba(248,113,113,0.8)"
-        fontSize={11}
-        fontFamily="Oswald, sans-serif"
-      >
-        0°C
-      </text>
+      {!compact ? (
+        <text
+          x={xOfT(0, 1000)}
+          y={H - 10}
+          textAnchor="middle"
+          fill="rgba(248,113,113,0.8)"
+          fontSize={11}
+          fontFamily="Oswald, sans-serif"
+        >
+          0°C
+        </text>
+      ) : null}
 
       {parcelPath ? (
         <path
@@ -279,26 +287,30 @@ export function SkewTChart({
         />
       ))}
 
-      <text
-        x={PAD.l}
-        y={18}
-        fill="#67e8f9"
-        fontSize={13}
-        fontFamily="Oswald, sans-serif"
-        fontWeight={600}
-      >
-        Skew-T log-P
-      </text>
-      <text
-        x={W - PAD.r}
-        y={18}
-        textAnchor="end"
-        fill="rgba(255,255,255,0.45)"
-        fontSize={11}
-        fontFamily="ui-monospace, monospace"
-      >
-        T · Td · {activeParcel} parcel
-      </text>
+      {!compact ? (
+        <>
+          <text
+            x={PAD.l}
+            y={18}
+            fill="#67e8f9"
+            fontSize={13}
+            fontFamily="Oswald, sans-serif"
+            fontWeight={600}
+          >
+            Skew-T log-P
+          </text>
+          <text
+            x={W - PAD.r}
+            y={18}
+            textAnchor="end"
+            fill="rgba(255,255,255,0.45)"
+            fontSize={11}
+            fontFamily="ui-monospace, monospace"
+          >
+            T · Td · {activeParcel} parcel
+          </text>
+        </>
+      ) : null}
     </svg>
   );
 }

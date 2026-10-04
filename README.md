@@ -14,7 +14,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
 | `/models` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
-| `/soundings` | Observed UWYO radiosondes + model Skew-T / hodograph / storm params |
+| `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
@@ -36,7 +36,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | CAPE/CIN/shear + temp profile (Open-Meteo pressure levels) |
-| `/api/weather/sounding` | Full sounding profile (`mode=observed|model`) — UWYO BUFR or Open-Meteo levels |
+| `/api/weather/sounding` | Sounding profile (`mode=observed|model|box`) — UWYO BUFR or Open-Meteo levels / 3×3 box |
 | `/api/weather/sounding?archive=1` | Observed UWYO inventory slots for a station (`station`, optional `year`) |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |

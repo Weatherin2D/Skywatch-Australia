@@ -1,8 +1,11 @@
 /** Shared sounding profile + derived parameter types. */
 
-export type SoundingMode = "observed" | "model";
+export type SoundingMode = "observed" | "model" | "box";
 
 export type SoundingModelId = "pulse" | "ukmo" | "ifs" | "access";
+
+/** Geographic spacing for a 3×3 model sounding box (degrees). */
+export type SoundingBoxSpacingDeg = 0.25 | 0.5 | 1;
 
 export type SoundingLevel = {
   /** Pressure hPa */
@@ -68,7 +71,7 @@ export type ParcelTrace = {
 
 export type SoundingPayload = {
   status: "ok" | "empty";
-  mode: SoundingMode;
+  mode: "observed" | "model";
   model: SoundingModelId | null;
   stationId: string | null;
   stationName: string;
@@ -88,4 +91,28 @@ export type SoundingStation = {
   state: string;
   lat: number;
   lon: number;
+};
+
+export type SoundingBoxCell = {
+  row: number;
+  col: number;
+  /** N / C / S · W / C / E style label */
+  label: string;
+  latitude: number;
+  longitude: number;
+  sounding: SoundingPayload;
+};
+
+export type SoundingBoxPayload = {
+  status: "ok" | "empty";
+  mode: "box";
+  model: SoundingModelId;
+  centerLatitude: number;
+  centerLongitude: number;
+  spacingDeg: SoundingBoxSpacingDeg;
+  placeLabel: string;
+  validTime: string | null;
+  cells: SoundingBoxCell[];
+  attribution: string;
+  message?: string;
 };

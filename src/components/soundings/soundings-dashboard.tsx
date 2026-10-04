@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { LocationSearch } from "@/components/forecast/location-search";
 import { HodographChart } from "@/components/soundings/hodograph";
 import { SkewTChart } from "@/components/soundings/skew-t";
+import { SoundingBoxGrid } from "@/components/soundings/sounding-box-grid";
 import { SoundingLocationMapDynamic } from "@/components/soundings/sounding-location-map-dynamic";
 import { SoundingParamsTables } from "@/components/soundings/sounding-params";
 import { SiteShell } from "@/components/site/site-shell";
@@ -12,6 +13,8 @@ import { useSavedPlace } from "@/hooks/use-saved-place";
 import type { BomLocation } from "@/lib/weather/location-forecast";
 import { SOUNDING_STATIONS } from "@/lib/weather/sounding-stations";
 import type {
+  SoundingBoxPayload,
+  SoundingBoxSpacingDeg,
   SoundingMode,
   SoundingModelId,
   SoundingPayload,
@@ -24,6 +27,12 @@ const MODELS: { id: SoundingModelId; label: string }[] = [
   { id: "ukmo", label: "UKMO" },
   { id: "ifs", label: "IFS" },
   { id: "access", label: "ACCESS-G" },
+];
+
+const BOX_SPACING: { id: SoundingBoxSpacingDeg; label: string }[] = [
+  { id: 0.25, label: "±0.25°" },
+  { id: 0.5, label: "±0.5°" },
+  { id: 1, label: "±1.0°" },
 ];
 
 type Place = { lat: number; lon: number; label: string };
@@ -67,6 +76,9 @@ export function SoundingsDashboard() {
   });
   const [parcel, setParcel] = useState<"SFC" | "ML" | "MU">("SFC");
   const [data, setData] = useState<SoundingPayload | null>(null);
+  const [boxData, setBoxData] = useState<SoundingBoxPayload | null>(null);
+  const [boxSpacing, setBoxSpacing] = useState<SoundingBoxSpacingDeg>(0.5);
+  const [boxSelected, setBoxSelected] = useState("1-1"); // centre
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modelHour, setModelHour] = useState<string>("");
@@ -188,6 +200,19 @@ export function SoundingsDashboard() {
     if (Number.isFinite(y) && y !== archiveYear) setArchiveYear(y);
   }, [observedTime, archive, archiveDate, archiveYear]);
 
+  const selectedBoxCell = useMemo(() => {
+    if (!boxData) return null;
+    return (
+      boxData.cells.find((c) => `${c.row}-${c.col}` === boxSelected) ??
+      boxData.cells.find((c) => c.row === 1 && c.col === 1) ??
+      boxData.cells[0] ??
+      null
+    );
+  }, [boxData, boxSelected]);
+
+  const activeSounding: SoundingPayload | null =
+    mode === "box" ? (selectedBoxCell?.sounding ?? null) : data;
+
   const load = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true);
@@ -203,27 +228,45 @@ export function SoundingsDashboard() {
           params.set("place", place.label);
           params.set("model", model);
           if (modelHour) params.set("time", modelHour);
+          if (mode === "box") params.set("spacing", String(boxSpacing));
         }
         const res = await fetch(`/api/weather/sounding?${params}`, {
           cache: "no-store",
           signal,
         });
         if (!res.ok) throw new Error(`Sounding unavailable (${res.status})`);
-        const json = (await res.json()) as SoundingPayload;
+        const json = (await res.json()) as SoundingPayload | SoundingBoxPayload;
         if (signal?.aborted) return;
-        setData(json);
-        setLoading(false);
-        if (json.status === "empty") {
-          setError(json.message ?? "No sounding available");
+        if (mode === "box") {
+          const box = json as SoundingBoxPayload;
+          setBoxData(box);
+          setData(null);
+          setBoxSelected((prev) => {
+            if (box.cells.some((c) => `${c.row}-${c.col}` === prev)) return prev;
+            return "1-1";
+          });
+          setLoading(false);
+          if (box.status === "empty") {
+            setError(box.message ?? "No box soundings available");
+          }
+        } else {
+          const single = json as SoundingPayload;
+          setData(single);
+          setBoxData(null);
+          setLoading(false);
+          if (single.status === "empty") {
+            setError(single.message ?? "No sounding available");
+          }
         }
       } catch (err) {
         if (signal?.aborted) return;
         setData(null);
+        setBoxData(null);
         setLoading(false);
         setError(err instanceof Error ? err.message : "Unavailable");
       }
     },
-    [mode, station, place, model, modelHour, observedTime],
+    [mode, station, place, model, modelHour, observedTime, boxSpacing],
   );
 
   useEffect(() => {
@@ -240,7 +283,7 @@ export function SoundingsDashboard() {
         lon: savedPlace.lon,
         label: `${savedPlace.name}, ${savedPlace.state}`,
       });
-      setMode("model");
+      if (mode === "observed") setMode("model");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Location unavailable");
     }
@@ -260,8 +303,8 @@ export function SoundingsDashboard() {
               Soundings
             </h1>
             <p className="mt-1 max-w-xl text-sm text-white/55">
-              Observed radiosondes and model Skew-T profiles — thermo, shear,
-              and storm-relative diagnostics.
+              Observed radiosondes, single-point model Skew-Ts, and 3×3 model
+              sounding boxes — thermo, shear, and storm-relative diagnostics.
             </p>
           </div>
 
@@ -271,6 +314,7 @@ export function SoundingsDashboard() {
                 [
                   ["observed", "Observed"],
                   ["model", "Model"],
+                  ["box", "Box"],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -365,6 +409,24 @@ export function SoundingsDashboard() {
                   ))}
                 </select>
               </label>
+              {mode === "box" ? (
+                <label className="flex min-w-[120px] flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                  Box spacing
+                  <select
+                    value={boxSpacing}
+                    onChange={(e) =>
+                      setBoxSpacing(Number(e.target.value) as SoundingBoxSpacingDeg)
+                    }
+                    className="rounded-xl border border-white/15 bg-[#0b1224] px-3 py-2 text-sm font-medium normal-case tracking-normal text-white outline-none focus:border-[var(--cyan)]/50"
+                  >
+                    {BOX_SPACING.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </>
           )}
 
@@ -537,22 +599,29 @@ export function SoundingsDashboard() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/55">
           <span>
             <span className="text-white/35">Site · </span>
-            {data?.stationName ??
-              (mode === "observed"
-                ? stationMeta
-                  ? `${stationMeta.name}, ${stationMeta.state}`
-                  : station
-                : place.label)}
+            {mode === "box"
+              ? selectedBoxCell?.sounding.stationName ?? place.label
+              : (activeSounding?.stationName ??
+                (mode === "observed"
+                  ? stationMeta
+                    ? `${stationMeta.name}, ${stationMeta.state}`
+                    : station
+                  : place.label))}
           </span>
-          {mode === "model" ? (
+          {mode === "model" || mode === "box" ? (
             <span>
               <span className="text-white/35">Point · </span>
               {place.lat.toFixed(2)}°, {place.lon.toFixed(2)}°
+              {mode === "box" ? ` · box ±${boxSpacing}°` : ""}
             </span>
           ) : null}
           <span>
             <span className="text-white/35">Valid · </span>
-            {formatValid(data?.validTime ?? null)}
+            {formatValid(
+              mode === "box"
+                ? (boxData?.validTime ?? null)
+                : (activeSounding?.validTime ?? null),
+            )}
           </span>
           {mode === "observed" ? (
             <span>
@@ -571,30 +640,42 @@ export function SoundingsDashboard() {
           ) : null}
         </div>
 
-        {mode === "model" ? (
+        {mode === "model" || mode === "box" ? (
           <SoundingLocationMapDynamic
             place={place}
             onPick={(next) => {
               setPlace(next);
-              setMode("model");
             }}
           />
         ) : null}
 
+        {mode === "box" && boxData ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <SoundingBoxGrid
+              box={boxData}
+              selectedKey={boxSelected}
+              activeParcel={parcel}
+              onSelect={(row, col) => setBoxSelected(`${row}-${col}`)}
+            />
+          </div>
+        ) : null}
+
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)_minmax(240px,0.7fr)]">
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#070b16] shadow-[0_0_0_1px_rgba(34,211,238,0.06)]">
-            {data && data.levels.length > 0 ? (
+            {activeSounding && activeSounding.levels.length > 0 ? (
               <div className="aspect-[640/720] w-full animate-[fadeIn_0.45s_ease]">
                 <SkewTChart
-                  levels={data.levels}
-                  parcelTraces={data.parcelTraces}
+                  levels={activeSounding.levels}
+                  parcelTraces={activeSounding.parcelTraces}
                   activeParcel={parcel}
                 />
               </div>
             ) : (
               <div className="flex aspect-[640/720] items-center justify-center px-6 text-center text-sm text-white/50">
                 {loading
-                  ? "Building Skew-T…"
+                  ? mode === "box"
+                    ? "Building sounding box…"
+                    : "Building Skew-T…"
                   : error || "No profile levels to plot."}
               </div>
             )}
@@ -602,9 +683,12 @@ export function SoundingsDashboard() {
 
           <div className="flex flex-col gap-3">
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#070b16]">
-              {data && data.levels.length > 0 ? (
+              {activeSounding && activeSounding.levels.length > 0 ? (
                 <div className="aspect-square w-full animate-[fadeIn_0.55s_ease]">
-                  <HodographChart levels={data.levels} params={data.params} />
+                  <HodographChart
+                    levels={activeSounding.levels}
+                    params={activeSounding.params}
+                  />
                 </div>
               ) : (
                 <div className="flex aspect-square items-center justify-center text-sm text-white/45">
@@ -622,11 +706,13 @@ export function SoundingsDashboard() {
                   Temp (red) · Dewpoint (green) · {parcel} parcel (gold dash)
                 </li>
                 <li>
-                  Wind barbs on the right (knots). Hodograph coloured by height
-                  AGL; RM/LM = Bunkers storm motion.
+                  {mode === "box"
+                    ? "Box cells are north-up. Click a cell to inspect full Skew-T, hodograph, and params."
+                    : "Wind barbs on the right (knots). Hodograph coloured by height AGL; RM/LM = Bunkers storm motion."}
                 </li>
                 <li className="text-white/40">
-                  {data?.attribution ??
+                  {activeSounding?.attribution ??
+                    boxData?.attribution ??
                     "UWYO observed BUFR · Open-Meteo model levels"}
                 </li>
               </ul>
@@ -634,8 +720,8 @@ export function SoundingsDashboard() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto">
-            {data ? (
-              <SoundingParamsTables params={data.params} />
+            {activeSounding ? (
+              <SoundingParamsTables params={activeSounding.params} />
             ) : (
               <p className="text-sm text-white/45">Parameters load with the profile.</p>
             )}
