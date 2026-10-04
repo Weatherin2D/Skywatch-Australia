@@ -11,10 +11,11 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | Route | Status |
 |-------|--------|
 | `/` | SkyWatch homepage — hero, near-you moment card, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
-| `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
-| `/models` | Hourly ECMWF IFS map — product picker, time scrubber, click values, shareable deep links (Open-Meteo) |
+| `/models` | Multi-model map lab (ECMWF / ICON / GFS) — product picker, diff mode, click values, meteogram, mini Skew-T, transect cross-section |
 | `/model-comparison` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
+| `/ensemble` | ECMWF ensemble spaghetti (2 m temp / precip) for saved place |
+| `/radar` | Storm Cell Tracker + Chase HUD (`?chase=1&cell=`) on live radar |
 | `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
@@ -33,11 +34,14 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/storm-activity` | Lightning hotspot summary for Storm Tracker |
+| `/api/weather/storm-cells` | Storm cell tracks from radar timestamps + lightning clusters |
 | `/api/weather/models` | Multi-model comparison (`days=1..7`) via Open-Meteo |
-| `/api/weather/ecmwf-map` | ECMWF IFS product catalog + hourly timestamps |
-| `/api/weather/ecmwf-map/frame` | Georeferenced ECMWF field PNG (`product`, `time`) |
-| `/api/weather/ecmwf-map/point` | Point sample for map click (`product`, `time`, `lat`, `lon`) |
-| `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
+| `/api/weather/ecmwf-map` | Model map catalog (`product`, `model=ecmwf|icon|gfs`) |
+| `/api/weather/ecmwf-map/frame` | Georeferenced field PNG (`product`, `time`, `model`, optional `diff`) |
+| `/api/weather/ecmwf-map/point` | Point sample / meteogram (`series=1`) for map click |
+| `/api/weather/ensemble` | Ensemble member spaghetti (`lat`, `lon`, `var`) |
+| `/api/weather/cross-section` | Vertical transect (`startLat/Lon`, `endLat/Lon`, `field`, `model`) |
+| `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | Home panel: latest observed Sydney Airport radiosonde (UWYO) |
 | `/api/weather/sounding` | Sounding profile (`mode=observed|model|box`) — UWYO BUFR or Open-Meteo levels / 3×3 box |

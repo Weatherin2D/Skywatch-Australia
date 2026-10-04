@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sampleEcmwfPoint } from "@/lib/weather/ecmwf-map";
+import {
+  sampleEcmwfMeteogram,
+  sampleEcmwfPoint,
+} from "@/lib/weather/ecmwf-map";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -7,7 +10,8 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 /**
- * GET /api/weather/ecmwf-map/point?product=&time=&lat=&lon=
+ * GET /api/weather/ecmwf-map/point?product=&time=&lat=&lon=&model=&diff=
+ * GET /api/weather/ecmwf-map/point?series=1&product=&lat=&lon=&model=  (meteogram)
  */
 export async function GET(req: NextRequest) {
   try {
@@ -20,11 +24,32 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       );
     }
+    const model = url.searchParams.get("model");
+    const diffModel =
+      url.searchParams.get("diff") || url.searchParams.get("diffModel");
+    if (
+      url.searchParams.get("series") === "1" ||
+      url.searchParams.get("meteogram") === "1"
+    ) {
+      const series = await sampleEcmwfMeteogram({
+        productId: url.searchParams.get("product"),
+        lat,
+        lon,
+        model,
+      });
+      return NextResponse.json(series, {
+        headers: {
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=120",
+        },
+      });
+    }
     const sample = await sampleEcmwfPoint({
       productId: url.searchParams.get("product"),
       time: url.searchParams.get("time"),
       lat,
       lon,
+      model,
+      diffModel,
     });
     return NextResponse.json(sample, {
       headers: {

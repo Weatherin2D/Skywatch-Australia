@@ -10,6 +10,7 @@ import * as weatherLocations from "@/server/api/weather-locations";
 import * as weatherLocationForecast from "@/server/api/weather-location-forecast";
 import * as weatherCapitals from "@/server/api/weather-capitals";
 import * as weatherStormActivity from "@/server/api/weather-storm-activity";
+import * as weatherStormCells from "@/server/api/weather-storm-cells";
 import * as weatherModels from "@/server/api/weather-models";
 import * as weatherEcmwfMap from "@/server/api/weather-ecmwf-map";
 import * as weatherEcmwfMapFrame from "@/server/api/weather-ecmwf-map-frame";
@@ -20,6 +21,8 @@ import * as weatherRadarTile from "@/server/api/weather-radar-tile";
 import * as weatherRisk from "@/server/api/weather-risk";
 import * as weatherRiskImage from "@/server/api/weather-risk-image";
 import * as weatherClimate from "@/server/api/weather-climate";
+import * as weatherEnsemble from "@/server/api/weather-ensemble";
+import * as weatherCrossSection from "@/server/api/weather-cross-section";
 import * as weatherHazards from "@/server/api/weather-hazards";
 import * as weatherArchive from "@/server/api/weather-archive";
 import * as weatherArchiveFrame from "@/server/api/weather-archive-frame";
@@ -54,6 +57,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/forecast": weatherLocationForecast as RouteHandlers,
   "weather/capitals": weatherCapitals as RouteHandlers,
   "weather/storm-activity": weatherStormActivity as RouteHandlers,
+  "weather/storm-cells": weatherStormCells as RouteHandlers,
   "weather/models": weatherModels as RouteHandlers,
   "weather/ecmwf-map": weatherEcmwfMap as RouteHandlers,
   "weather/ecmwf-map/frame": weatherEcmwfMapFrame as RouteHandlers,
@@ -64,6 +68,8 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/risk": weatherRisk as RouteHandlers,
   "weather/risk-image": weatherRiskImage as RouteHandlers,
   "weather/climate": weatherClimate as RouteHandlers,
+  "weather/ensemble": weatherEnsemble as RouteHandlers,
+  "weather/cross-section": weatherCrossSection as RouteHandlers,
   "weather/hazards": weatherHazards as RouteHandlers,
   "weather/archive": weatherArchive as RouteHandlers,
   "weather/archive/frame": weatherArchiveFrame as RouteHandlers,

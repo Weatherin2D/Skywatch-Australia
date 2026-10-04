@@ -3,9 +3,11 @@
 import { ChevronDown, Link2, Pause, Play } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { ChaseHud } from "@/components/home/chase-hud";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
+import { useStormCells } from "@/hooks/use-storm-cells";
 import {
   HomeBriefingPanel,
   HomeCapitalsPanel,
@@ -250,6 +252,13 @@ function HomeDashboardInner({
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     DEFAULT_SATELLITE_PRODUCT,
   );
+  const [chaseEnabled, setChaseEnabled] = useState(false);
+  const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
+  const [focusCellId, setFocusCellId] = useState<string | null>(null);
+  const stormCellsEnabled = chaseEnabled || focus === "radar";
+  const { data: stormCellsData, loading: stormCellsLoading } =
+    useStormCells(45_000, stormCellsEnabled);
+  const stormCells = stormCellsData?.cells ?? [];
 
   // Hydrate map state from shareable query params once, then allow URL sync.
   // Sync must not run in the same effect flush with stale regionId — that was
@@ -286,8 +295,18 @@ function HomeDashboardInner({
     ) {
       setSatProduct(product as SatelliteProductId);
     }
+    if (searchParams.get("chase") === "1" || focus === "radar") {
+      setChaseEnabled(true);
+      setLayers((prev) => ({ ...prev, radar: true, lightning: true }));
+    }
+    const cell = searchParams.get("cell");
+    if (cell) {
+      setSelectedCellId(cell);
+      setFocusCellId(cell);
+      setChaseEnabled(true);
+    }
     setUrlReady(true);
-  }, [searchParams, urlReady]);
+  }, [searchParams, urlReady, focus]);
 
   // Prefer saved place region when URL did not specify one.
   usePreferSavedRegion(
@@ -329,6 +348,8 @@ function HomeDashboardInner({
     if (mode === "Satellite" || satProduct !== DEFAULT_SATELLITE_PRODUCT) {
       params.set("product", satProduct);
     }
+    if (chaseEnabled) params.set("chase", "1");
+    if (selectedCellId) params.set("cell", selectedCellId);
     const qs = params.toString();
     const next = qs ? `${path}?${qs}` : path;
     const current = `${window.location.pathname}${window.location.search}`;
@@ -336,7 +357,17 @@ function HomeDashboardInner({
       // Query-only replaceState keeps the map mounted; path is unchanged above.
       window.history.replaceState(window.history.state, "", next);
     }
-  }, [urlReady, pathname, regionId, mode, layers, satProduct, focus]);
+  }, [
+    urlReady,
+    pathname,
+    regionId,
+    mode,
+    layers,
+    satProduct,
+    focus,
+    chaseEnabled,
+    selectedCellId,
+  ]);
 
   async function copyShareLink() {
     const { shareContent } = await import("@/lib/share");
@@ -1028,6 +1059,10 @@ function HomeDashboardInner({
                       ),
                     )
               }
+              stormCells={stormCells}
+              showStormCells={chaseEnabled}
+              selectedStormCellId={selectedCellId}
+              focusStormCellId={focusCellId}
               mapSettings={mapSettings}
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}
@@ -1236,6 +1271,29 @@ function HomeDashboardInner({
           <HomeNowPanel />
 
           <HomeMomentCard />
+
+          {(focus === "radar" || chaseEnabled) && (
+            <ChaseHud
+              cells={stormCells}
+              loading={stormCellsLoading}
+              selectedId={selectedCellId}
+              enabled={chaseEnabled}
+              onToggle={(next) => {
+                setChaseEnabled(next);
+                if (next) {
+                  setLayers((prev) => ({
+                    ...prev,
+                    radar: true,
+                    lightning: true,
+                  }));
+                }
+              }}
+              onSelect={(id) => {
+                setSelectedCellId(id);
+                setFocusCellId(id);
+              }}
+            />
+          )}
 
           <HomeWarningsPanel />
 

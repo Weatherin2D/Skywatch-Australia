@@ -9,6 +9,7 @@ import type {
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { DisplayFeature } from "@/lib/forecast/types";
 import type { WeatherFrame } from "@/lib/weather/maps";
+import type { StormCell } from "@/lib/weather/storm-cells";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 
@@ -60,6 +61,12 @@ export function HomeMapDynamic({
   riskFeatures,
   onMapClick,
   probePoint,
+  probePointB,
+  showTransectLine,
+  stormCells,
+  showStormCells,
+  selectedStormCellId,
+  focusStormCellId,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -100,6 +107,16 @@ export function HomeMapDynamic({
     lng: number;
     label?: string | null;
   } | null;
+  probePointB?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+  } | null;
+  showTransectLine?: boolean;
+  stormCells?: StormCell[];
+  showStormCells?: boolean;
+  selectedStormCellId?: string | null;
+  focusStormCellId?: string | null;
 }) {
   return (
     <HomeMap
@@ -138,6 +155,12 @@ export function HomeMapDynamic({
       riskFeatures={riskFeatures}
       onMapClick={onMapClick}
       probePoint={probePoint}
+      probePointB={probePointB}
+      showTransectLine={showTransectLine}
+      stormCells={stormCells}
+      showStormCells={showStormCells}
+      selectedStormCellId={selectedStormCellId}
+      focusStormCellId={focusStormCellId}
     />
   );
 }

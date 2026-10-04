@@ -12,17 +12,27 @@ const EMPTY_PNG = Buffer.from(
 );
 
 /**
- * GET /api/weather/ecmwf-map/frame?product=temperature_2m&time=2026-10-04T12:00
+ * GET /api/weather/ecmwf-map/frame?product=temperature_2m&time=…&model=ecmwf&diff=gfs
  */
 export async function GET(req: NextRequest) {
   const product = req.nextUrl.searchParams.get("product");
   const time = req.nextUrl.searchParams.get("time");
+  const model = req.nextUrl.searchParams.get("model");
+  const diffModel =
+    req.nextUrl.searchParams.get("diff") ||
+    req.nextUrl.searchParams.get("diffModel");
   const force =
     req.nextUrl.searchParams.get("force") === "1" ||
     req.nextUrl.searchParams.get("refresh") === "1";
 
   try {
-    const result = await renderEcmwfFrame({ productId: product, time, force });
+    const result = await renderEcmwfFrame({
+      productId: product,
+      time,
+      force,
+      model,
+      diffModel,
+    });
     const png = result.empty ? EMPTY_PNG : result.png;
     return new NextResponse(new Uint8Array(png), {
       headers: {
@@ -36,6 +46,8 @@ export async function GET(req: NextRequest) {
         "X-Ecmwf-Min": result.min == null ? "" : String(result.min),
         "X-Ecmwf-Max": result.max == null ? "" : String(result.max),
         "X-Ecmwf-Empty": result.empty ? "1" : "0",
+        "X-Ecmwf-Model": model ?? "ecmwf",
+        "X-Ecmwf-Diff": diffModel ?? "",
       },
     });
   } catch (err) {

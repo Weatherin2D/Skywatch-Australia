@@ -6,11 +6,12 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** GET /api/weather/ecmwf-map?product=temperature_2m */
+/** GET /api/weather/ecmwf-map?product=temperature_2m&model=ecmwf */
 export async function GET(req: NextRequest) {
   try {
     const product = req.nextUrl.searchParams.get("product");
-    const catalog = await getEcmwfMapCatalog(product);
+    const model = req.nextUrl.searchParams.get("model");
+    const catalog = await getEcmwfMapCatalog(product, model);
     return NextResponse.json(catalog, {
       headers: {
         "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",

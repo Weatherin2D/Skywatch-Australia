@@ -26,10 +26,35 @@ const BATCH_CONCURRENCY = 8;
 const FORECAST_DAYS = 3;
 const CACHE_TTL_MS = 18 * 60_000;
 const OUT_WIDTH = 1280;
-const OPEN_METEO_MODEL = "ecmwf_ifs";
 const PNG_CACHE_MAX = 96;
 /** Cache schema bump when grid/render behaviour changes. */
-const CACHE_VER = "r2";
+const CACHE_VER = "r3";
+
+export type MapModelId = "ecmwf" | "icon" | "gfs";
+
+export const MAP_MODELS: {
+  id: MapModelId;
+  label: string;
+  openMeteo: string;
+}[] = [
+  { id: "ecmwf", label: "ECMWF", openMeteo: "ecmwf_ifs" },
+  { id: "icon", label: "ICON", openMeteo: "icon_seamless" },
+  { id: "gfs", label: "GFS", openMeteo: "gfs_seamless" },
+];
+
+const DEFAULT_MAP_MODEL: MapModelId = "ecmwf";
+
+export function resolveMapModel(id: string | null | undefined): MapModelId {
+  if (id === "icon" || id === "gfs" || id === "ecmwf") return id;
+  if (id === "ecmwf_ifs" || id === "ifs") return "ecmwf";
+  if (id === "icon_seamless") return "icon";
+  if (id === "gfs_seamless") return "gfs";
+  return DEFAULT_MAP_MODEL;
+}
+
+function openMeteoModel(id: MapModelId): string {
+  return MAP_MODELS.find((m) => m.id === id)?.openMeteo ?? "ecmwf_ifs";
+}
 
 export type EcmwfProductGroup =
   | "surface"
@@ -348,9 +373,11 @@ type ProductCache = {
   productId: string;
 };
 
-function gridStepFor(product: EcmwfProduct): number {
+function gridStepFor(product: EcmwfProduct, model: MapModelId = "ecmwf"): number {
   if (product.coarse) return COARSE_STEP;
-  if (product.hires) return HIRES_STEP;
+  // Keep hires only for precip on ECMWF; ICON/GFS stay coarser for budget.
+  if (product.hires && model === "ecmwf") return HIRES_STEP;
+  if (model !== "ecmwf") return COARSE_STEP;
   return GRID_STEP;
 }
 
@@ -384,12 +411,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function pngCacheKey(productId: string, time: string): string {
-  return `${CACHE_VER}|${productId}|${time}`;
+function pngCacheKey(
+  model: MapModelId,
+  productId: string,
+  time: string,
+  diffModel?: MapModelId | null,
+): string {
+  const diff = diffModel ? `|diff:${diffModel}` : "";
+  return `${CACHE_VER}|${model}|${productId}|${time}${diff}`;
 }
 
-function productCacheKey(productId: string): string {
-  return `${CACHE_VER}|${productId}`;
+function productCacheKey(model: MapModelId, productId: string): string {
+  return `${CACHE_VER}|${model}|${productId}`;
 }
 
 function rememberPng(key: string, result: EcmwfFrameResult): void {
@@ -425,6 +458,7 @@ async function fetchBatch(
   lats: number[],
   lons: number[],
   fields: string,
+  model: MapModelId,
 ): Promise<
   { latitude: number; longitude: number; hourly: Record<string, unknown[]> }[]
 > {
@@ -432,7 +466,7 @@ async function fetchBatch(
     latitude: lats.map((v) => v.toFixed(4)).join(","),
     longitude: lons.map((v) => v.toFixed(4)).join(","),
     hourly: fields,
-    models: OPEN_METEO_MODEL,
+    models: openMeteoModel(model),
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
     cell_selection: "nearest",
@@ -484,8 +518,11 @@ async function fetchBatch(
   throw lastErr ?? new Error("Open-Meteo failed");
 }
 
-async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
-  const step = gridStepFor(product);
+async function loadProductGrid(
+  product: EcmwfProduct,
+  model: MapModelId,
+): Promise<ProductCache> {
+  const step = gridStepFor(product, model);
   const fields = hourlyFieldsFor(product);
   const sites = buildGrid(step);
   const batches: { lats: number[]; lons: number[] }[] = [];
@@ -505,7 +542,7 @@ async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
     const results = await Promise.all(
       wave.map(async (b) => {
         try {
-          return await fetchBatch(b.lats, b.lons, fields);
+          return await fetchBatch(b.lats, b.lons, fields, model);
         } catch {
           return [] as Awaited<ReturnType<typeof fetchBatch>>;
         }
@@ -559,10 +596,11 @@ async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
 
 export async function getEcmwfProductCache(
   productId: string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; model?: MapModelId | string | null },
 ): Promise<ProductCache> {
   const product = getEcmwfProduct(productId);
-  const key = productCacheKey(product.id);
+  const model = resolveMapModel(opts?.model);
+  const key = productCacheKey(model, product.id);
   const hit = cache.get(key);
   if (
     !opts?.force &&
@@ -575,7 +613,7 @@ export async function getEcmwfProductCache(
   const pending = inflight.get(key);
   if (pending) return pending;
 
-  const job = loadProductGrid(product)
+  const job = loadProductGrid(product, model)
     .then((data) => {
       cache.set(key, data);
       inflight.delete(key);
@@ -595,6 +633,8 @@ export type EcmwfMapCatalog = {
   attribution: string;
   bounds: [[number, number], [number, number]];
   defaultProductId: string;
+  defaultModelId: MapModelId;
+  models: { id: MapModelId; label: string }[];
   products: {
     id: string;
     label: string;
@@ -608,12 +648,15 @@ export type EcmwfMapCatalog = {
   issuedAt: string | null;
 };
 
-async function fetchHourlyTimes(field: string): Promise<string[]> {
+async function fetchHourlyTimes(
+  field: string,
+  model: MapModelId,
+): Promise<string[]> {
   const params = new URLSearchParams({
     latitude: "-25.0",
     longitude: "134.0",
     hourly: field,
-    models: OPEN_METEO_MODEL,
+    models: openMeteoModel(model),
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
   });
@@ -629,18 +672,21 @@ async function fetchHourlyTimes(field: string): Promise<string[]> {
 
 export async function getEcmwfMapCatalog(
   productId?: string | null,
+  modelId?: string | null,
 ): Promise<EcmwfMapCatalog> {
   const product = getEcmwfProduct(productId);
+  const model = resolveMapModel(modelId);
+  const modelMeta = MAP_MODELS.find((m) => m.id === model)!;
   let times: string[] = [];
   let issuedAt: string | null = null;
 
-  const cached = cache.get(product.id);
+  const cached = cache.get(productCacheKey(model, product.id));
   if (cached?.times.length) {
     times = cached.times;
     issuedAt = new Date(cached.fetchedAt).toISOString();
   } else {
     try {
-      times = await fetchHourlyTimes(product.field);
+      times = await fetchHourlyTimes(product.field, model);
       issuedAt = new Date().toISOString();
     } catch {
       // UI can still show the picker; frame endpoint fills times later.
@@ -652,11 +698,13 @@ export async function getEcmwfMapCatalog(
   ).map((id) => ({ id, label: ECMWF_GROUP_LABELS[id] }));
 
   return {
-    model: OPEN_METEO_MODEL,
-    modelLabel: "ECMWF IFS",
-    attribution: "ECMWF IFS via Open-Meteo",
+    model: openMeteoModel(model),
+    modelLabel: modelMeta.label,
+    attribution: `${modelMeta.label} via Open-Meteo`,
     bounds: ECMWF_MAP_BOUNDS,
     defaultProductId: DEFAULT_ECMWF_PRODUCT_ID,
+    defaultModelId: DEFAULT_MAP_MODEL,
+    models: MAP_MODELS.map((m) => ({ id: m.id, label: m.label })),
     products: ECMWF_PRODUCTS.map((p) => ({
       id: p.id,
       label: p.label,
@@ -1106,44 +1154,26 @@ export type EcmwfPointSample = {
   formatted: string;
 };
 
-/** Exact Open-Meteo point sample for map clicks (fast, independent of grid cache). */
-export async function sampleEcmwfPoint(opts: {
-  productId?: string | null;
-  time?: string | null;
-  lat: number;
-  lon: number;
-}): Promise<EcmwfPointSample> {
-  const product = getEcmwfProduct(opts.productId);
-  const lat = opts.lat;
-  const lon = opts.lon;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    throw new Error("Invalid coordinates");
+function colorForDiff(t: number): RGBA {
+  // t in [-1, 1] mapped: blue (neg) → white (0) → red (pos)
+  const u = Math.max(-1, Math.min(1, t));
+  if (u < 0) {
+    return lerpColor([40, 90, 220, 190], [245, 245, 245, 40], u + 1);
   }
+  return lerpColor([245, 245, 245, 40], [220, 50, 50, 200], u);
+}
 
-  // Prefer in-memory grid when warm (instant, matches the painted field).
-  const warm = cache.get(productCacheKey(product.id));
-  if (warm?.times.length && warm.points.length) {
-    const ti = nearestTimeIndex(warm.times, opts.time);
-    const grid = buildScalarGrid(warm.points, ti);
-    const value = bilinearSample(grid, lat, lon);
-    return {
-      lat,
-      lon,
-      time: warm.times[ti] ?? null,
-      productId: product.id,
-      label: product.label,
-      units: product.units,
-      value,
-      formatted:
-        value == null ? "—" : formatEcmwfValue(product, value),
-    };
-  }
-
+async function fetchPointSeries(
+  lat: number,
+  lon: number,
+  field: string,
+  model: MapModelId,
+): Promise<{ times: string[]; series: (number | null)[] }> {
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lon.toFixed(4),
-    hourly: product.field,
-    models: OPEN_METEO_MODEL,
+    hourly: field,
+    models: openMeteoModel(model),
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
     wind_speed_unit: "kmh",
@@ -1158,18 +1188,130 @@ export async function sampleEcmwfPoint(opts: {
     hourly?: Record<string, unknown[]>;
   };
   const times = ((json.hourly?.time ?? []) as unknown[]).map(String);
-  const series = (json.hourly?.[product.field] ?? []) as unknown[];
-  const ti = nearestTimeIndex(times, opts.time);
-  const value = num(series[ti]);
+  const series = ((json.hourly?.[field] ?? []) as unknown[]).map(num);
+  return { times, series };
+}
+
+/** Exact Open-Meteo point sample for map clicks (fast, independent of grid cache). */
+export async function sampleEcmwfPoint(opts: {
+  productId?: string | null;
+  time?: string | null;
+  lat: number;
+  lon: number;
+  model?: string | null;
+  diffModel?: string | null;
+}): Promise<EcmwfPointSample> {
+  const product = getEcmwfProduct(opts.productId);
+  const model = resolveMapModel(opts.model);
+  const diffModel = opts.diffModel ? resolveMapModel(opts.diffModel) : null;
+  const useDiff = Boolean(diffModel && diffModel !== model);
+  const lat = opts.lat;
+  const lon = opts.lon;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("Invalid coordinates");
+  }
+
+  // Prefer in-memory grid when warm (instant, matches the painted field).
+  const warm = cache.get(productCacheKey(model, product.id));
+  const warmDiff =
+    useDiff && diffModel
+      ? cache.get(productCacheKey(diffModel, product.id))
+      : null;
+  if (warm?.times.length && warm.points.length && (!useDiff || warmDiff)) {
+    const ti = nearestTimeIndex(warm.times, opts.time);
+    const grid = buildScalarGrid(warm.points, ti);
+    let value = bilinearSample(grid, lat, lon);
+    if (useDiff && warmDiff && value != null) {
+      const dti = nearestTimeIndex(warmDiff.times, warm.times[ti]);
+      const other = bilinearSample(
+        buildScalarGrid(warmDiff.points, dti),
+        lat,
+        lon,
+      );
+      value = other == null ? null : value - other;
+    }
+    const units = useDiff ? `Δ ${product.units}` : product.units;
+    return {
+      lat,
+      lon,
+      time: warm.times[ti] ?? null,
+      productId: product.id,
+      label: useDiff
+        ? `${product.label} (${model}−${diffModel})`
+        : product.label,
+      units,
+      value,
+      formatted:
+        value == null
+          ? "—"
+          : useDiff
+            ? `${value >= 0 ? "+" : ""}${Math.round(value * 10) / 10}${units ? ` ${units}` : ""}`
+            : formatEcmwfValue(product, value),
+    };
+  }
+
+  const primary = await fetchPointSeries(lat, lon, product.field, model);
+  const ti = nearestTimeIndex(primary.times, opts.time);
+  let value = primary.series[ti] ?? null;
+  if (useDiff && diffModel && value != null) {
+    const other = await fetchPointSeries(lat, lon, product.field, diffModel);
+    const dti = nearestTimeIndex(other.times, primary.times[ti]);
+    const b = other.series[dti] ?? null;
+    value = b == null ? null : value - b;
+  }
+  const units = useDiff ? `Δ ${product.units}` : product.units;
   return {
     lat,
     lon,
-    time: times[ti] ?? null,
+    time: primary.times[ti] ?? null,
+    productId: product.id,
+    label: useDiff
+      ? `${product.label} (${model}−${diffModel})`
+      : product.label,
+    units,
+    value,
+    formatted:
+      value == null
+        ? "—"
+        : useDiff
+          ? `${value >= 0 ? "+" : ""}${Math.round(value * 10) / 10}${units ? ` ${units}` : ""}`
+          : formatEcmwfValue(product, value),
+  };
+}
+
+/** Hourly series at a point for meteogram sparklines. */
+export async function sampleEcmwfMeteogram(opts: {
+  productId?: string | null;
+  lat: number;
+  lon: number;
+  model?: string | null;
+}): Promise<{
+  lat: number;
+  lon: number;
+  productId: string;
+  label: string;
+  units: string;
+  model: MapModelId;
+  times: string[];
+  values: (number | null)[];
+}> {
+  const product = getEcmwfProduct(opts.productId);
+  const model = resolveMapModel(opts.model);
+  const { times, series } = await fetchPointSeries(
+    opts.lat,
+    opts.lon,
+    product.field,
+    model,
+  );
+  return {
+    lat: opts.lat,
+    lon: opts.lon,
     productId: product.id,
     label: product.label,
     units: product.units,
-    value,
-    formatted: value == null ? "—" : formatEcmwfValue(product, value),
+    model,
+    times,
+    values: series,
   };
 }
 
@@ -1177,24 +1319,55 @@ export async function renderEcmwfFrame(opts: {
   productId?: string | null;
   time?: string | null;
   force?: boolean;
+  model?: string | null;
+  /** When set, render model − diffModel (diverging colormap). */
+  diffModel?: string | null;
   /** Internal: skip neighbour prefetch to avoid cascades. */
   skipPrefetch?: boolean;
 }): Promise<EcmwfFrameResult> {
   const product = getEcmwfProduct(opts.productId);
-  const data = await getEcmwfProductCache(product.id, { force: opts.force });
+  const model = resolveMapModel(opts.model);
+  const diffModel = opts.diffModel ? resolveMapModel(opts.diffModel) : null;
+  const data = await getEcmwfProductCache(product.id, {
+    force: opts.force,
+    model,
+  });
+  const diffData =
+    diffModel && diffModel !== model
+      ? await getEcmwfProductCache(product.id, {
+          force: opts.force,
+          model: diffModel,
+        })
+      : null;
   const ti = nearestTimeIndex(data.times, opts.time);
   const time = data.times[ti] ?? null;
-  const cacheKey = time ? pngCacheKey(product.id, time) : "";
+  const cacheKey = time
+    ? pngCacheKey(model, product.id, time, diffData ? diffModel : null)
+    : "";
 
   if (!opts.force && cacheKey) {
     const hit = pngCache.get(cacheKey);
     if (hit) return hit;
   }
 
+  const isDiff = Boolean(diffData);
+  const diffTi = diffData
+    ? nearestTimeIndex(diffData.times, time)
+    : ti;
+
   const samples: number[] = [];
-  for (const p of data.points) {
-    const v = p.values[ti];
-    if (v != null) samples.push(v);
+  if (isDiff && diffData) {
+    for (let i = 0; i < data.points.length; i++) {
+      const a = data.points[i]!.values[ti];
+      const bPt = diffData.points[i];
+      const b = bPt?.values[diffTi];
+      if (a != null && b != null) samples.push(a - b);
+    }
+  } else {
+    for (const p of data.points) {
+      const v = p.values[ti];
+      if (v != null) samples.push(v);
+    }
   }
   if (!samples.length) {
     const empty = new PNG({ width: 1, height: 1 });
@@ -1207,7 +1380,7 @@ export async function renderEcmwfFrame(opts: {
       empty: true,
       time,
       productId: product.id,
-      units: product.units,
+      units: isDiff ? `Δ ${product.units}` : product.units,
       min: null,
       max: null,
     };
@@ -1215,16 +1388,27 @@ export async function renderEcmwfFrame(opts: {
     return result;
   }
 
-  let vmin = product.min ?? Math.min(...samples);
-  let vmax = product.max ?? Math.max(...samples);
-  if (product.min == null || product.max == null) {
-    samples.sort((a, b) => a - b);
-    const p05 = samples[Math.floor(samples.length * 0.05)]!;
-    const p95 = samples[Math.floor(samples.length * 0.95)]!;
-    if (product.min == null) vmin = p05;
-    if (product.max == null) vmax = p95;
+  let vmin: number;
+  let vmax: number;
+  if (isDiff) {
+    const absMax = Math.max(
+      ...samples.map((v) => Math.abs(v)),
+      0.1,
+    );
+    vmin = -absMax;
+    vmax = absMax;
+  } else {
+    vmin = product.min ?? Math.min(...samples);
+    vmax = product.max ?? Math.max(...samples);
+    if (product.min == null || product.max == null) {
+      samples.sort((a, b) => a - b);
+      const p05 = samples[Math.floor(samples.length * 0.05)]!;
+      const p95 = samples[Math.floor(samples.length * 0.95)]!;
+      if (product.min == null) vmin = p05;
+      if (product.max == null) vmax = p95;
+    }
+    if (vmax <= vmin) vmax = vmin + 1;
   }
-  if (vmax <= vmin) vmax = vmin + 1;
 
   const width = OUT_WIDTH;
   const height = Math.max(
@@ -1235,53 +1419,81 @@ export async function renderEcmwfFrame(opts: {
   );
   const png = new PNG({ width, height });
   const grid = buildScalarGrid(data.points, ti);
+  const diffGrid = diffData
+    ? buildScalarGrid(diffData.points, diffTi)
+    : null;
   const lat0 = grid.lats[0] ?? AU.minLat;
   const lon0 = grid.lons[0] ?? AU.minLon;
   const dLat = grid.lats.length > 1 ? grid.lats[1]! - grid.lats[0]! : GRID_STEP;
   const dLon = grid.lons.length > 1 ? grid.lons[1]! - grid.lons[0]! : GRID_STEP;
 
+  function sampleGridAt(
+    g: ScalarGrid,
+    lat: number,
+    lon: number,
+    gLat0: number,
+    gLon0: number,
+    gDLat: number,
+    gDLon: number,
+  ): number | null {
+    const fi =
+      gDLat === 0
+        ? 0
+        : Math.max(0, Math.min(g.lats.length - 1, (lat - gLat0) / gDLat));
+    const fj =
+      gDLon === 0
+        ? 0
+        : Math.max(0, Math.min(g.lons.length - 1, (lon - gLon0) / gDLon));
+    const i1 = Math.floor(fi);
+    const j1 = Math.floor(fj);
+    const i2 = Math.min(i1 + 1, g.lats.length - 1);
+    const j2 = Math.min(j1 + 1, g.lons.length - 1);
+    const ty = fi - i1;
+    const tx = fj - j1;
+    const nLon = g.lons.length;
+    const v11 = g.values[i1 * nLon + j1];
+    const v12 = g.values[i1 * nLon + j2];
+    const v21 = g.values[i2 * nLon + j1];
+    const v22 = g.values[i2 * nLon + j2];
+    if (v11 != null && v12 != null && v21 != null && v22 != null) {
+      const a = v11 * (1 - tx) + v12 * tx;
+      const b = v21 * (1 - tx) + v22 * tx;
+      return a * (1 - ty) + b * ty;
+    }
+    const present = [v11, v12, v21, v22].filter(
+      (v): v is number => v != null,
+    );
+    if (!present.length) return null;
+    return present.reduce((s, v) => s + v, 0) / present.length;
+  }
+
+  const dLat0 = diffGrid?.lats[0] ?? lat0;
+  const dLon0 = diffGrid?.lons[0] ?? lon0;
+  const dDLat =
+    diffGrid && diffGrid.lats.length > 1
+      ? diffGrid.lats[1]! - diffGrid.lats[0]!
+      : dLat;
+  const dDLon =
+    diffGrid && diffGrid.lons.length > 1
+      ? diffGrid.lons[1]! - diffGrid.lons[0]!
+      : dLon;
+
   for (let y = 0; y < height; y++) {
     const lat = AU.maxLat - ((y + 0.5) / height) * (AU.maxLat - AU.minLat);
     for (let x = 0; x < width; x++) {
       const lon = AU.minLon + ((x + 0.5) / width) * (AU.maxLon - AU.minLon);
-      // Fast path: regular-grid index instead of linear scans.
-      const fi =
-        dLat === 0
-          ? 0
-          : Math.max(
-              0,
-              Math.min(grid.lats.length - 1, (lat - lat0) / dLat),
-            );
-      const fj =
-        dLon === 0
-          ? 0
-          : Math.max(
-              0,
-              Math.min(grid.lons.length - 1, (lon - lon0) / dLon),
-            );
-      const i1 = Math.floor(fi);
-      const j1 = Math.floor(fj);
-      const i2 = Math.min(i1 + 1, grid.lats.length - 1);
-      const j2 = Math.min(j1 + 1, grid.lons.length - 1);
-      const ty = fi - i1;
-      const tx = fj - j1;
-      const nLon = grid.lons.length;
-      const v11 = grid.values[i1 * nLon + j1];
-      const v12 = grid.values[i1 * nLon + j2];
-      const v21 = grid.values[i2 * nLon + j1];
-      const v22 = grid.values[i2 * nLon + j2];
-      let value: number | null = null;
-      if (v11 != null && v12 != null && v21 != null && v22 != null) {
-        const a = v11 * (1 - tx) + v12 * tx;
-        const b = v21 * (1 - tx) + v22 * tx;
-        value = a * (1 - ty) + b * ty;
-      } else {
-        const present = [v11, v12, v21, v22].filter(
-          (v): v is number => v != null,
+      let value = sampleGridAt(grid, lat, lon, lat0, lon0, dLat, dLon);
+      if (isDiff && diffGrid && value != null) {
+        const other = sampleGridAt(
+          diffGrid,
+          lat,
+          lon,
+          dLat0,
+          dLon0,
+          dDLat,
+          dDLon,
         );
-        if (present.length) {
-          value = present.reduce((s, v) => s + v, 0) / present.length;
-        }
+        value = other == null ? null : value - other;
       }
       const o = (width * y + x) << 2;
       if (value == null) {
@@ -1291,8 +1503,17 @@ export async function renderEcmwfFrame(opts: {
         png.data[o + 3] = 0;
         continue;
       }
-      const t = (value - vmin) / (vmax - vmin);
-      const [r, g, b, a] = colorFor(product.palette, t, value);
+      let r: number;
+      let g: number;
+      let b: number;
+      let a: number;
+      if (isDiff) {
+        const t = value / (vmax || 1); // [-1, 1]
+        [r, g, b, a] = colorForDiff(t);
+      } else {
+        const t = (value - vmin) / (vmax - vmin);
+        [r, g, b, a] = colorFor(product.palette, t, value);
+      }
       png.data[o] = r;
       png.data[o + 1] = g;
       png.data[o + 2] = b;
@@ -1300,7 +1521,7 @@ export async function renderEcmwfFrame(opts: {
     }
   }
 
-  if (product.thunderBolts) {
+  if (product.thunderBolts && !isDiff) {
     paintThunderBolts(png, width, height, data.points, ti, product);
   }
 
@@ -1309,7 +1530,7 @@ export async function renderEcmwfFrame(opts: {
     empty: false,
     time,
     productId: product.id,
-    units: product.units,
+    units: isDiff ? `Δ ${product.units}` : product.units,
     min: vmin,
     max: vmax,
   };
@@ -1320,15 +1541,18 @@ export async function renderEcmwfFrame(opts: {
     const neighbors = [ti - 1, ti + 1, ti + 2].filter(
       (i) => i >= 0 && i < data.times.length && i !== ti,
     );
+    const prefetchDiff = isDiff ? diffModel : null;
     void Promise.resolve().then(async () => {
       for (const ni of neighbors) {
         const nt = data.times[ni]!;
-        const nk = pngCacheKey(product.id, nt);
+        const nk = pngCacheKey(model, product.id, nt, prefetchDiff);
         if (pngCache.has(nk)) continue;
         try {
           await renderEcmwfFrame({
             productId: product.id,
             time: nt,
+            model,
+            diffModel: prefetchDiff,
             skipPrefetch: true,
           });
         } catch {

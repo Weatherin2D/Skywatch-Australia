@@ -5,6 +5,7 @@ import {
   CircleMarker,
   ImageOverlay,
   MapContainer,
+  Polyline,
   TileLayer,
   Tooltip,
   useMap,
@@ -36,8 +37,10 @@ import {
   SmoothRadarLayer,
 } from "@/components/home/smooth-radar-layer";
 import { RiskPolygonLayer } from "@/components/risk/risk-polygon-layer";
+import { StormCellOverlay } from "@/components/home/storm-cell-overlay";
 import type { DisplayFeature } from "@/lib/forecast/types";
 import type { LightningStrike } from "@/lib/weather/lightning";
+import type { StormCell } from "@/lib/weather/storm-cells";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import {
@@ -97,6 +100,18 @@ type Props = {
     lng: number;
     label?: string | null;
   } | null;
+  /** Optional second probe / transect end. */
+  probePointB?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+  } | null;
+  /** Draw a transect line between A and B when both set. */
+  showTransectLine?: boolean;
+  stormCells?: StormCell[];
+  showStormCells?: boolean;
+  selectedStormCellId?: string | null;
+  focusStormCellId?: string | null;
 };
 
 function MapClickHandler({
@@ -431,6 +446,12 @@ export function HomeMap({
   riskFeatures = [],
   onMapClick,
   probePoint = null,
+  probePointB = null,
+  showTransectLine = false,
+  stormCells = [],
+  showStormCells = false,
+  selectedStormCellId = null,
+  focusStormCellId = null,
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -615,6 +636,44 @@ export function HomeMap({
             ) : null}
           </CircleMarker>
         ) : null}
+        {probePointB ? (
+          <CircleMarker
+            center={[probePointB.lat, probePointB.lng]}
+            radius={9}
+            pathOptions={{
+              color: "#fbbf24",
+              weight: 2,
+              fillColor: "#fbbf24",
+              fillOpacity: 0.35,
+            }}
+          >
+            {probePointB.label ? (
+              <Tooltip permanent direction="top" offset={[0, -8]}>
+                {probePointB.label}
+              </Tooltip>
+            ) : null}
+          </CircleMarker>
+        ) : null}
+        {showTransectLine && probePoint && probePointB ? (
+          <Polyline
+            positions={[
+              [probePoint.lat, probePoint.lng],
+              [probePointB.lat, probePointB.lng],
+            ]}
+            pathOptions={{
+              color: "#fbbf24",
+              weight: 2.5,
+              dashArray: "6 4",
+              opacity: 0.9,
+            }}
+          />
+        ) : null}
+        <StormCellOverlay
+          cells={stormCells}
+          enabled={showStormCells}
+          selectedId={selectedStormCellId}
+          focusId={focusStormCellId}
+        />
         <MapTools
           bounds={bounds}
           isNational={isNational}
