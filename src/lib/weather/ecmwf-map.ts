@@ -17,16 +17,19 @@ const AU = {
   maxLon: ECMWF_MAP_BOUNDS[1][1],
 };
 
-/** Coarser national grid — fewer Open-Meteo points, much faster cold loads. */
-const GRID_STEP = 2.75;
-const COARSE_STEP = 3.5;
-const BATCH = 70;
+/** National sample spacing (°). Precip uses HIRES for identifiable rain features. */
+const GRID_STEP = 1.5;
+const HIRES_STEP = 1.15;
+const COARSE_STEP = 2.5;
+const BATCH = 60;
 const BATCH_CONCURRENCY = 8;
 const FORECAST_DAYS = 3;
 const CACHE_TTL_MS = 18 * 60_000;
-const OUT_WIDTH = 720;
+const OUT_WIDTH = 1280;
 const OPEN_METEO_MODEL = "ecmwf_ifs";
 const PNG_CACHE_MAX = 96;
+/** Cache schema bump when grid/render behaviour changes. */
+const CACHE_VER = "r2";
 
 export type EcmwfProductGroup =
   | "surface"
@@ -64,6 +67,10 @@ export type EcmwfProduct = {
   max?: number;
   /** Use coarser grid (pressure-level winds) */
   coarse?: boolean;
+  /** Denser national grid (precip / convection) */
+  hires?: boolean;
+  /** Stamp lightning bolts where WMO weather code is thunderstorm */
+  thunderBolts?: boolean;
 };
 
 const LEVELS = [1000, 925, 850, 700, 500, 300, 250, 200] as const;
@@ -175,6 +182,8 @@ export const ECMWF_PRODUCTS: EcmwfProduct[] = [
     palette: "weather",
     min: 0,
     max: 99,
+    hires: true,
+    thunderBolts: true,
   },
   {
     id: "precipitation",
@@ -186,6 +195,8 @@ export const ECMWF_PRODUCTS: EcmwfProduct[] = [
     palette: "precip",
     min: 0,
     max: 15,
+    hires: true,
+    thunderBolts: true,
   },
   {
     id: "rain",
@@ -197,6 +208,8 @@ export const ECMWF_PRODUCTS: EcmwfProduct[] = [
     palette: "precip",
     min: 0,
     max: 15,
+    hires: true,
+    thunderBolts: true,
   },
   {
     id: "snowfall",
@@ -208,6 +221,7 @@ export const ECMWF_PRODUCTS: EcmwfProduct[] = [
     palette: "snow",
     min: 0,
     max: 5,
+    hires: true,
   },
   {
     id: "cloud_cover",
@@ -285,6 +299,7 @@ export const ECMWF_PRODUCTS: EcmwfProduct[] = [
     palette: "cape",
     min: 0,
     max: 3000,
+    hires: true,
   },
   {
     id: "cin",
@@ -318,7 +333,13 @@ export function getEcmwfProduct(id: string | null | undefined): EcmwfProduct {
   return PRODUCT_BY_ID.get(DEFAULT_ECMWF_PRODUCT_ID)!;
 }
 
-type GridPoint = { lat: number; lon: number; values: (number | null)[] };
+type GridPoint = {
+  lat: number;
+  lon: number;
+  values: (number | null)[];
+  /** Parallel WMO weather codes when thunderBolts products are fetched. */
+  weatherCodes?: (number | null)[];
+};
 
 type ProductCache = {
   fetchedAt: number;
@@ -326,6 +347,24 @@ type ProductCache = {
   points: GridPoint[];
   productId: string;
 };
+
+function gridStepFor(product: EcmwfProduct): number {
+  if (product.coarse) return COARSE_STEP;
+  if (product.hires) return HIRES_STEP;
+  return GRID_STEP;
+}
+
+function hourlyFieldsFor(product: EcmwfProduct): string {
+  if (product.thunderBolts && product.field !== "weather_code") {
+    return `${product.field},weather_code`;
+  }
+  return product.field;
+}
+
+/** WMO weather codes for thunderstorm (Open-Meteo / WMO 4677 subset). */
+function isThunderCode(code: number | null | undefined): boolean {
+  return code === 95 || code === 96 || code === 97 || code === 99;
+}
 
 export type EcmwfFrameResult = {
   png: Buffer;
@@ -346,7 +385,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 function pngCacheKey(productId: string, time: string): string {
-  return `${productId}|${time}`;
+  return `${CACHE_VER}|${productId}|${time}`;
+}
+
+function productCacheKey(productId: string): string {
+  return `${CACHE_VER}|${productId}`;
 }
 
 function rememberPng(key: string, result: EcmwfFrameResult): void {
@@ -381,14 +424,14 @@ function buildGrid(step: number): { lat: number; lon: number }[] {
 async function fetchBatch(
   lats: number[],
   lons: number[],
-  field: string,
+  fields: string,
 ): Promise<
   { latitude: number; longitude: number; hourly: Record<string, unknown[]> }[]
 > {
   const params = new URLSearchParams({
     latitude: lats.map((v) => v.toFixed(4)).join(","),
     longitude: lons.map((v) => v.toFixed(4)).join(","),
-    hourly: field,
+    hourly: fields,
     models: OPEN_METEO_MODEL,
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
@@ -442,7 +485,8 @@ async function fetchBatch(
 }
 
 async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
-  const step = product.coarse ? COARSE_STEP : GRID_STEP;
+  const step = gridStepFor(product);
+  const fields = hourlyFieldsFor(product);
   const sites = buildGrid(step);
   const batches: { lats: number[]; lons: number[] }[] = [];
   for (let i = 0; i < sites.length; i += BATCH) {
@@ -461,7 +505,7 @@ async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
     const results = await Promise.all(
       wave.map(async (b) => {
         try {
-          return await fetchBatch(b.lats, b.lons, product.field);
+          return await fetchBatch(b.lats, b.lons, fields);
         } catch {
           return [] as Awaited<ReturnType<typeof fetchBatch>>;
         }
@@ -474,21 +518,30 @@ async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
         const loc = locs[j];
         const hourly = loc?.hourly ?? {};
         const series = (hourly[product.field] ?? []) as unknown[];
+        const wxSeries = (hourly.weather_code ?? []) as unknown[];
         const t = (hourly.time ?? []) as unknown[];
         if (!times.length && t.length) {
           times = t.map(String);
         }
         const values: (number | null)[] = times.map((_, ti) => num(series[ti]));
+        const weatherCodes = product.thunderBolts
+          ? times.map((_, ti) =>
+              product.field === "weather_code"
+                ? num(series[ti])
+                : num(wxSeries[ti]),
+            )
+          : undefined;
         points.push({
           lat: b.lats[j]!,
           lon: b.lons[j]!,
           values,
+          weatherCodes,
         });
       }
     }
     // Brief pause only when we still have many waves left (rate-limit cushion).
-    if (i + BATCH_CONCURRENCY < batches.length && batches.length > 6) {
-      await sleep(40);
+    if (i + BATCH_CONCURRENCY < batches.length && batches.length > 4) {
+      await sleep(35);
     }
   }
 
@@ -509,7 +562,7 @@ export async function getEcmwfProductCache(
   opts?: { force?: boolean },
 ): Promise<ProductCache> {
   const product = getEcmwfProduct(productId);
-  const key = product.id;
+  const key = productCacheKey(product.id);
   const hit = cache.get(key);
   if (
     !opts?.force &&
@@ -847,6 +900,134 @@ function buildScalarGrid(
   return { lats, lons, values };
 }
 
+function latLonToPx(
+  lat: number,
+  lon: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const x = ((lon - AU.minLon) / (AU.maxLon - AU.minLon)) * width;
+  const y = ((AU.maxLat - lat) / (AU.maxLat - AU.minLat)) * height;
+  return { x, y };
+}
+
+function blendPixel(
+  png: PNG,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  r: number,
+  g: number,
+  b: number,
+  a: number,
+): void {
+  const xi = Math.round(x);
+  const yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= width || yi >= height) return;
+  const o = (width * yi + xi) << 2;
+  const srcA = a / 255;
+  const dstA = (png.data[o + 3] ?? 0) / 255;
+  const outA = srcA + dstA * (1 - srcA);
+  if (outA <= 0) return;
+  png.data[o] = Math.round(
+    (r * srcA + (png.data[o] ?? 0) * dstA * (1 - srcA)) / outA,
+  );
+  png.data[o + 1] = Math.round(
+    (g * srcA + (png.data[o + 1] ?? 0) * dstA * (1 - srcA)) / outA,
+  );
+  png.data[o + 2] = Math.round(
+    (b * srcA + (png.data[o + 2] ?? 0) * dstA * (1 - srcA)) / outA,
+  );
+  png.data[o + 3] = Math.round(outA * 255);
+}
+
+/** Compact Windy-style zigzag bolt centred at (cx, cy). */
+function drawLightningBolt(
+  png: PNG,
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  scale = 1,
+): void {
+  // Relative polyline for a simple bolt (x,y), tip at top.
+  const pts: [number, number][] = [
+    [0, -7],
+    [2.2, -2.2],
+    [0.4, -2.2],
+    [3.2, 3.8],
+    [-0.6, 0.6],
+    [1.2, 0.6],
+    [-2.8, 7],
+    [-0.8, 1.4],
+    [-2.4, 1.4],
+  ];
+  const s = scale;
+  // Fill by painting thick segments along the path.
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i]!;
+    const [x1, y1] = pts[i + 1]!;
+    const steps = 8;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const x = cx + (x0 + (x1 - x0) * t) * s;
+      const y = cy + (y0 + (y1 - y0) * t) * s;
+      blendPixel(png, width, height, x, y, 255, 255, 255, 230);
+      blendPixel(png, width, height, x + 1, y, 255, 255, 255, 180);
+      blendPixel(png, width, height, x, y + 1, 255, 255, 255, 160);
+    }
+  }
+}
+
+function paintThunderBolts(
+  png: PNG,
+  width: number,
+  height: number,
+  points: GridPoint[],
+  timeIndex: number,
+  product: EcmwfProduct,
+): void {
+  const cells: { lat: number; lon: number; hail: boolean }[] = [];
+  for (const p of points) {
+    const code =
+      p.weatherCodes?.[timeIndex] ??
+      (product.field === "weather_code" ? p.values[timeIndex] : null);
+    if (!isThunderCode(code)) continue;
+    cells.push({
+      lat: p.lat,
+      lon: p.lon,
+      hail: code === 96 || code === 99,
+    });
+  }
+  if (!cells.length) return;
+
+  // Dense lattice inside each thunder cell (Windy-like packing).
+  for (const cell of cells) {
+    const { x, y } = latLonToPx(cell.lat, cell.lon, width, height);
+    const offsets: [number, number][] = cell.hail
+      ? [
+          [0, 0],
+          [10, -8],
+          [-9, 7],
+          [8, 9],
+          [-11, -6],
+          [0, 12],
+          [12, 2],
+        ]
+      : [
+          [0, 0],
+          [9, -7],
+          [-8, 6],
+          [7, 8],
+          [-10, -5],
+        ];
+    for (const [dx, dy] of offsets) {
+      drawLightningBolt(png, width, height, x + dx, y + dy, cell.hail ? 1.05 : 0.95);
+    }
+  }
+}
+
 function bilinearSample(
   grid: ScalarGrid,
   lat: number,
@@ -937,7 +1118,7 @@ export async function sampleEcmwfPoint(opts: {
   }
 
   // Prefer in-memory grid when warm (instant, matches the painted field).
-  const warm = cache.get(product.id);
+  const warm = cache.get(productCacheKey(product.id));
   if (warm?.times.length && warm.points.length) {
     const ti = nearestTimeIndex(warm.times, opts.time);
     const grid = buildScalarGrid(warm.points, ti);
@@ -1114,6 +1295,10 @@ export async function renderEcmwfFrame(opts: {
       png.data[o + 2] = b;
       png.data[o + 3] = a;
     }
+  }
+
+  if (product.thunderBolts) {
+    paintThunderBolts(png, width, height, data.points, ti, product);
   }
 
   const result: EcmwfFrameResult = {

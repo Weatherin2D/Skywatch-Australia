@@ -268,7 +268,8 @@ export function EcmwfModelsDashboard() {
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-white/70">
               Hourly ECMWF fields over Australia — pick a product, scrub the
-              forecast, and click the map for a point value.
+              forecast, and click the map for a point value. Rain layers show
+              lightning bolts where the model has thunderstorms.
             </p>
           </div>
           {catalog?.attribution ? (
