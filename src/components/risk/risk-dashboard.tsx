@@ -25,6 +25,14 @@ import {
   AUTO_RISK_CATEGORIES,
   autoRiskLegendItems,
 } from "@/lib/weather/auto-risk-categories";
+import {
+  MODEL_RISK_PRODUCTS,
+  PRODUCT_META,
+  chanceBlurbs,
+  chanceLegendItems,
+  resolveModelRiskProduct,
+  type ModelRiskProduct,
+} from "@/lib/weather/auto-risk-products";
 import { cn } from "@/lib/utils";
 
 const RISK_MAP_SETTINGS: MapSettingsState = {
@@ -40,8 +48,12 @@ type RiskSource = "bom" | "pulse" | "access" | "ifs" | "ukmo";
 type RiskCatalog = {
   status: "ok" | "empty";
   source: RiskSource | "auto";
+  product?: ModelRiskProduct;
+  products?: { id: ModelRiskProduct; label: string; shortLabel: string }[];
   issuedAt: string | null;
   message?: string;
+  keyTitle?: string;
+  productDescription?: string;
   outlook?: PublicForecastResponse;
   days?: Array<{
     day: number;
@@ -95,25 +107,32 @@ function BomRiskLegend({ usedIds }: { usedIds: Set<string> }) {
   );
 }
 
-function AutoRiskBlurbList({
+function ModelProductBlurbList({
+  product,
   usedIds,
 }: {
+  product: ModelRiskProduct;
   usedIds: Set<string>;
 }) {
   const blurbs = useMemo(() => {
     const map = new Map<string, string>();
-    for (const c of AUTO_RISK_CATEGORIES) map.set(c.id, c.blurb);
-    for (const h of AUTO_HATCH_LEGEND) map.set(h.id, h.blurb);
+    if (product === "risk") {
+      for (const c of AUTO_RISK_CATEGORIES) map.set(c.id, c.blurb);
+      for (const h of AUTO_HATCH_LEGEND) map.set(h.id, h.blurb);
+    } else {
+      for (const b of chanceBlurbs(product)) map.set(b.id, b.blurb);
+    }
     return map;
-  }, []);
+  }, [product]);
 
-  const items = autoRiskLegendItems();
+  const items =
+    product === "risk" ? autoRiskLegendItems() : chanceLegendItems(product);
   const active = items.filter((i) => usedIds.size === 0 || usedIds.has(i.id));
   if (!active.length) return null;
 
   return (
     <ul className="space-y-2 border-t border-white/10 pt-3">
-      {active.slice(0, 4).map((item) => {
+      {active.slice(0, 5).map((item) => {
         const blurb = blurbs.get(item.id);
         if (!blurb) return null;
         return (
@@ -138,11 +157,23 @@ function readSourceFromUrl(): RiskSource {
   return "bom";
 }
 
-function syncSourceToUrl(source: RiskSource) {
+function readProductFromUrl(): ModelRiskProduct {
+  if (typeof window === "undefined") return "risk";
+  const sp = new URLSearchParams(window.location.search);
+  return resolveModelRiskProduct(sp.get("product"));
+}
+
+function syncUrl(source: RiskSource, product: ModelRiskProduct) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  if (source === "bom") url.searchParams.delete("source");
-  else url.searchParams.set("source", source);
+  if (source === "bom") {
+    url.searchParams.delete("source");
+    url.searchParams.delete("product");
+  } else {
+    url.searchParams.set("source", source);
+    if (product === "risk") url.searchParams.delete("product");
+    else url.searchParams.set("product", product);
+  }
   window.history.replaceState({}, "", url.toString());
 }
 
@@ -163,68 +194,81 @@ const RISK_SOURCE_OPTIONS: { id: RiskSource; label: string }[] = [
   { id: "access", label: "Access" },
 ];
 
-function sourceBlurb(source: RiskSource): string {
-  switch (source) {
-    case "bom":
-      return "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon.";
-    case "access":
-      return "SkyWatch Access — BoM ACCESS-G (~15 km): storm ingredients plus cap, dry air, and blocked-heating suppressors when the feed is live.";
-    case "ifs":
-      return "SkyWatch IFS — ECMWF IFS HRES (~9 km): ingredients and suppressors (CIN/dry air/rising pressure/blocked sun) that weaken or prevent storms.";
-    case "ukmo":
-      return "SkyWatch UKMO — UKMO Global (~10 km): ingredients and suppressors (CIN/dry air/cloud cover/pressure rise) that weaken or prevent storms.";
-    default:
-      return "SkyWatch Pulse — multi-model blend of storm ingredients and suppressors (cap, dry air, blocked heating, subsidence, no-trigger).";
+function sourceBlurb(source: RiskSource, product: ModelRiskProduct): string {
+  if (source === "bom") {
+    return "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon.";
   }
+  const model =
+    source === "access"
+      ? "Access"
+      : source === "ifs"
+        ? "IFS"
+        : source === "ukmo"
+          ? "UKMO"
+          : "Pulse";
+  const meta = PRODUCT_META[product];
+  return `SkyWatch ${model} — ${meta.description}`;
 }
 
-function sourceLoadingLabel(source: RiskSource): string {
-  switch (source) {
-    case "bom":
-      return "Loading MetEye thunderstorm forecast…";
-    case "access":
-      return "Building Access risk outlook…";
-    case "ifs":
-      return "Building IFS risk outlook…";
-    case "ukmo":
-      return "Building UKMO risk outlook…";
-    default:
-      return "Building Pulse risk outlook…";
-  }
+function sourceLoadingLabel(
+  source: RiskSource,
+  product: ModelRiskProduct,
+): string {
+  if (source === "bom") return "Loading MetEye thunderstorm forecast…";
+  const model =
+    source === "access"
+      ? "Access"
+      : source === "ifs"
+        ? "IFS"
+        : source === "ukmo"
+          ? "UKMO"
+          : "Pulse";
+  return `Building ${model} ${PRODUCT_META[product].shortLabel.toLowerCase()} outlook…`;
 }
 
-function sourceEmptyFallback(source: RiskSource): string {
-  switch (source) {
-    case "bom":
-      return "No thunderstorm areas in the current BoM MetEye forecast.";
-    case "access":
-      return "No elevated thunderstorm risk in SkyWatch Access guidance.";
-    case "ifs":
-      return "No elevated thunderstorm risk in SkyWatch IFS guidance.";
-    case "ukmo":
-      return "No elevated thunderstorm risk in SkyWatch UKMO guidance.";
-    default:
-      return "No elevated thunderstorm risk in SkyWatch Pulse guidance.";
+function sourceEmptyFallback(
+  source: RiskSource,
+  product: ModelRiskProduct,
+): string {
+  if (source === "bom") {
+    return "No thunderstorm areas in the current BoM MetEye forecast.";
   }
+  const model =
+    source === "access"
+      ? "Access"
+      : source === "ifs"
+        ? "IFS"
+        : source === "ukmo"
+          ? "UKMO"
+          : "Pulse";
+  return PRODUCT_META[product].emptyMessage(model);
 }
 
-function sourceKeyTitle(source: RiskSource): string {
-  switch (source) {
-    case "bom":
-      return "Thunderstorms";
-    case "access":
-      return "Access risk";
-    case "ifs":
-      return "IFS risk";
-    case "ukmo":
-      return "UKMO risk";
+function sourceKeyTitle(source: RiskSource, product: ModelRiskProduct): string {
+  if (source === "bom") return "Thunderstorms";
+  return PRODUCT_META[product].keyTitle;
+}
+
+function emptyDayMessage(product: ModelRiskProduct): string {
+  switch (product) {
+    case "tstorm":
+      return "No thunderstorm chance areas for this day.";
+    case "hail":
+      return "No large-hail chance areas for this day.";
+    case "wind":
+      return "No damaging-wind chance areas for this day.";
+    case "rain":
+      return "No heavy-rainfall chance areas for this day.";
+    case "tornado":
+      return "No tornado chance areas for this day.";
     default:
-      return "Pulse risk";
+      return "No thunderstorm areas for this day.";
   }
 }
 
 export function RiskDashboard() {
   const [source, setSource] = useState<RiskSource>("bom");
+  const [product, setProduct] = useState<ModelRiskProduct>("risk");
   const [data, setData] = useState<PublicForecastResponse | null>(null);
   const [catalog, setCatalog] = useState<RiskCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -235,6 +279,7 @@ export function RiskDashboard() {
 
   useEffect(() => {
     setSource(readSourceFromUrl());
+    setProduct(readProductFromUrl());
   }, []);
 
   useEffect(() => {
@@ -243,8 +288,12 @@ export function RiskDashboard() {
       setLoading(true);
       setError(null);
       try {
+        const productQs =
+          isModelSource(source) && product !== "risk"
+            ? `&product=${product}`
+            : "";
         const res = await fetch(
-          `/api/weather/risk?source=${source}&t=${Date.now()}`,
+          `/api/weather/risk?source=${source}${productQs}&t=${Date.now()}`,
           { cache: "no-store" },
         );
         if (!res.ok) throw new Error("Could not load risk outlook");
@@ -299,7 +348,7 @@ export function RiskDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [source, product]);
 
   const active = useMemo(() => {
     if (!data?.days?.length) return null;
@@ -323,23 +372,34 @@ export function RiskDashboard() {
       ),
     );
 
+  const productQs =
+    isModelSource(source) && product !== "risk" ? `&product=${product}` : "";
   const riskImageUrl =
     selectedDay != null && dayHasRisk(active)
-      ? `/api/weather/risk-image?source=${source}&day=${selectedDay}&t=${encodeURIComponent(
+      ? `/api/weather/risk-image?source=${source}${productQs}&day=${selectedDay}&t=${encodeURIComponent(
           data?.issuedAt ?? String(selectedDay),
         )}`
       : null;
 
   const region = getMapRegion(regionId);
   const daySlots = data?.days ?? [];
-  const autoLegendItems: DisplayLegendItem[] =
-    active?.legend?.length
-      ? active.legend
-      : autoRiskLegendItems();
+  const autoLegendItems: DisplayLegendItem[] = active?.legend?.length
+    ? active.legend
+    : product === "risk"
+      ? autoRiskLegendItems()
+      : chanceLegendItems(product);
 
   const setSourceAndUrl = (next: RiskSource) => {
+    const nextProduct = next === "bom" ? "risk" : product;
     setSource(next);
-    syncSourceToUrl(next);
+    if (next === "bom") setProduct("risk");
+    syncUrl(next, nextProduct);
+    setSelectedDay(null);
+  };
+
+  const setProductAndUrl = (next: ModelRiskProduct) => {
+    setProduct(next);
+    syncUrl(source, next);
     setSelectedDay(null);
   };
 
@@ -351,7 +411,7 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            {sourceBlurb(source)}
+            {sourceBlurb(source, product)}
           </p>
         </div>
 
@@ -377,6 +437,31 @@ export function RiskDashboard() {
           ))}
         </div>
       </div>
+
+      {isModelSource(source) ? (
+        <div
+          className="animate-fade-up inline-flex max-w-full flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1"
+          role="group"
+          aria-label="Model risk product"
+        >
+          {MODEL_RISK_PRODUCTS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setProductAndUrl(id)}
+              className={cn(
+                "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition sm:text-sm",
+                product === id
+                  ? "bg-white/12 text-white"
+                  : "text-white/55 hover:text-white",
+              )}
+              title={PRODUCT_META[id].label}
+            >
+              {PRODUCT_META[id].shortLabel}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] xl:grid-cols-[minmax(0,1fr)_260px]">
         <section className="min-w-0 space-y-3">
@@ -460,7 +545,7 @@ export function RiskDashboard() {
           <div className="relative h-[min(68vh,720px)] min-h-[360px] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
             {loading ? (
               <div className="flex h-full items-center justify-center text-sm text-white/60">
-                {sourceLoadingLabel(source)}
+                {sourceLoadingLabel(source, product)}
               </div>
             ) : error ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
@@ -487,7 +572,7 @@ export function RiskDashboard() {
                 {!loading && data?.status === "empty" ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
-                      {data.message ?? sourceEmptyFallback(source)}
+                      {data.message ?? sourceEmptyFallback(source, product)}
                     </p>
                   </div>
                 ) : null}
@@ -497,7 +582,7 @@ export function RiskDashboard() {
                 !dayHasRisk(active) ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
-                      No thunderstorm areas for this day.
+                      {emptyDayMessage(product)}
                     </p>
                   </div>
                 ) : null}
@@ -509,13 +594,7 @@ export function RiskDashboard() {
             {source === "bom"
               ? "Source: BoM MetEye thunderstorm layer (IDZ73094)"
               : catalog?.attribution ??
-                (source === "access"
-                  ? "Source: SkyWatch Access · BoM ACCESS-G via Open-Meteo"
-                  : source === "ifs"
-                    ? "Source: SkyWatch IFS · ECMWF IFS HRES via Open-Meteo"
-                    : source === "ukmo"
-                      ? "Source: SkyWatch UKMO · UK Met Office Global via Open-Meteo"
-                      : "Source: SkyWatch Pulse · Open-Meteo multi-model blend")}
+                `Source: SkyWatch ${source === "access" ? "Access" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"} · Open-Meteo`}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",
@@ -535,7 +614,7 @@ export function RiskDashboard() {
               Key
             </p>
             <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-bold text-white">
-              {sourceKeyTitle(source)}
+              {sourceKeyTitle(source, product)}
             </h2>
           </div>
           {source === "bom" ? (
@@ -550,15 +629,14 @@ export function RiskDashboard() {
             <>
               <RiskLegend items={autoLegendItems} />
               <p className="text-xs leading-relaxed text-white/50">
-                {source === "access"
-                  ? "Same SkyWatch ladder as Pulse, driven by BoM ACCESS-G fields when the open feed is live."
-                  : source === "ifs"
-                    ? "Same SkyWatch ladder as Pulse, driven by ECMWF IFS HRES (~9 km)."
-                    : source === "ukmo"
-                      ? "Same SkyWatch ladder as Pulse, driven by UK Met Office Global (~10 km)."
-                      : "Categorical colours follow the SkyWatch ladder. L1/L2 hatches overlay supercell-interesting environments — guidance only, not an official warning."}
+                {product === "risk"
+                  ? "Categorical colours follow the SkyWatch ladder. L1/L2 hatches overlay supercell-interesting environments — guidance only."
+                  : `${PRODUCT_META[product].description} Contours are approximate probabilities within ~40 km — guidance only.`}
               </p>
-              <AutoRiskBlurbList usedIds={usedCategoryIds} />
+              <ModelProductBlurbList
+                product={product}
+                usedIds={usedCategoryIds}
+              />
             </>
           )}
         </aside>

@@ -16,6 +16,21 @@ import {
   autoRiskCategoryBlurbs,
   autoRiskLegendItems,
 } from "@/lib/weather/auto-risk-categories";
+import {
+  hazardChanceToSampleRank,
+  hazardPctForProduct,
+  scoreHazardChances,
+} from "@/lib/weather/auto-risk-hazards";
+import {
+  MODEL_RISK_PRODUCTS,
+  PRODUCT_META,
+  chanceBlurbs,
+  chanceColorMap,
+  chanceBandsFor,
+  chanceLegendItems,
+  resolveModelRiskProduct,
+  type ModelRiskProduct,
+} from "@/lib/weather/auto-risk-products";
 import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
 import {
   renderAutoRiskPng,
@@ -29,6 +44,9 @@ import {
 import { promises as fs } from "fs";
 import path from "path";
 import { get as blobGet, put as blobPut } from "@vercel/blob";
+
+export type { ModelRiskProduct };
+export { MODEL_RISK_PRODUCTS, PRODUCT_META, resolveModelRiskProduct };
 
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
@@ -233,12 +251,38 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
   },
 };
 
-type CacheEntry = {
-  at: number;
+type ProductLayer = {
   outlook: PublicForecastResponse;
   dayPoints: Record<number, AutoRiskSamplePoint[]>;
   dayPng: Record<number, Buffer>;
 };
+
+type CacheEntry = {
+  at: number;
+  /** @deprecated prefer products.risk — kept for shared-cache back-compat helpers */
+  outlook: PublicForecastResponse;
+  dayPoints: Record<number, AutoRiskSamplePoint[]>;
+  dayPng: Record<number, Buffer>;
+  products: Record<ModelRiskProduct, ProductLayer>;
+};
+
+function emptyProductLayers(): Record<ModelRiskProduct, ProductLayer> {
+  const out = {} as Record<ModelRiskProduct, ProductLayer>;
+  for (const p of MODEL_RISK_PRODUCTS) {
+    out[p] = {
+      outlook: {
+        status: "empty",
+        issuedAt: null,
+        mapView: { center: [-25.5, 134.5], zoom: 4 },
+        days: [],
+        defaultDay: 1,
+      },
+      dayPoints: {},
+      dayPng: {},
+    };
+  }
+  return out;
+}
 
 const caches: Record<ModelRiskKind, CacheEntry | null> = {
   pulse: null,
@@ -986,6 +1030,7 @@ export function scoreEnvironment(
   rank: number;
   hatch: 0 | 1 | 2;
   composite: number;
+  suppress: number;
 } {
   const cape = Math.max(0, m.cape);
   const dewMoisture = clamp01((m.dewpoint - 12) / 12);
@@ -1261,7 +1306,7 @@ export function scoreEnvironment(
     hatch = 1;
   }
 
-  return { rank, hatch, composite };
+  return { rank, hatch, composite, suppress };
 }
 
 async function loadAllSites(
@@ -1332,18 +1377,52 @@ function buildDayLabels(
   return days;
 }
 
+function legendForProduct(
+  product: ModelRiskProduct,
+  points: AutoRiskSamplePoint[],
+): RolledDay["legend"] {
+  const used = summarizeUsed(points);
+  if (product === "risk") {
+    return autoRiskLegendItems({
+      usedRanks: used.ranks,
+      usedHatches: used.hatches,
+    });
+  }
+  return chanceLegendItems(product, { usedRanks: used.ranks });
+}
+
+function emptyLegendForProduct(product: ModelRiskProduct) {
+  if (product === "risk") {
+    return autoRiskLegendItems({
+      usedRanks: new Set(),
+      usedHatches: new Set(),
+    });
+  }
+  return chanceLegendItems(product, { usedRanks: new Set() });
+}
+
+function productHasSignal(points: AutoRiskSamplePoint[]): boolean {
+  return points.some((p) => p.rank > 0 || p.hatch > 0);
+}
+
 async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
   const rows = await loadAllSites(config);
   const now = Date.now();
   const day0Key = sydneyDayKey(startOfSydneyDayMs(now));
   const dayMeta = buildDayLabels(day0Key);
+  const issuedAt = new Date().toISOString();
 
-  const dayPoints: Record<number, AutoRiskSamplePoint[]> = {};
-  const dayPng: Record<number, Buffer> = {};
-  const rolled: RolledDay[] = [];
+  const products = emptyProductLayers();
+  const rolledByProduct: Record<ModelRiskProduct, RolledDay[]> = {
+    risk: [],
+    tstorm: [],
+    hail: [],
+    wind: [],
+    rain: [],
+    tornado: [],
+  };
 
   for (let d = 0; d < FORECAST_DAYS; d++) {
-    const points: AutoRiskSamplePoint[] = [];
     const dayKey = dayMeta[d]!.key;
     const siteMetrics: SiteMetrics[] = [];
     for (const row of rows) {
@@ -1360,111 +1439,145 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
       siteMetrics.push({ lat: row.lat, lon: row.lon, m });
     }
     applyLiftTriggers(siteMetrics);
+
+    const pointsByProduct: Record<ModelRiskProduct, AutoRiskSamplePoint[]> = {
+      risk: [],
+      tstorm: [],
+      hail: [],
+      wind: [],
+      rain: [],
+      tornado: [],
+    };
+
     for (const site of siteMetrics) {
       const scored = scoreEnvironment(site.m, site.lat);
-      if (scored.rank <= 0 && scored.hatch === 0) continue;
-      points.push({
-        lat: site.lat,
-        lon: site.lon,
-        rank: scored.rank,
-        hatch: scored.hatch,
+      const chances = scoreHazardChances(site.m, site.lat, scored);
+
+      if (scored.rank > 0 || scored.hatch > 0) {
+        pointsByProduct.risk.push({
+          lat: site.lat,
+          lon: site.lon,
+          rank: scored.rank,
+          hatch: scored.hatch,
+        });
+      }
+
+      for (const product of MODEL_RISK_PRODUCTS) {
+        if (product === "risk") continue;
+        const pct = hazardPctForProduct(chances, product);
+        const rank = hazardChanceToSampleRank(product, pct);
+        if (rank <= 0) continue;
+        pointsByProduct[product].push({
+          lat: site.lat,
+          lon: site.lon,
+          rank,
+          hatch: 0,
+        });
+      }
+    }
+
+    for (const product of MODEL_RISK_PRODUCTS) {
+      const points = pointsByProduct[product];
+      products[product].dayPoints[d + 1] = points;
+      rolledByProduct[product].push({
+        effectiveDay: d + 1,
+        storedDay: d + 1,
+        validDate: dayKey,
+        label: dayMeta[d]!.label,
+        dateLabel: dayMeta[d]!.dateLabel,
+        isToday: d === 0,
+        features: [],
+        legend: legendForProduct(product, points),
+        source: "categorical",
       });
     }
-    dayPoints[d + 1] = points;
-    // PNG rendered lazily on first image request (keeps catalog under Vercel budget).
-    const used = summarizeUsed(points);
-    const legend = autoRiskLegendItems({
-      usedRanks: used.ranks,
-      usedHatches: used.hatches,
-    });
-    rolled.push({
-      effectiveDay: d + 1,
-      storedDay: d + 1,
-      validDate: dayKey,
-      label: dayMeta[d]!.label,
-      dateLabel: dayMeta[d]!.dateLabel,
-      isToday: d === 0,
-      features: [],
-      legend,
-      source: "categorical",
-    });
   }
 
-  const anyRisk = rolled.some((r) =>
-    r.legend.some((i) => i.used && i.order < 100),
-  );
   const feedDown = rows.length === 0;
   const coverage = rows.length / Math.max(1, SAMPLE_SITES.length);
   const incomplete = !feedDown && coverage < MIN_SITE_COVERAGE;
-  // Partial coverage with real risk still ships a map. Only suppress a
-  // “no risk” result when the fetch was too thin to trust.
-  const suppressClear = incomplete && !anyRisk;
-  const outlook: PublicForecastResponse = {
-    status: anyRisk ? "ok" : "empty",
-    issuedAt: new Date().toISOString(),
-    mapView: { center: [-25.5, 134.5], zoom: 4 },
-    days: suppressClear
-      ? rolled.map((d) => ({
-          ...d,
-          // Empty used-sets — default autoRiskLegendItems() marks everything used.
-          legend: autoRiskLegendItems({
-            usedRanks: new Set(),
-            usedHatches: new Set(),
-          }),
-        }))
-      : rolled,
-    defaultDay: 1,
-    message: anyRisk
-      ? undefined
-      : suppressClear
-        ? `SkyWatch ${config.label} guidance is still refreshing — try again in a moment.`
-        : feedDown
-          ? config.emptyMessage
-          : `No elevated thunderstorm risk in SkyWatch ${config.label} guidance.`,
-  };
 
+  for (const product of MODEL_RISK_PRODUCTS) {
+    const rolled = rolledByProduct[product];
+    const anySignal = rolled.some((r) =>
+      r.legend.some((i) => i.used && i.order < 100),
+    );
+    const suppressClear = incomplete && !anySignal;
+    const meta = PRODUCT_META[product];
+    products[product].outlook = {
+      status: anySignal ? "ok" : "empty",
+      issuedAt,
+      mapView: { center: [-25.5, 134.5], zoom: 4 },
+      days: suppressClear
+        ? rolled.map((d) => ({
+            ...d,
+            legend: emptyLegendForProduct(product),
+          }))
+        : rolled,
+      defaultDay: 1,
+      message: anySignal
+        ? undefined
+        : suppressClear
+          ? `SkyWatch ${config.label} guidance is still refreshing — try again in a moment.`
+          : feedDown
+            ? config.emptyMessage
+            : meta.emptyMessage(config.label),
+    };
+    if (suppressClear) {
+      products[product].dayPoints = {};
+    }
+  }
+
+  const riskOutlook = products.risk.outlook;
   console.info(
-    `[${config.kind}-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites (coverage=${coverage.toFixed(2)}), days=${FORECAST_DAYS}, status=${outlook.status}`,
+    `[${config.kind}-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites (coverage=${coverage.toFixed(2)}), days=${FORECAST_DAYS}, status=${riskOutlook.status}, products=${MODEL_RISK_PRODUCTS.map((p) => `${p}:${products[p].outlook.status}`).join(",")}`,
   );
 
   return {
     at: Date.now(),
-    outlook,
-    dayPoints: suppressClear ? {} : dayPoints,
-    dayPng,
+    outlook: riskOutlook,
+    dayPoints: products.risk.dayPoints,
+    dayPng: products.risk.dayPng,
+    products,
   };
 }
 
 function cacheTtlMs(entry: CacheEntry): number {
-  return entry.outlook.status === "ok" ? CACHE_MS : EMPTY_CACHE_MS;
+  return entry.products.risk.outlook.status === "ok" ||
+    entry.outlook.status === "ok"
+    ? CACHE_MS
+    : EMPTY_CACHE_MS;
 }
 
 /** Ok-only payload shared across serverless instances (catalog + risk-image). */
 type SharedPayload = {
   at: number;
-  outlook: PublicForecastResponse;
-  dayPoints: Record<number, AutoRiskSamplePoint[]>;
+  products: Record<
+    ModelRiskProduct,
+    {
+      outlook: PublicForecastResponse;
+      dayPoints: Record<number, AutoRiskSamplePoint[]>;
+    }
+  >;
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v4/${kind}.json`;
+  return `model-risk/v5/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v4",
+    "skywatch-model-risk-v5",
     `${kind}.json`,
   );
 }
 
 function isFreshOkShared(parsed: SharedPayload | null): parsed is SharedPayload {
-  return Boolean(
-    parsed &&
-      parsed.outlook?.status === "ok" &&
-      parsed.dayPoints &&
-      Number.isFinite(parsed.at) &&
-      Date.now() - parsed.at < CACHE_MS,
+  if (!parsed?.products || !Number.isFinite(parsed.at)) return false;
+  if (Date.now() - parsed.at >= CACHE_MS) return false;
+  return MODEL_RISK_PRODUCTS.some(
+    (p) => parsed.products[p]?.outlook?.status === "ok",
   );
 }
 
@@ -1505,11 +1618,22 @@ async function writeSharedOk(
   kind: ModelRiskKind,
   entry: CacheEntry,
 ): Promise<void> {
-  if (entry.outlook.status !== "ok") return;
+  const anyOk = MODEL_RISK_PRODUCTS.some(
+    (p) => entry.products[p].outlook.status === "ok",
+  );
+  if (!anyOk) return;
   const payload: SharedPayload = {
     at: entry.at,
-    outlook: entry.outlook,
-    dayPoints: entry.dayPoints,
+    products: MODEL_RISK_PRODUCTS.reduce(
+      (acc, p) => {
+        acc[p] = {
+          outlook: entry.products[p].outlook,
+          dayPoints: entry.products[p].dayPoints,
+        };
+        return acc;
+      },
+      {} as SharedPayload["products"],
+    ),
   };
   const body = JSON.stringify(payload);
   try {
@@ -1560,12 +1684,23 @@ async function ensureCache(
   inflightByKind[kind] = (async () => {
     if (!opts.force) {
       const shared = await readSharedOk(kind);
-      if (shared) {
+      if (shared?.products) {
+        const products = emptyProductLayers();
+        for (const p of MODEL_RISK_PRODUCTS) {
+          const layer = shared.products[p];
+          if (!layer) continue;
+          products[p] = {
+            outlook: layer.outlook,
+            dayPoints: layer.dayPoints,
+            dayPng: {},
+          };
+        }
         const entry: CacheEntry = {
           at: shared.at,
-          outlook: shared.outlook,
-          dayPoints: shared.dayPoints,
+          outlook: products.risk.outlook,
+          dayPoints: products.risk.dayPoints,
           dayPng: {},
+          products,
         };
         caches[kind] = entry;
         return entry;
@@ -1573,7 +1708,10 @@ async function ensureCache(
     }
     const entry = await computeOutlook(config);
     caches[kind] = entry;
-    if (entry.outlook.status === "ok") {
+    const anyOk = MODEL_RISK_PRODUCTS.some(
+      (p) => entry.products[p].outlook.status === "ok",
+    );
+    if (anyOk) {
       // Await so the catalog response is not raced by a cold risk-image instance.
       await writeSharedOk(kind, entry).catch((err) => {
         console.warn(`[${kind}-risk] shared cache write failed`, err);
@@ -1586,12 +1724,20 @@ async function ensureCache(
   return inflightByKind[kind]!;
 }
 
+function layerFor(
+  entry: CacheEntry,
+  product: ModelRiskProduct,
+): ProductLayer {
+  return entry.products[product] ?? entry.products.risk;
+}
+
 export async function getModelRiskOutlook(
   kind: ModelRiskKind,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; product?: ModelRiskProduct } = {},
 ): Promise<PublicForecastResponse> {
   const entry = await ensureCache(kind, opts);
-  return entry.outlook;
+  const product = opts.product ?? "risk";
+  return layerFor(entry, product).outlook;
 }
 
 /** @deprecated use getModelRiskOutlook("pulse") */
@@ -1604,20 +1750,31 @@ export async function getAutoRiskOutlook(
 export async function getModelRiskDayPng(
   kind: ModelRiskKind,
   day: number,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; product?: ModelRiskProduct } = {},
 ): Promise<{ png: Buffer; empty: boolean; issuedAt: string | null } | null> {
   if (!Number.isInteger(day) || day < 1 || day > FORECAST_DAYS) return null;
   const entry = await ensureCache(kind, opts);
-  const points = entry.dayPoints[day] ?? [];
-  let png = entry.dayPng[day];
+  const product = opts.product ?? "risk";
+  const layer = layerFor(entry, product);
+  const points = layer.dayPoints[day] ?? [];
+  let png = layer.dayPng[day];
   if (!png) {
-    png = renderAutoRiskPng(points);
-    entry.dayPng[day] = png;
+    if (product === "risk") {
+      png = renderAutoRiskPng(points);
+    } else {
+      const bands = chanceBandsFor(product);
+      png = renderAutoRiskPng(points, {
+        maxRank: bands.length,
+        colors: chanceColorMap(bands),
+        hatch: false,
+      });
+    }
+    layer.dayPng[day] = png;
   }
   return {
     png,
-    empty: points.every((p) => p.rank <= 0),
-    issuedAt: entry.outlook.issuedAt,
+    empty: !productHasSignal(points),
+    issuedAt: layer.outlook.issuedAt,
   };
 }
 
@@ -1638,17 +1795,26 @@ export function isAutoRiskDay(n: number): boolean {
   return isModelRiskDay(n);
 }
 
-/** Catalog payload for /api/weather/risk?source=pulse|access|auto */
+/** Catalog payload for /api/weather/risk?source=pulse|…&product=risk|tstorm|… */
 export async function getModelRiskCatalog(
   kind: ModelRiskKind,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; product?: ModelRiskProduct } = {},
 ) {
   const config = MODEL_CONFIG[kind];
+  const product = opts.product ?? "risk";
+  const meta = PRODUCT_META[product];
   const outlook = await getModelRiskOutlook(kind, opts);
   const issued = outlook.issuedAt ?? new Date().toISOString();
+  const productQs = product === "risk" ? "" : `&product=${product}`;
   return {
     status: outlook.status,
     source: kind,
+    product,
+    products: MODEL_RISK_PRODUCTS.map((id) => ({
+      id,
+      label: PRODUCT_META[id].label,
+      shortLabel: PRODUCT_META[id].shortLabel,
+    })),
     updatedAt: issued,
     issuedAt: issued,
     days: outlook.days.map((d) => {
@@ -1661,16 +1827,20 @@ export async function getModelRiskCatalog(
         dateLabel: d.dateLabel,
         available,
         imageUrl: available
-          ? `/api/weather/risk-image?source=${kind}&day=${d.effectiveDay}&t=${encodeURIComponent(issued)}`
+          ? `/api/weather/risk-image?source=${kind}${productQs}&day=${d.effectiveDay}&t=${encodeURIComponent(issued)}`
           : null,
         issuedAt: issued,
         legend: d.legend,
       };
     }),
-    legend: autoRiskLegendItems(),
-    blurbs: autoRiskCategoryBlurbs(),
+    legend:
+      product === "risk" ? autoRiskLegendItems() : chanceLegendItems(product),
+    blurbs:
+      product === "risk" ? autoRiskCategoryBlurbs() : chanceBlurbs(product),
     attribution: config.attribution,
     message: outlook.message,
+    keyTitle: meta.keyTitle,
+    productDescription: meta.description,
     outlook,
   };
 }

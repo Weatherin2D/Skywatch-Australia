@@ -7,6 +7,7 @@ import {
   getModelRiskDayPng,
   isModelRiskDay,
   resolveModelRiskKind,
+  resolveModelRiskProduct,
 } from "@/lib/weather/auto-risk-outlook";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +19,17 @@ const EMPTY_PNG = Buffer.from(
 );
 
 /**
- * GET /api/weather/risk-image?source=bom|pulse|access|ifs|ukmo|auto&day=1…N
- * BoM MetEye PNG (default) or SkyWatch model risk raster.
+ * GET /api/weather/risk-image?source=bom|pulse|…&product=risk|tstorm|…&day=1…N
+ * BoM MetEye PNG (default) or SkyWatch model risk / hazard-chance raster.
  */
 export async function GET(req: NextRequest) {
   const sourceParam = (req.nextUrl.searchParams.get("source") || "bom")
     .trim()
     .toLowerCase();
   const modelKind = resolveModelRiskKind(sourceParam);
+  const product = resolveModelRiskProduct(
+    req.nextUrl.searchParams.get("product"),
+  );
   const dayNum = Number(req.nextUrl.searchParams.get("day") || "1");
 
   try {
@@ -39,7 +43,10 @@ export async function GET(req: NextRequest) {
       const force =
         req.nextUrl.searchParams.get("force") === "1" ||
         req.nextUrl.searchParams.get("refresh") === "1";
-      const result = await getModelRiskDayPng(modelKind, dayNum, { force });
+      const result = await getModelRiskDayPng(modelKind, dayNum, {
+        force,
+        product,
+      });
       const png = !result || result.empty ? EMPTY_PNG : result.png;
       return new NextResponse(new Uint8Array(png), {
         headers: {
@@ -50,6 +57,7 @@ export async function GET(req: NextRequest) {
               : "public, max-age=120, stale-while-revalidate=600",
           "X-Risk-Display": "geo",
           "X-Risk-Source": modelKind,
+          "X-Risk-Product": product,
           ...(result?.issuedAt
             ? { "X-Model-Issued-At": result.issuedAt }
             : {}),
@@ -73,6 +81,7 @@ export async function GET(req: NextRequest) {
         "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
         "X-Risk-Display": "geo",
         "X-Risk-Source": "bom",
+        "X-Risk-Product": "risk",
         "X-BoM-Product": "IDZ73094",
         ...(result?.issuedAt ? { "X-BoM-Issued-At": result.issuedAt } : {}),
       },

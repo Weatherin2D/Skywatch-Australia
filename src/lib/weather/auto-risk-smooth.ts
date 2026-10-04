@@ -564,16 +564,17 @@ function buildMeshRankField(
   width: number,
   height: number,
   pick: (p: AutoRiskSamplePoint) => number,
+  maxRank = AUTO_RISK_MAX_RANK,
 ): Uint8Array {
   const field = new Uint8Array(width * height);
   if (!points.length) return field;
 
   const bands: (Uint8Array | null)[] = Array.from(
-    { length: AUTO_RISK_MAX_RANK + 1 },
+    { length: maxRank + 1 },
     () => null,
   );
 
-  for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
+  for (let rank = 1; rank <= maxRank; rank++) {
     const mesh: MeshPt[] = [];
     for (const p of points) {
       if (pick(p) < rank) continue;
@@ -615,7 +616,7 @@ function buildMeshRankField(
 
   // Thicken existing outer bands around higher cores — but never invent a
   // lower-rank bullseye ring from a lone high-rank speck (outer must exist).
-  for (let rank = AUTO_RISK_MAX_RANK - 1; rank >= 1; rank--) {
+  for (let rank = maxRank - 1; rank >= 1; rank--) {
     const outer = bands[rank];
     const inner = bands[rank + 1];
     if (!inner || !outer) continue;
@@ -628,7 +629,7 @@ function buildMeshRankField(
   }
 
   // Paint low → high so cores sit inside padded envelopes.
-  for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
+  for (let rank = 1; rank <= maxRank; rank++) {
     const band = bands[rank];
     if (!band) continue;
     fillMaskHoles(band, width, height);
@@ -638,7 +639,7 @@ function buildMeshRankField(
   }
 
   // Kill inverted dips: a higher band must stay solid (no lower-rank islands).
-  for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
+  for (let rank = maxRank; rank >= 1; rank--) {
     fillRankHoles(field, width, height, rank);
   }
 
@@ -834,8 +835,21 @@ function paintRankOutlines(
   }
 }
 
+export type RenderAutoRiskOptions = {
+  maxRank?: number;
+  colors?: Record<number, [number, number, number, number]>;
+  /** When false, skip L1/L2 hatch overlays (chance products). */
+  hatch?: boolean;
+};
+
 /** Georeferenced PNG for Leaflet ImageOverlay. */
-export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
+export function renderAutoRiskPng(
+  points: AutoRiskSamplePoint[],
+  options: RenderAutoRiskOptions = {},
+): Buffer {
+  const maxRank = options.maxRank ?? AUTO_RISK_MAX_RANK;
+  const colors = options.colors ?? COLOR_BY_RANK;
+  const drawHatch = options.hatch !== false;
   const work = sizeFor(WORK_WIDTH);
   const out = sizeFor(OUT_WIDTH);
 
@@ -844,19 +858,23 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     work.width,
     work.height,
     (p) => p.rank,
+    maxRank,
   );
-  const hatchWork = buildMeshRankField(
-    points,
-    work.width,
-    work.height,
-    (p) => p.hatch,
-  );
+  const hatchWork = drawHatch
+    ? buildMeshRankField(
+        points,
+        work.width,
+        work.height,
+        (p) => p.hatch,
+        2,
+      )
+    : new Uint8Array(work.width * work.height);
 
   // Light soften only — heavy blur re-rounds polygons into circle-like blobs.
   const rankSoftWork = fieldToSoft(rankWork);
   const hatchSoftWork = fieldToSoft(hatchWork);
   blurFloat(rankSoftWork, work.width, work.height, 3);
-  blurFloat(hatchSoftWork, work.width, work.height, 2);
+  if (drawHatch) blurFloat(hatchSoftWork, work.width, work.height, 2);
 
   const rankSoft = upsampleBilinear(
     rankSoftWork,
@@ -865,29 +883,33 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
     out.width,
     out.height,
   );
-  const hatchSoft = upsampleBilinear(
-    hatchSoftWork,
-    work.width,
-    work.height,
-    out.width,
-    out.height,
-  );
+  const hatchSoft = drawHatch
+    ? upsampleBilinear(
+        hatchSoftWork,
+        work.width,
+        work.height,
+        out.width,
+        out.height,
+      )
+    : new Float32Array(out.width * out.height);
   blurFloat(rankSoft, out.width, out.height, 1);
-  blurFloat(hatchSoft, out.width, out.height, 1);
+  if (drawHatch) blurFloat(hatchSoft, out.width, out.height, 1);
 
-  const ranks = quantizeFromSoft(rankSoft, AUTO_RISK_MAX_RANK);
+  const ranks = quantizeFromSoft(rankSoft, maxRank);
   pruneSmallComponents(ranks, out.width, out.height, 140);
   // Blur/quantize can re-open donuts — reseal nested bands.
-  for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
+  for (let rank = maxRank; rank >= 1; rank--) {
     fillRankHoles(ranks, out.width, out.height, rank);
   }
 
   const hatches = new Uint8Array(hatchSoft.length);
-  for (let i = 0; i < hatchSoft.length; i++) {
-    const v = hatchSoft[i]!;
-    if (v < 0.55) hatches[i] = 0;
-    else if (v < 1.45) hatches[i] = 1;
-    else hatches[i] = 2;
+  if (drawHatch) {
+    for (let i = 0; i < hatchSoft.length; i++) {
+      const v = hatchSoft[i]!;
+      if (v < 0.55) hatches[i] = 0;
+      else if (v < 1.45) hatches[i] = 1;
+      else hatches[i] = 2;
+    }
   }
 
   const { width, height } = out;
@@ -903,19 +925,21 @@ export function renderAutoRiskPng(points: AutoRiskSamplePoint[]): Buffer {
       png.data[o + 3] = 0;
       continue;
     }
-    const [r, g, b, a] = COLOR_BY_RANK[rank] ?? [120, 120, 120, 160];
+    const [r, g, b, a] = colors[rank] ?? [120, 120, 120, 160];
     png.data[o] = r;
     png.data[o + 1] = g;
     png.data[o + 2] = b;
     png.data[o + 3] = a;
   }
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x;
-      if (!ranks[i]) continue;
-      const h = hatches[i]!;
-      if (h === 1 || h === 2) paintHatch(png, width, height, x, y, h);
+  if (drawHatch) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        if (!ranks[i]) continue;
+        const h = hatches[i]!;
+        if (h === 1 || h === 2) paintHatch(png, width, height, x, y, h);
+      }
     }
   }
 
