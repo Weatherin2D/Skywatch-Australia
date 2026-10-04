@@ -13,7 +13,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/` | SkyWatch homepage — hero, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
 | `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
-| `/models` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
+| `/models` | Hourly ECMWF IFS map — product picker + time scrubber (Open-Meteo) |
+| `/model-comparison` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
 | `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
@@ -33,6 +34,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/storm-activity` | Lightning hotspot summary for Storm Tracker |
 | `/api/weather/models` | Multi-model comparison (`days=1..7`) via Open-Meteo |
+| `/api/weather/ecmwf-map` | ECMWF IFS product catalog + hourly timestamps |
+| `/api/weather/ecmwf-map/frame` | Georeferenced ECMWF field PNG (`product`, `time`) |
 | `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | Home panel: latest observed Sydney Airport radiosonde (UWYO) |

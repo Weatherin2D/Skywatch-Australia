@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Archive,
+  ChartColumn,
   CloudLightning,
   CloudRain,
   CloudSun,
@@ -23,6 +24,7 @@ export const PRIMARY_NAV = [
 export const SECONDARY_NAV = [
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/models", label: "Models", icon: Layers },
+  { href: "/model-comparison", label: "Model comparison", icon: ChartColumn },
   { href: "/soundings", label: "Soundings", icon: Wind },
   { href: "/climate", label: "Climate", icon: ThermometerSun },
   { href: "/risk", label: "Risk", icon: CloudLightning },
@@ -31,6 +33,7 @@ export const SECONDARY_NAV = [
 export const MORE_NAV = [
   { href: "/archive", label: "Archive" },
   { href: "/models", label: "Models" },
+  { href: "/model-comparison", label: "Model comparison" },
   { href: "/soundings", label: "Soundings" },
   { href: "/climate", label: "Climate" },
   { href: "/risk", label: "Risk outlook" },

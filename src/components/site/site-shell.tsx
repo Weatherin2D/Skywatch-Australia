@@ -41,7 +41,7 @@ export function SiteShell({
               href === "/"
                 ? pathname === "/"
                 : href === "/more"
-                  ? ["/archive", "/models", "/soundings", "/climate", "/risk", "/hazards", "/warnings", "/more"].some(
+                  ? ["/archive", "/models", "/model-comparison", "/soundings", "/climate", "/risk", "/hazards", "/warnings", "/more"].some(
                       (p) => pathname === p || pathname.startsWith(`${p}/`),
                     )
                   : pathname === href || pathname.startsWith(`${href}/`);

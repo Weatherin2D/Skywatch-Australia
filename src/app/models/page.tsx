@@ -1,5 +1,5 @@
-import { ModelsDashboard } from "@/components/models/models-dashboard";
+import { EcmwfModelsDashboard } from "@/components/models/ecmwf-models-dashboard";
 
 export default function ModelsPage() {
-  return <ModelsDashboard />;
+  return <EcmwfModelsDashboard />;
 }

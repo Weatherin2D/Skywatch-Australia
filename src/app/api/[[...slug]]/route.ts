@@ -11,6 +11,8 @@ import * as weatherLocationForecast from "@/server/api/weather-location-forecast
 import * as weatherCapitals from "@/server/api/weather-capitals";
 import * as weatherStormActivity from "@/server/api/weather-storm-activity";
 import * as weatherModels from "@/server/api/weather-models";
+import * as weatherEcmwfMap from "@/server/api/weather-ecmwf-map";
+import * as weatherEcmwfMapFrame from "@/server/api/weather-ecmwf-map-frame";
 import * as weatherUpperAir from "@/server/api/weather-upper-air";
 import * as weatherSounding from "@/server/api/weather-sounding";
 import * as weatherRadarTile from "@/server/api/weather-radar-tile";
@@ -52,6 +54,8 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/capitals": weatherCapitals as RouteHandlers,
   "weather/storm-activity": weatherStormActivity as RouteHandlers,
   "weather/models": weatherModels as RouteHandlers,
+  "weather/ecmwf-map": weatherEcmwfMap as RouteHandlers,
+  "weather/ecmwf-map/frame": weatherEcmwfMapFrame as RouteHandlers,
   "weather/upper-air": weatherUpperAir as RouteHandlers,
   "weather/sounding": weatherSounding as RouteHandlers,
   "weather/radar-tile": weatherRadarTile as RouteHandlers,
