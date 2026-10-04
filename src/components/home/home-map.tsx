@@ -2,10 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  CircleMarker,
   ImageOverlay,
   MapContainer,
   TileLayer,
+  Tooltip,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import { LocateFixed } from "lucide-react";
 import {
@@ -87,7 +90,27 @@ type Props = {
   riskImageOpacity?: number;
   /** Convective risk polygons (Day 1–3 outlook). */
   riskFeatures?: DisplayFeature[];
+  /** Optional map click probe (e.g. ECMWF models page). */
+  onMapClick?: (ll: { lat: number; lng: number }) => void;
+  probePoint?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+  } | null;
 };
+
+function MapClickHandler({
+  onMapClick,
+}: {
+  onMapClick?: (ll: { lat: number; lng: number }) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      onMapClick?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+    },
+  });
+  return null;
+}
 
 function MapModeEffect({ mode }: { mode: MapMode }) {
   const map = useMap();
@@ -406,6 +429,8 @@ export function HomeMap({
   riskImageDisplay = "sheet",
   riskImageOpacity = 0.92,
   riskFeatures = [],
+  onMapClick,
+  probePoint = null,
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -513,6 +538,7 @@ export function HomeMap({
         attributionControl
       >
         <MapModeEffect mode={mode} />
+        <MapClickHandler onMapClick={onMapClick} />
         <FitRegionBounds bounds={bounds} animate isNational={isNational} />
         <TileLayer
           key={useSatelliteBasemap ? "sat" : "dark"}
@@ -571,6 +597,24 @@ export function HomeMap({
           nextFrameTime={lightningNextFrameTime}
           iconStyle={lightningIconStyle}
         />
+        {probePoint ? (
+          <CircleMarker
+            center={[probePoint.lat, probePoint.lng]}
+            radius={9}
+            pathOptions={{
+              color: "#22d3ee",
+              weight: 2,
+              fillColor: "#22d3ee",
+              fillOpacity: 0.35,
+            }}
+          >
+            {probePoint.label ? (
+              <Tooltip permanent direction="top" offset={[0, -8]}>
+                {probePoint.label}
+              </Tooltip>
+            ) : null}
+          </CircleMarker>
+        ) : null}
         <MapTools
           bounds={bounds}
           isNational={isNational}

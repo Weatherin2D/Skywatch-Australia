@@ -105,6 +105,17 @@ function nearestTimeIndex(times: string[]): number {
   return best;
 }
 
+type ProbeSample = {
+  lat: number;
+  lon: number;
+  time: string | null;
+  productId: string;
+  label: string;
+  units: string;
+  value: number | null;
+  formatted: string;
+};
+
 export function EcmwfModelsDashboard() {
   const [catalog, setCatalog] = useState<EcmwfMapCatalog | null>(null);
   const [productId, setProductId] = useState(DEFAULT_PRODUCT_ID);
@@ -116,6 +127,12 @@ export function EcmwfModelsDashboard() {
   const [groupFilter, setGroupFilter] = useState<EcmwfProductGroup | "all">(
     "all",
   );
+  const [probe, setProbe] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [probeSample, setProbeSample] = useState<ProbeSample | null>(null);
+  const [probeLoading, setProbeLoading] = useState(false);
 
   const loadCatalog = useCallback(async (product: string, signal?: AbortSignal) => {
     setLoadingCatalog(true);
@@ -169,6 +186,20 @@ export function EcmwfModelsDashboard() {
     img.src = imageUrl;
   }, [imageUrl]);
 
+  // Client prefetch of nearby hours (browser HTTP cache + warm server PNG cache).
+  useEffect(() => {
+    if (!times.length || !activeTime) return;
+    const idxs = [timeIndex - 1, timeIndex + 1, timeIndex + 2].filter(
+      (i) => i >= 0 && i < times.length && i !== timeIndex,
+    );
+    for (const i of idxs) {
+      const t = times[i]!;
+      const qs = new URLSearchParams({ product: productId, time: t });
+      const img = new Image();
+      img.src = `/api/weather/ecmwf-map/frame?${qs}`;
+    }
+  }, [productId, timeIndex, times, activeTime]);
+
   useEffect(() => {
     if (!playing || times.length < 2) return;
     const id = window.setInterval(() => {
@@ -177,6 +208,41 @@ export function EcmwfModelsDashboard() {
     return () => window.clearInterval(id);
   }, [playing, times.length]);
 
+  useEffect(() => {
+    if (!probe) {
+      setProbeSample(null);
+      return;
+    }
+    const ac = new AbortController();
+    setProbeLoading(true);
+    const qs = new URLSearchParams({
+      product: productId,
+      lat: String(probe.lat),
+      lon: String(probe.lng),
+    });
+    if (activeTime) qs.set("time", activeTime);
+    void fetch(`/api/weather/ecmwf-map/point?${qs}`, {
+      cache: "no-store",
+      signal: ac.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Sample unavailable (${res.status})`);
+        return (await res.json()) as ProbeSample;
+      })
+      .then((json) => {
+        if (ac.signal.aborted) return;
+        setProbeSample(json);
+        setProbeLoading(false);
+      })
+      .catch((err) => {
+        if (ac.signal.aborted) return;
+        setProbeLoading(false);
+        setProbeSample(null);
+        setError(err instanceof Error ? err.message : "Sample unavailable");
+      });
+    return () => ac.abort();
+  }, [probe, productId, activeTime]);
+
   const products = useMemo(() => {
     const list = catalog?.products ?? [];
     if (groupFilter === "all") return list;
@@ -184,6 +250,10 @@ export function EcmwfModelsDashboard() {
   }, [catalog, groupFilter]);
 
   const activeProduct = catalog?.products.find((p) => p.id === productId);
+
+  const probeLabel = probeLoading
+    ? "…"
+    : probeSample?.formatted ?? null;
 
   return (
     <SiteShell>
@@ -197,8 +267,8 @@ export function EcmwfModelsDashboard() {
               Models
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-white/70">
-              Hourly ECMWF fields over Australia — pick a product and scrub the
-              forecast like Windy.
+              Hourly ECMWF fields over Australia — pick a product, scrub the
+              forecast, and click the map for a point value.
             </p>
           </div>
           {catalog?.attribution ? (
@@ -276,10 +346,60 @@ export function EcmwfModelsDashboard() {
                 riskImageBounds={catalog?.bounds ?? MAP_BOUNDS}
                 riskImageDisplay="geo"
                 riskImageOpacity={0.78}
+                onMapClick={(ll) => {
+                  setError(null);
+                  setProbe(ll);
+                }}
+                probePoint={
+                  probe
+                    ? {
+                        lat: probe.lat,
+                        lng: probe.lng,
+                        label: probeLabel,
+                      }
+                    : null
+                }
               />
               {(loadingCatalog || frameLoading) && (
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] bg-gradient-to-b from-[#0a1224]/80 to-transparent px-3 py-2 text-xs font-semibold text-white/80">
                   Loading ECMWF {activeProduct?.shortLabel ?? "field"}…
+                </div>
+              )}
+              {probe ? (
+                <div className="absolute left-3 top-3 z-[500] max-w-[240px] rounded-xl border border-white/15 bg-[#0a1224]/92 px-3 py-2 shadow-lg backdrop-blur-md">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--cyan)]">
+                        {probeSample?.label ?? activeProduct?.label ?? "Point"}
+                      </p>
+                      <p className="mt-0.5 font-[family-name:var(--font-display)] text-xl font-extrabold text-white">
+                        {probeLoading
+                          ? "…"
+                          : (probeSample?.formatted ?? "—")}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-white/55">
+                        {probe.lat.toFixed(2)}°, {probe.lng.toFixed(2)}°
+                        {probeSample?.time
+                          ? ` · ${formatHourLabel(probeSample.time)}`
+                          : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-md px-1.5 py-0.5 text-xs text-white/50 hover:bg-white/10 hover:text-white"
+                      aria-label="Clear point"
+                      onClick={() => {
+                        setProbe(null);
+                        setProbeSample(null);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-lg bg-[#0a1224]/70 px-2.5 py-1.5 text-[11px] font-medium text-white/65">
+                  Click map for value
                 </div>
               )}
               {error ? (

@@ -58,6 +58,8 @@ export function HomeMapDynamic({
   riskImageDisplay,
   riskImageOpacity,
   riskFeatures,
+  onMapClick,
+  probePoint,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -92,6 +94,12 @@ export function HomeMapDynamic({
   riskImageDisplay?: "sheet" | "geo";
   riskImageOpacity?: number;
   riskFeatures?: DisplayFeature[];
+  onMapClick?: (ll: { lat: number; lng: number }) => void;
+  probePoint?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+  } | null;
 }) {
   return (
     <HomeMap
@@ -128,6 +136,8 @@ export function HomeMapDynamic({
       riskImageDisplay={riskImageDisplay}
       riskImageOpacity={riskImageOpacity}
       riskFeatures={riskFeatures}
+      onMapClick={onMapClick}
+      probePoint={probePoint}
     />
   );
 }

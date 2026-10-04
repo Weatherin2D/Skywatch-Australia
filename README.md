@@ -36,6 +36,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/models` | Multi-model comparison (`days=1..7`) via Open-Meteo |
 | `/api/weather/ecmwf-map` | ECMWF IFS product catalog + hourly timestamps |
 | `/api/weather/ecmwf-map/frame` | Georeferenced ECMWF field PNG (`product`, `time`) |
+| `/api/weather/ecmwf-map/point` | Point sample for map click (`product`, `time`, `lat`, `lon`) |
 | `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | Home panel: latest observed Sydney Airport radiosonde (UWYO) |

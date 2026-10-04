@@ -17,14 +17,16 @@ const AU = {
   maxLon: ECMWF_MAP_BOUNDS[1][1],
 };
 
-const GRID_STEP = 2;
-const COARSE_STEP = 3;
-const BATCH = 45;
-const BATCH_CONCURRENCY = 3;
+/** Coarser national grid — fewer Open-Meteo points, much faster cold loads. */
+const GRID_STEP = 2.75;
+const COARSE_STEP = 3.5;
+const BATCH = 70;
+const BATCH_CONCURRENCY = 8;
 const FORECAST_DAYS = 3;
-const CACHE_TTL_MS = 12 * 60_000;
-const OUT_WIDTH = 900;
+const CACHE_TTL_MS = 18 * 60_000;
+const OUT_WIDTH = 720;
 const OPEN_METEO_MODEL = "ecmwf_ifs";
+const PNG_CACHE_MAX = 96;
 
 export type EcmwfProductGroup =
   | "surface"
@@ -325,11 +327,33 @@ type ProductCache = {
   productId: string;
 };
 
+export type EcmwfFrameResult = {
+  png: Buffer;
+  empty: boolean;
+  time: string | null;
+  productId: string;
+  units: string;
+  min: number | null;
+  max: number | null;
+};
+
 const cache = new Map<string, ProductCache>();
 const inflight = new Map<string, Promise<ProductCache>>();
+const pngCache = new Map<string, EcmwfFrameResult>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function pngCacheKey(productId: string, time: string): string {
+  return `${productId}|${time}`;
+}
+
+function rememberPng(key: string, result: EcmwfFrameResult): void {
+  pngCache.set(key, result);
+  if (pngCache.size <= PNG_CACHE_MAX) return;
+  const oldest = pngCache.keys().next().value;
+  if (oldest) pngCache.delete(oldest);
 }
 
 function num(v: unknown): number | null {
@@ -379,13 +403,13 @@ async function fetchBatch(
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
-        signal: AbortSignal.timeout(22_000),
+        signal: AbortSignal.timeout(16_000),
       });
       if (res.status === 429) {
         lastErr = new Error("Open-Meteo 429");
         const retryAfter = Number(res.headers.get("retry-after"));
         await sleep(
-          Number.isFinite(retryAfter) ? retryAfter * 1000 : 2500 * (attempt + 1),
+          Number.isFinite(retryAfter) ? retryAfter * 1000 : 1800 * (attempt + 1),
         );
         continue;
       }
@@ -435,7 +459,13 @@ async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
   for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
     const wave = batches.slice(i, i + BATCH_CONCURRENCY);
     const results = await Promise.all(
-      wave.map((b) => fetchBatch(b.lats, b.lons, product.field)),
+      wave.map(async (b) => {
+        try {
+          return await fetchBatch(b.lats, b.lons, product.field);
+        } catch {
+          return [] as Awaited<ReturnType<typeof fetchBatch>>;
+        }
+      }),
     );
     for (let bi = 0; bi < results.length; bi++) {
       const locs = results[bi]!;
@@ -456,7 +486,10 @@ async function loadProductGrid(product: EcmwfProduct): Promise<ProductCache> {
         });
       }
     }
-    if (i + BATCH_CONCURRENCY < batches.length) await sleep(120);
+    // Brief pause only when we still have many waves left (rate-limit cushion).
+    if (i + BATCH_CONCURRENCY < batches.length && batches.length > 6) {
+      await sleep(40);
+    }
   }
 
   if (!times.length) {
@@ -852,25 +885,127 @@ function bilinearSample(
   return a * (1 - ty) + b * ty;
 }
 
-export type EcmwfFrameResult = {
-  png: Buffer;
-  empty: boolean;
+function formatEcmwfValue(product: EcmwfProduct, value: number): string {
+  const u = product.units;
+  if (product.palette === "temp" || product.palette === "dew") {
+    return `${Math.round(value * 10) / 10}${u ? ` ${u}` : "°C"}`;
+  }
+  if (product.palette === "precip" || product.palette === "snow") {
+    return `${Math.round(value * 10) / 10}${u ? ` ${u}` : ""}`;
+  }
+  if (product.palette === "mslp") {
+    return `${Math.round(value)}${u ? ` ${u}` : " hPa"}`;
+  }
+  if (product.palette === "wind") {
+    return `${Math.round(value)}${u ? ` ${u}` : " km/h"}`;
+  }
+  if (product.palette === "cape" || product.palette === "cin") {
+    return `${Math.round(value)}${u ? ` ${u}` : ""}`;
+  }
+  if (product.palette === "rh" || product.palette === "cloud") {
+    return `${Math.round(value)}${u ? ` ${u}` : "%"}`;
+  }
+  if (product.palette === "height") {
+    return `${Math.round(value)}${u ? ` ${u}` : " m"}`;
+  }
+  return `${Math.round(value * 10) / 10}${u ? ` ${u}` : ""}`;
+}
+
+export type EcmwfPointSample = {
+  lat: number;
+  lon: number;
   time: string | null;
   productId: string;
+  label: string;
   units: string;
-  min: number | null;
-  max: number | null;
+  value: number | null;
+  formatted: string;
 };
+
+/** Exact Open-Meteo point sample for map clicks (fast, independent of grid cache). */
+export async function sampleEcmwfPoint(opts: {
+  productId?: string | null;
+  time?: string | null;
+  lat: number;
+  lon: number;
+}): Promise<EcmwfPointSample> {
+  const product = getEcmwfProduct(opts.productId);
+  const lat = opts.lat;
+  const lon = opts.lon;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("Invalid coordinates");
+  }
+
+  // Prefer in-memory grid when warm (instant, matches the painted field).
+  const warm = cache.get(product.id);
+  if (warm?.times.length && warm.points.length) {
+    const ti = nearestTimeIndex(warm.times, opts.time);
+    const grid = buildScalarGrid(warm.points, ti);
+    const value = bilinearSample(grid, lat, lon);
+    return {
+      lat,
+      lon,
+      time: warm.times[ti] ?? null,
+      productId: product.id,
+      label: product.label,
+      units: product.units,
+      value,
+      formatted:
+        value == null ? "—" : formatEcmwfValue(product, value),
+    };
+  }
+
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lon.toFixed(4),
+    hourly: product.field,
+    models: OPEN_METEO_MODEL,
+    forecast_days: String(FORECAST_DAYS),
+    timezone: "Australia/Sydney",
+    wind_speed_unit: "kmh",
+  });
+  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+  const json = (await res.json()) as {
+    hourly?: Record<string, unknown[]>;
+  };
+  const times = ((json.hourly?.time ?? []) as unknown[]).map(String);
+  const series = (json.hourly?.[product.field] ?? []) as unknown[];
+  const ti = nearestTimeIndex(times, opts.time);
+  const value = num(series[ti]);
+  return {
+    lat,
+    lon,
+    time: times[ti] ?? null,
+    productId: product.id,
+    label: product.label,
+    units: product.units,
+    value,
+    formatted: value == null ? "—" : formatEcmwfValue(product, value),
+  };
+}
 
 export async function renderEcmwfFrame(opts: {
   productId?: string | null;
   time?: string | null;
   force?: boolean;
+  /** Internal: skip neighbour prefetch to avoid cascades. */
+  skipPrefetch?: boolean;
 }): Promise<EcmwfFrameResult> {
   const product = getEcmwfProduct(opts.productId);
   const data = await getEcmwfProductCache(product.id, { force: opts.force });
   const ti = nearestTimeIndex(data.times, opts.time);
   const time = data.times[ti] ?? null;
+  const cacheKey = time ? pngCacheKey(product.id, time) : "";
+
+  if (!opts.force && cacheKey) {
+    const hit = pngCache.get(cacheKey);
+    if (hit) return hit;
+  }
 
   const samples: number[] = [];
   for (const p of data.points) {
@@ -883,7 +1018,7 @@ export async function renderEcmwfFrame(opts: {
     empty.data[1] = 0;
     empty.data[2] = 0;
     empty.data[3] = 0;
-    return {
+    const result: EcmwfFrameResult = {
       png: PNG.sync.write(empty),
       empty: true,
       time,
@@ -892,6 +1027,8 @@ export async function renderEcmwfFrame(opts: {
       min: null,
       max: null,
     };
+    if (cacheKey) rememberPng(cacheKey, result);
+    return result;
   }
 
   let vmin = product.min ?? Math.min(...samples);
@@ -914,12 +1051,54 @@ export async function renderEcmwfFrame(opts: {
   );
   const png = new PNG({ width, height });
   const grid = buildScalarGrid(data.points, ti);
+  const lat0 = grid.lats[0] ?? AU.minLat;
+  const lon0 = grid.lons[0] ?? AU.minLon;
+  const dLat = grid.lats.length > 1 ? grid.lats[1]! - grid.lats[0]! : GRID_STEP;
+  const dLon = grid.lons.length > 1 ? grid.lons[1]! - grid.lons[0]! : GRID_STEP;
 
   for (let y = 0; y < height; y++) {
     const lat = AU.maxLat - ((y + 0.5) / height) * (AU.maxLat - AU.minLat);
     for (let x = 0; x < width; x++) {
       const lon = AU.minLon + ((x + 0.5) / width) * (AU.maxLon - AU.minLon);
-      const value = bilinearSample(grid, lat, lon);
+      // Fast path: regular-grid index instead of linear scans.
+      const fi =
+        dLat === 0
+          ? 0
+          : Math.max(
+              0,
+              Math.min(grid.lats.length - 1, (lat - lat0) / dLat),
+            );
+      const fj =
+        dLon === 0
+          ? 0
+          : Math.max(
+              0,
+              Math.min(grid.lons.length - 1, (lon - lon0) / dLon),
+            );
+      const i1 = Math.floor(fi);
+      const j1 = Math.floor(fj);
+      const i2 = Math.min(i1 + 1, grid.lats.length - 1);
+      const j2 = Math.min(j1 + 1, grid.lons.length - 1);
+      const ty = fi - i1;
+      const tx = fj - j1;
+      const nLon = grid.lons.length;
+      const v11 = grid.values[i1 * nLon + j1];
+      const v12 = grid.values[i1 * nLon + j2];
+      const v21 = grid.values[i2 * nLon + j1];
+      const v22 = grid.values[i2 * nLon + j2];
+      let value: number | null = null;
+      if (v11 != null && v12 != null && v21 != null && v22 != null) {
+        const a = v11 * (1 - tx) + v12 * tx;
+        const b = v21 * (1 - tx) + v22 * tx;
+        value = a * (1 - ty) + b * ty;
+      } else {
+        const present = [v11, v12, v21, v22].filter(
+          (v): v is number => v != null,
+        );
+        if (present.length) {
+          value = present.reduce((s, v) => s + v, 0) / present.length;
+        }
+      }
       const o = (width * y + x) << 2;
       if (value == null) {
         png.data[o] = 0;
@@ -937,7 +1116,7 @@ export async function renderEcmwfFrame(opts: {
     }
   }
 
-  return {
+  const result: EcmwfFrameResult = {
     png: PNG.sync.write(png),
     empty: false,
     time,
@@ -946,4 +1125,30 @@ export async function renderEcmwfFrame(opts: {
     min: vmin,
     max: vmax,
   };
+  if (cacheKey) rememberPng(cacheKey, result);
+
+  // Prefetch neighbour hours in the background so scrubbing stays snappy.
+  if (time && !opts.force && !opts.skipPrefetch) {
+    const neighbors = [ti - 1, ti + 1, ti + 2].filter(
+      (i) => i >= 0 && i < data.times.length && i !== ti,
+    );
+    void Promise.resolve().then(async () => {
+      for (const ni of neighbors) {
+        const nt = data.times[ni]!;
+        const nk = pngCacheKey(product.id, nt);
+        if (pngCache.has(nk)) continue;
+        try {
+          await renderEcmwfFrame({
+            productId: product.id,
+            time: nt,
+            skipPrefetch: true,
+          });
+        } catch {
+          /* ignore prefetch errors */
+        }
+      }
+    });
+  }
+
+  return result;
 }
