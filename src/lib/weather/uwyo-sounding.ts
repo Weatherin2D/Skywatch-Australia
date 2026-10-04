@@ -149,6 +149,175 @@ function thinLevels(levels: SoundingLevel[]): SoundingLevel[] {
   return out;
 }
 
+export type ObservedArchiveSlot = {
+  /** Canonical request time ISO (UTC) */
+  time: string;
+  /** UTC hour of the UWYO inventory slot */
+  hour: number;
+  /** YYYY-MM-DD (UTC date of inventory datetime) */
+  date: string;
+  label: string;
+};
+
+type InventoryCacheEntry = {
+  expires: number;
+  slots: ObservedArchiveSlot[];
+  stationName: string | null;
+  year: number;
+};
+
+const inventoryCache = new Map<string, InventoryCacheEntry>();
+const INVENTORY_TTL_MS = 30 * 60_000;
+
+function slotLabel(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  return (
+    new Intl.DateTimeFormat("en-AU", {
+      timeZone: "UTC",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(d) + " UTC"
+  );
+}
+
+function parseInventoryHtml(html: string, year: number): ObservedArchiveSlot[] {
+  const re =
+    /datetime=(\d{4}-\d{2}-\d{2})[ +](\d{2}):(\d{2}):(\d{2})/gi;
+  const seen = new Set<string>();
+  const slots: ObservedArchiveSlot[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const y = Number(m[1]!.slice(0, 4));
+    // Inventory pages include adjacent-year nav links — keep requested year.
+    if (y !== year) continue;
+    const date = m[1]!;
+    const hh = m[2]!;
+    const mm = m[3]!;
+    const ss = m[4]!;
+    const raw = `${date}T${hh}:${mm}:${ss}Z`;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) continue;
+    const time = new Date(ms).toISOString();
+    if (seen.has(time)) continue;
+    seen.add(time);
+    slots.push({
+      time,
+      hour: Number(hh),
+      date,
+      label: slotLabel(time),
+    });
+  }
+  slots.sort((a, b) => b.time.localeCompare(a.time));
+  return slots;
+}
+
+async function fetchUwyoInventoryYear(
+  wmo: string,
+  year: number,
+): Promise<{
+  slots: ObservedArchiveSlot[];
+  stationName: string | null;
+}> {
+  const cacheKey = `${wmo}:${year}`;
+  const hit = inventoryCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) {
+    return { slots: hit.slots, stationName: hit.stationName };
+  }
+
+  const params = new URLSearchParams({
+    datetime: `${year}-06-15 00:00:00`,
+    id: wmo,
+    type: "INVENTORY",
+    src: "BUFR",
+  });
+  const url = `https://weather.uwyo.edu/wsgi/sounding?${params}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "text/html,text/plain,*/*",
+      "User-Agent": "SkyWatchAustralia/1.0 (+soundings-archive)",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(40_000),
+  });
+  const html = await res.text();
+  if (!res.ok) {
+    throw new Error(html.slice(0, 160) || `UWYO inventory ${res.status}`);
+  }
+  const slots = parseInventoryHtml(html, year);
+  const nameMatch = html.match(
+    /<H3>\s*([^<]+?)\s*(?:,\s*Australia)?\s*<\/H3>/i,
+  );
+  const stationName = nameMatch?.[1]?.trim() || null;
+  inventoryCache.set(cacheKey, {
+    expires: Date.now() + INVENTORY_TTL_MS,
+    slots,
+    stationName,
+    year,
+  });
+  return { slots, stationName };
+}
+
+/** UWYO yearly inventory of available observed sounding times. */
+export async function fetchObservedSoundingArchive(options: {
+  wmo: string;
+  /** Calendar years to include (UTC). Defaults to current + previous. */
+  years?: number[];
+}): Promise<{
+  stationId: string;
+  stationName: string;
+  years: number[];
+  slots: ObservedArchiveSlot[];
+  attribution: string;
+}> {
+  const station = getSoundingStation(options.wmo);
+  const nowYear = new Date().getUTCFullYear();
+  const years =
+    options.years?.length
+      ? [...new Set(options.years)].sort((a, b) => b - a)
+      : [nowYear, nowYear - 1];
+
+  const all: ObservedArchiveSlot[] = [];
+  let stationName =
+    station != null ? `${station.name}, ${station.state}` : `WMO ${options.wmo}`;
+
+  for (const year of years) {
+    try {
+      const inv = await fetchUwyoInventoryYear(options.wmo, year);
+      all.push(...inv.slots);
+      if (inv.stationName) {
+        stationName = inv.stationName.includes(",")
+          ? inv.stationName
+          : `${inv.stationName}, Australia`;
+      }
+    } catch {
+      // Skip missing years (pre-station / empty inventory).
+    }
+  }
+
+  const seen = new Set<string>();
+  const slots = all
+    .filter((s) => {
+      if (seen.has(s.time)) return false;
+      seen.add(s.time);
+      return true;
+    })
+    .sort((a, b) => b.time.localeCompare(a.time));
+
+  return {
+    stationId: options.wmo,
+    stationName,
+    years,
+    slots,
+    attribution:
+      "University of Wyoming Atmospheric Science Radiosonde Archive (BUFR inventory)",
+  };
+}
+
 /** Candidate 00Z/12Z times, newest first, looking back several days. */
 export function recentSoundingSlots(now = new Date()): Date[] {
   const slots: Date[] = [];

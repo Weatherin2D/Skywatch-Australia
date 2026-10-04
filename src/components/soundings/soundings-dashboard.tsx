@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { LocationSearch } from "@/components/forecast/location-search";
 import { HodographChart } from "@/components/soundings/hodograph";
 import { SkewTChart } from "@/components/soundings/skew-t";
@@ -16,6 +16,7 @@ import type {
   SoundingModelId,
   SoundingPayload,
 } from "@/lib/weather/sounding-types";
+import type { ObservedArchiveSlot } from "@/lib/weather/uwyo-sounding";
 import { cn } from "@/lib/utils";
 
 const MODELS: { id: SoundingModelId; label: string }[] = [
@@ -26,6 +27,14 @@ const MODELS: { id: SoundingModelId; label: string }[] = [
 ];
 
 type Place = { lat: number; lon: number; label: string };
+
+type ArchiveCatalog = {
+  stationId: string;
+  stationName: string;
+  years: number[];
+  slots: ObservedArchiveSlot[];
+  attribution?: string;
+};
 
 function formatValid(iso: string | null): string {
   if (!iso) return "—";
@@ -40,6 +49,10 @@ function formatValid(iso: string | null): string {
     minute: "2-digit",
     hour12: false,
   }).format(d) + " UTC";
+}
+
+function formatHourChip(hour: number): string {
+  return `${String(hour).padStart(2, "0")}Z`;
 }
 
 export function SoundingsDashboard() {
@@ -57,6 +70,14 @@ export function SoundingsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modelHour, setModelHour] = useState<string>("");
+  /** null = latest available; ISO = specific UWYO archive slot */
+  const [observedTime, setObservedTime] = useState<string | null>(null);
+  const [archive, setArchive] = useState<ArchiveCatalog | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveYear, setArchiveYear] = useState<number>(
+    () => new Date().getUTCFullYear(),
+  );
+  const [archiveDate, setArchiveDate] = useState<string>("");
 
   useEffect(() => {
     if (!saved) return;
@@ -81,6 +102,92 @@ export function SoundingsDashboard() {
     if (!modelHour && modelHours[0]) setModelHour(modelHours[0]!);
   }, [modelHour, modelHours]);
 
+  const archiveYears = useMemo(() => {
+    const y = new Date().getUTCFullYear();
+    return [y, y - 1, y - 2];
+  }, []);
+
+  const slotsForYear = useMemo(() => {
+    if (!archive) return [];
+    return archive.slots.filter((s) => s.date.startsWith(String(archiveYear)));
+  }, [archive, archiveYear]);
+
+  const datesForYear = useMemo(() => {
+    const dates: string[] = [];
+    const seen = new Set<string>();
+    for (const s of slotsForYear) {
+      if (seen.has(s.date)) continue;
+      seen.add(s.date);
+      dates.push(s.date);
+    }
+    return dates;
+  }, [slotsForYear]);
+
+  const hoursForDate = useMemo(() => {
+    if (!archiveDate) return [];
+    return slotsForYear.filter((s) => s.date === archiveDate);
+  }, [slotsForYear, archiveDate]);
+
+  const recentSlots = useMemo(() => slotsForYear.slice(0, 14), [slotsForYear]);
+
+  const activeSlotIndex = useMemo(() => {
+    if (!observedTime || !archive) return -1;
+    return archive.slots.findIndex((s) => s.time === observedTime);
+  }, [archive, observedTime]);
+
+  useEffect(() => {
+    if (mode !== "observed") return;
+    const ac = new AbortController();
+    setArchiveLoading(true);
+    const years = archiveYears.join(",");
+    void fetch(
+      `/api/weather/sounding?archive=1&station=${encodeURIComponent(station)}&year=${years}`,
+      { cache: "no-store", signal: ac.signal },
+    )
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Archive unavailable (${res.status})`);
+        return (await res.json()) as ArchiveCatalog;
+      })
+      .then((catalog) => {
+        if (ac.signal.aborted) return;
+        setArchive(catalog);
+        setArchiveLoading(false);
+        const yearSlots = catalog.slots.filter((s) =>
+          s.date.startsWith(String(archiveYear)),
+        );
+        const fallbackYear = catalog.slots[0]?.date.slice(0, 4);
+        if (
+          yearSlots.length === 0 &&
+          fallbackYear &&
+          Number(fallbackYear) !== archiveYear
+        ) {
+          setArchiveYear(Number(fallbackYear));
+        }
+        if (!archiveDate && catalog.slots[0]) {
+          setArchiveDate(catalog.slots[0].date);
+        }
+      })
+      .catch((err) => {
+        if (ac.signal.aborted) return;
+        setArchive(null);
+        setArchiveLoading(false);
+        console.warn("[soundings archive]", err);
+      });
+    return () => ac.abort();
+    // archiveDate / archiveYear intentionally omitted — seed date from catalog once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, station, archiveYears]);
+
+  // Keep date selector aligned with the active archive slot.
+  useEffect(() => {
+    if (!observedTime || !archive) return;
+    const slot = archive.slots.find((s) => s.time === observedTime);
+    if (!slot) return;
+    if (slot.date !== archiveDate) setArchiveDate(slot.date);
+    const y = Number(slot.date.slice(0, 4));
+    if (Number.isFinite(y) && y !== archiveYear) setArchiveYear(y);
+  }, [observedTime, archive, archiveDate, archiveYear]);
+
   const load = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true);
@@ -89,6 +196,7 @@ export function SoundingsDashboard() {
         const params = new URLSearchParams({ mode });
         if (mode === "observed") {
           params.set("station", station);
+          if (observedTime) params.set("time", observedTime);
         } else {
           params.set("lat", String(place.lat));
           params.set("lon", String(place.lon));
@@ -115,7 +223,7 @@ export function SoundingsDashboard() {
         setError(err instanceof Error ? err.message : "Unavailable");
       }
     },
-    [mode, station, place, model, modelHour],
+    [mode, station, place, model, modelHour, observedTime],
   );
 
   useEffect(() => {
@@ -185,20 +293,38 @@ export function SoundingsDashboard() {
 
         <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3 lg:flex-row lg:flex-wrap lg:items-center">
           {mode === "observed" ? (
-            <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-white/45">
-              Radiosonde site
-              <select
-                value={station}
-                onChange={(e) => setStation(e.target.value)}
-                className="rounded-xl border border-white/15 bg-[#0b1224] px-3 py-2 text-sm font-medium normal-case tracking-normal text-white outline-none focus:border-[var(--cyan)]/50"
+            <>
+              <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                Radiosonde site
+                <select
+                  value={station}
+                  onChange={(e) => {
+                    setStation(e.target.value);
+                    setObservedTime(null);
+                    setArchiveDate("");
+                  }}
+                  className="rounded-xl border border-white/15 bg-[#0b1224] px-3 py-2 text-sm font-medium normal-case tracking-normal text-white outline-none focus:border-[var(--cyan)]/50"
+                >
+                  {SOUNDING_STATIONS.map((s) => (
+                    <option key={s.wmo} value={s.wmo}>
+                      {s.name}, {s.state} ({s.wmo})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => setObservedTime(null)}
+                className={cn(
+                  "self-end rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-wide transition",
+                  observedTime == null
+                    ? "border-[var(--cyan)]/50 bg-[var(--cyan)]/15 text-[var(--cyan)]"
+                    : "border-white/15 text-white/60 hover:text-white",
+                )}
               >
-                {SOUNDING_STATIONS.map((s) => (
-                  <option key={s.wmo} value={s.wmo}>
-                    {s.name}, {s.state} ({s.wmo})
-                  </option>
-                ))}
-              </select>
-            </label>
+                Latest
+              </button>
+            </>
           ) : (
             <>
               <div className="min-w-[220px] flex-1">
@@ -270,6 +396,144 @@ export function SoundingsDashboard() {
           </div>
         </div>
 
+        {mode === "observed" ? (
+          <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-[family-name:var(--font-display)] text-sm font-semibold text-white">
+                Observed archive
+              </p>
+              <span className="text-[11px] text-white/40">
+                UWYO BUFR inventory · {archive?.slots.length ?? "—"} launches
+              </span>
+              {archiveLoading ? (
+                <span className="inline-flex items-center gap-1 text-[11px] text-[var(--cyan)]">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading catalog…
+                </span>
+              ) : null}
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={activeSlotIndex < 0 || activeSlotIndex >= (archive?.slots.length ?? 0) - 1}
+                  onClick={() => {
+                    if (!archive || activeSlotIndex < 0) return;
+                    const next = archive.slots[activeSlotIndex + 1];
+                    if (next) setObservedTime(next.time);
+                  }}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/15 px-2 text-xs font-semibold text-white/70 transition hover:border-[var(--cyan)]/40 hover:text-[var(--cyan)] disabled:opacity-35"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Older
+                </button>
+                <button
+                  type="button"
+                  disabled={activeSlotIndex <= 0}
+                  onClick={() => {
+                    if (!archive || activeSlotIndex <= 0) return;
+                    const next = archive.slots[activeSlotIndex - 1];
+                    if (next) setObservedTime(next.time);
+                  }}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/15 px-2 text-xs font-semibold text-white/70 transition hover:border-[var(--cyan)]/40 hover:text-[var(--cyan)] disabled:opacity-35"
+                >
+                  Newer
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+              <label className="flex min-w-[100px] flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                Year
+                <select
+                  value={archiveYear}
+                  onChange={(e) => {
+                    const y = Number(e.target.value);
+                    setArchiveYear(y);
+                    setArchiveDate("");
+                  }}
+                  className="rounded-xl border border-white/15 bg-[#0b1224] px-3 py-2 text-sm font-medium normal-case tracking-normal text-white outline-none focus:border-[var(--cyan)]/50"
+                >
+                  {archiveYears.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-[160px] flex-1 flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                Date (UTC)
+                <select
+                  value={archiveDate}
+                  onChange={(e) => {
+                    const date = e.target.value;
+                    setArchiveDate(date);
+                    const first = slotsForYear.find((s) => s.date === date);
+                    if (first) setObservedTime(first.time);
+                  }}
+                  disabled={!datesForYear.length}
+                  className="rounded-xl border border-white/15 bg-[#0b1224] px-3 py-2 text-sm font-medium normal-case tracking-normal text-white outline-none focus:border-[var(--cyan)]/50 disabled:opacity-40"
+                >
+                  {datesForYear.length === 0 ? (
+                    <option value="">No launches</option>
+                  ) : (
+                    datesForYear.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                  Launch
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {hoursForDate.length === 0 ? (
+                    <span className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/40">
+                      —
+                    </span>
+                  ) : (
+                    hoursForDate.map((s) => (
+                      <button
+                        key={s.time}
+                        type="button"
+                        onClick={() => setObservedTime(s.time)}
+                        className={cn(
+                          "rounded-lg border px-2.5 py-1.5 text-xs font-bold transition",
+                          observedTime === s.time
+                            ? "border-[var(--cyan)]/50 bg-[var(--cyan)]/15 text-[var(--cyan)]"
+                            : "border-white/10 text-white/65 hover:text-white",
+                        )}
+                      >
+                        {formatHourChip(s.hour)}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+              {recentSlots.map((s) => (
+                <button
+                  key={s.time}
+                  type="button"
+                  onClick={() => setObservedTime(s.time)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                    observedTime === s.time
+                      ? "border-[var(--cyan)]/50 bg-[var(--cyan)]/15 text-[var(--cyan)]"
+                      : "border-white/10 text-white/55 hover:text-white",
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/55">
           <span>
             <span className="text-white/35">Site · </span>
@@ -290,6 +554,12 @@ export function SoundingsDashboard() {
             <span className="text-white/35">Valid · </span>
             {formatValid(data?.validTime ?? null)}
           </span>
+          {mode === "observed" ? (
+            <span>
+              <span className="text-white/35">Archive · </span>
+              {observedTime == null ? "Latest" : formatValid(observedTime)}
+            </span>
+          ) : null}
           {loading ? (
             <span className="inline-flex items-center gap-1.5 text-[var(--cyan)]">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

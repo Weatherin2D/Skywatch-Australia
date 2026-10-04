@@ -6,7 +6,10 @@ import {
   SOUNDING_STATIONS,
 } from "@/lib/weather/sounding-stations";
 import type { SoundingModelId, SoundingMode } from "@/lib/weather/sounding-types";
-import { fetchObservedSounding } from "@/lib/weather/uwyo-sounding";
+import {
+  fetchObservedSounding,
+  fetchObservedSoundingArchive,
+} from "@/lib/weather/uwyo-sounding";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,6 +26,8 @@ const MODELS = new Set<SoundingModelId>(["pulse", "ukmo", "ifs", "access"]);
  *   &model=pulse|ukmo|ifs|access
  *   &time=ISO
  *   &meta=1                 → station list only
+ *   &archive=1              → observed UWYO inventory slots for station/year(s)
+ *   &year=2026              → single year for archive (default: current+previous)
  */
 export async function GET(req: NextRequest) {
   try {
@@ -51,6 +56,33 @@ export async function GET(req: NextRequest) {
     const lat = Number(url.searchParams.get("lat"));
     const lon = Number(url.searchParams.get("lon"));
     const place = url.searchParams.get("place") || undefined;
+
+    if (url.searchParams.get("archive") === "1") {
+      let wmo = url.searchParams.get("station")?.trim() || "";
+      if (!wmo) {
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          wmo = nearestSoundingStation(lat, lon).wmo;
+        } else {
+          wmo = "94610";
+        }
+      }
+      if (!getSoundingStation(wmo) && !/^\d{5}$/.test(wmo)) {
+        return NextResponse.json({ error: "Unknown station" }, { status: 400 });
+      }
+      const yearParam = url.searchParams.get("year");
+      const years = yearParam
+        ? yearParam
+            .split(",")
+            .map((y) => Number(y))
+            .filter((y) => Number.isFinite(y) && y >= 1970 && y <= 2100)
+        : undefined;
+      const catalog = await fetchObservedSoundingArchive({ wmo, years });
+      return NextResponse.json(catalog, {
+        headers: {
+          "Cache-Control": "public, max-age=600, stale-while-revalidate=3600",
+        },
+      });
+    }
 
     if (mode === "model") {
       const modelParam = (url.searchParams.get("model") || "pulse").toLowerCase();

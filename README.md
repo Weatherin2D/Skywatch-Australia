@@ -37,6 +37,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
 | `/api/weather/upper-air` | CAPE/CIN/shear + temp profile (Open-Meteo pressure levels) |
 | `/api/weather/sounding` | Full sounding profile (`mode=observed|model`) — UWYO BUFR or Open-Meteo levels |
+| `/api/weather/sounding?archive=1` | Observed UWYO inventory slots for a station (`station`, optional `year`) |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
 | `/api/weather/warnings` | Live BoM warning list (category-ranked); `/api/weather/warnings/:id` for detail |
