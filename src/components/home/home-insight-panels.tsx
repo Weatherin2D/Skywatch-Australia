@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { CloudLightning, Gauge } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CloudLightning, Gauge, Share2 } from "lucide-react";
 import {
   useModelComparison,
   useStormActivity,
@@ -10,6 +10,9 @@ import {
 } from "@/hooks/use-home-insight";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import { STATE_CAPITALS } from "@/lib/weather/location-forecast";
+import { absoluteAppUrl, shareContent } from "@/lib/share";
+import { buildSkywatchMoment } from "@/lib/weather/skywatch-moment";
+import { cn } from "@/lib/utils";
 
 function PanelShell({
   title,
@@ -60,6 +63,106 @@ function StormDensityMap({
         );
       })}
     </div>
+  );
+}
+
+export function HomeMomentCard() {
+  const { place } = useSavedPlace();
+  const name = place?.name ?? STATE_CAPITALS.nsw.name;
+  const lat = place?.lat ?? -33.87;
+  const lon = place?.lon ?? 151.21;
+  const { data: storm, loading: stormLoading } = useStormActivity();
+  const { data: models, loading: modelsLoading } = useModelComparison(
+    lat,
+    lon,
+    name,
+  );
+  const [shareState, setShareState] = useState<"idle" | "shared" | "copied">(
+    "idle",
+  );
+
+  const moment = useMemo(
+    () =>
+      buildSkywatchMoment({
+        placeName: name,
+        storm,
+        models,
+      }),
+    [name, storm, models],
+  );
+
+  const loading = (stormLoading && !storm) || (modelsLoading && !models);
+
+  async function onShare() {
+    const result = await shareContent({
+      title: "SkyWatch Australia",
+      text: moment.shareText,
+      url: absoluteAppUrl(moment.href),
+    });
+    if (result === "shared" || result === "copied") {
+      setShareState(result);
+      window.setTimeout(() => setShareState("idle"), 2000);
+    }
+  }
+
+  const moodGlow =
+    moment.mood === "storm"
+      ? "from-violet-500/25 via-cyan-400/10 to-transparent"
+      : moment.mood === "rain"
+        ? "from-sky-500/25 via-blue-400/10 to-transparent"
+        : moment.mood === "heat"
+          ? "from-amber-500/25 via-orange-400/10 to-transparent"
+          : "from-cyan-500/20 via-teal-400/10 to-transparent";
+
+  return (
+    <section
+      className={cn(
+        "animate-fade-up relative overflow-hidden rounded-2xl border border-white/12 bg-[#0a1224] p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.35)]",
+      )}
+    >
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 bg-gradient-to-br opacity-90",
+          moodGlow,
+        )}
+        aria-hidden
+      />
+      <div className="relative space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cyan)]">
+            {moment.eyebrow}
+          </p>
+          <button
+            type="button"
+            onClick={() => void onShare()}
+            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-white/85 transition hover:border-[var(--cyan)]/40 hover:text-[var(--cyan)]"
+          >
+            <Share2 className="h-3 w-3" aria-hidden />
+            {shareState === "copied"
+              ? "Copied"
+              : shareState === "shared"
+                ? "Shared"
+                : "Share"}
+          </button>
+        </div>
+        {loading ? (
+          <p className="text-sm text-white/65">Writing today’s moment…</p>
+        ) : (
+          <>
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-extrabold leading-tight text-white sm:text-2xl">
+              {moment.headline}
+            </h2>
+            <p className="text-sm text-white/70">{moment.detail}</p>
+            <Link
+              href={moment.href}
+              className="inline-flex text-xs font-semibold text-[var(--cyan)] hover:underline"
+            >
+              Open on SkyWatch →
+            </Link>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

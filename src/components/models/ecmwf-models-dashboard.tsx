@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Link2,
   Pause,
   Play,
+  Share2,
 } from "lucide-react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
@@ -13,6 +15,7 @@ import {
   type MapSettingsState,
 } from "@/components/home/mock-data";
 import { SiteShell } from "@/components/site/site-shell";
+import { absoluteAppUrl, shareContent } from "@/lib/share";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_PRODUCT_ID = "temperature_2m";
@@ -116,10 +119,33 @@ type ProbeSample = {
   formatted: string;
 };
 
+function readModelsQuery(): {
+  product: string;
+  time: string | null;
+  lat: number | null;
+  lon: number | null;
+} {
+  if (typeof window === "undefined") {
+    return { product: DEFAULT_PRODUCT_ID, time: null, lat: null, lon: null };
+  }
+  const sp = new URLSearchParams(window.location.search);
+  return {
+    product: sp.get("product") || DEFAULT_PRODUCT_ID,
+    time: sp.get("time"),
+    lat: sp.get("lat") != null ? Number(sp.get("lat")) : null,
+    lon: sp.get("lon") != null ? Number(sp.get("lon")) : null,
+  };
+}
+
 export function EcmwfModelsDashboard() {
+  const initial = useMemo(() => readModelsQuery(), []);
   const [catalog, setCatalog] = useState<EcmwfMapCatalog | null>(null);
-  const [productId, setProductId] = useState(DEFAULT_PRODUCT_ID);
+  const [productId, setProductId] = useState(initial.product);
   const [timeIndex, setTimeIndex] = useState(0);
+  const [preferredTime, setPreferredTime] = useState<string | null>(
+    initial.time,
+  );
+  const [urlReady, setUrlReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [frameLoading, setFrameLoading] = useState(false);
@@ -130,9 +156,19 @@ export function EcmwfModelsDashboard() {
   const [probe, setProbe] = useState<{
     lat: number;
     lng: number;
-  } | null>(null);
+  } | null>(() =>
+    initial.lat != null &&
+    initial.lon != null &&
+    Number.isFinite(initial.lat) &&
+    Number.isFinite(initial.lon)
+      ? { lat: initial.lat, lng: initial.lon }
+      : null,
+  );
   const [probeSample, setProbeSample] = useState<ProbeSample | null>(null);
   const [probeLoading, setProbeLoading] = useState(false);
+  const [shareState, setShareState] = useState<"idle" | "shared" | "copied">(
+    "idle",
+  );
 
   const loadCatalog = useCallback(async (product: string, signal?: AbortSignal) => {
     setLoadingCatalog(true);
@@ -146,18 +182,23 @@ export function EcmwfModelsDashboard() {
       const json = (await res.json()) as EcmwfMapCatalog;
       if (signal?.aborted) return;
       setCatalog(json);
-      setTimeIndex((prev) => {
+      setTimeIndex(() => {
         if (!json.times.length) return 0;
-        if (prev > 0 && prev < json.times.length) return prev;
+        if (preferredTime) {
+          const exact = json.times.indexOf(preferredTime);
+          if (exact >= 0) return exact;
+          return nearestTimeIndex(json.times);
+        }
         return nearestTimeIndex(json.times);
       });
+      setUrlReady(true);
       setLoadingCatalog(false);
     } catch (err) {
       if (signal?.aborted) return;
       setLoadingCatalog(false);
       setError(err instanceof Error ? err.message : "Unavailable");
     }
-  }, []);
+  }, [preferredTime]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -167,6 +208,24 @@ export function EcmwfModelsDashboard() {
 
   const times = catalog?.times ?? [];
   const activeTime = times[timeIndex] ?? null;
+
+  // Keep product/time/probe shareable in the URL.
+  useEffect(() => {
+    if (!urlReady || typeof window === "undefined") return;
+    const params = new URLSearchParams();
+    if (productId !== DEFAULT_PRODUCT_ID) params.set("product", productId);
+    if (activeTime) params.set("time", activeTime);
+    if (probe) {
+      params.set("lat", probe.lat.toFixed(3));
+      params.set("lon", probe.lng.toFixed(3));
+    }
+    const qs = params.toString();
+    const next = qs ? `/models?${qs}` : "/models";
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== next) {
+      window.history.replaceState(window.history.state, "", next);
+    }
+  }, [urlReady, productId, activeTime, probe]);
 
   const imageUrl = useMemo(() => {
     if (!activeTime) return null;
@@ -255,6 +314,31 @@ export function EcmwfModelsDashboard() {
     ? "…"
     : probeSample?.formatted ?? null;
 
+  const momentShareText = useMemo(() => {
+    const productLabel = activeProduct?.label ?? "ECMWF field";
+    const when = activeTime ? formatHourLabel(activeTime) : "latest";
+    if (probeSample?.formatted) {
+      return `SkyWatch ECMWF · ${probeSample.formatted} · ${productLabel} · ${when}`;
+    }
+    return `SkyWatch ECMWF · ${productLabel} · ${when}`;
+  }, [activeProduct, activeTime, probeSample]);
+
+  async function onShareMoment() {
+    const result = await shareContent({
+      title: "SkyWatch Models",
+      text: momentShareText,
+      url: absoluteAppUrl(
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "/models",
+      ),
+    });
+    if (result === "shared" || result === "copied") {
+      setShareState(result);
+      window.setTimeout(() => setShareState("idle"), 2000);
+    }
+  }
+
   return (
     <SiteShell>
       <div className="mx-auto w-full max-w-[1600px] space-y-3 px-3 pb-6 pt-3 sm:px-4 sm:pb-8 sm:pt-4">
@@ -272,9 +356,23 @@ export function EcmwfModelsDashboard() {
               lightning bolts where the model has thunderstorms.
             </p>
           </div>
-          {catalog?.attribution ? (
-            <p className="text-[10px] text-white/45">{catalog.attribution}</p>
-          ) : null}
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => void onShareMoment()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/90 transition hover:border-[var(--cyan)]/40 hover:text-[var(--cyan)]"
+            >
+              <Share2 className="h-3.5 w-3.5" aria-hidden />
+              {shareState === "copied"
+                ? "Link copied"
+                : shareState === "shared"
+                  ? "Shared"
+                  : "Share moment"}
+            </button>
+            {catalog?.attribution ? (
+              <p className="text-[10px] text-white/45">{catalog.attribution}</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)]">
@@ -320,6 +418,7 @@ export function EcmwfModelsDashboard() {
                     type="button"
                     onClick={() => {
                       setPlaying(false);
+                      setPreferredTime(activeTime);
                       setProductId(p.id);
                     }}
                     className={cn(
@@ -367,7 +466,7 @@ export function EcmwfModelsDashboard() {
                 </div>
               )}
               {probe ? (
-                <div className="absolute left-3 top-3 z-[500] max-w-[240px] rounded-xl border border-white/15 bg-[#0a1224]/92 px-3 py-2 shadow-lg backdrop-blur-md">
+                <div className="absolute left-3 top-3 z-[500] max-w-[260px] rounded-xl border border-white/15 bg-[#0a1224]/92 px-3 py-2 shadow-lg backdrop-blur-md">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--cyan)]">
@@ -384,6 +483,14 @@ export function EcmwfModelsDashboard() {
                           ? ` · ${formatHourLabel(probeSample.time)}`
                           : ""}
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => void onShareMoment()}
+                        className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--cyan)] hover:underline"
+                      >
+                        <Link2 className="h-3 w-3" aria-hidden />
+                        {shareState === "copied" ? "Copied link" : "Share point"}
+                      </button>
                     </div>
                     <button
                       type="button"
@@ -400,7 +507,7 @@ export function EcmwfModelsDashboard() {
                 </div>
               ) : (
                 <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-lg bg-[#0a1224]/70 px-2.5 py-1.5 text-[11px] font-medium text-white/65">
-                  Click map for value
+                  Click map for value · share the moment
                 </div>
               )}
               {error ? (

@@ -16,6 +16,7 @@ import {
   usePreferSavedRegion,
 } from "@/components/home/home-live-panels";
 import {
+  HomeMomentCard,
   HomeModelComparisonPanel,
   HomeStormTrackerPanel,
   HomeUpperAirPanel,
@@ -338,12 +339,15 @@ function HomeDashboardInner({
   }, [urlReady, pathname, regionId, mode, layers, satProduct, focus]);
 
   async function copyShareLink() {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
+    const { shareContent } = await import("@/lib/share");
+    const result = await shareContent({
+      title: "SkyWatch Australia",
+      text: "Live weather across Australia — radar, lightning and satellite.",
+      url: window.location.href,
+    });
+    if (result === "shared" || result === "copied") {
       setLinkCopied(true);
       window.setTimeout(() => setLinkCopied(false), 2000);
-    } catch {
-      /* ignore */
     }
   }
 
@@ -1230,6 +1234,8 @@ function HomeDashboardInner({
 
         <div className="order-2 space-y-3 lg:order-none">
           <HomeNowPanel />
+
+          <HomeMomentCard />
 
           <HomeWarningsPanel />
 

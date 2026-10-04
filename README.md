@@ -10,10 +10,10 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — hero, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
+| `/` | SkyWatch homepage — hero, near-you moment card, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
 | `/radar` | National map focused on rain radar + lightning overlays (URL-synced) |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
-| `/models` | Hourly ECMWF IFS map — product picker + time scrubber (Open-Meteo) |
+| `/models` | Hourly ECMWF IFS map — product picker, time scrubber, click values, shareable deep links (Open-Meteo) |
 | `/model-comparison` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
 | `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
