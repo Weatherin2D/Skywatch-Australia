@@ -130,6 +130,25 @@ async function fetchUwyoCsv(
   }
 }
 
+/** Keep mandatory levels + ~every 15 hPa so SVG/payload stay lean. */
+function thinLevels(levels: SoundingLevel[]): SoundingLevel[] {
+  if (levels.length <= 180) return levels;
+  const must = new Set([1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100]);
+  const out: SoundingLevel[] = [];
+  let lastP = Infinity;
+  for (const l of levels) {
+    const nearMust = [...must].some((p) => Math.abs(l.p - p) < 3);
+    if (nearMust || lastP - l.p >= 15 || out.length === 0) {
+      out.push(l);
+      lastP = l.p;
+    }
+  }
+  // Always keep top
+  const top = levels[levels.length - 1]!;
+  if (out[out.length - 1] !== top) out.push(top);
+  return out;
+}
+
 /** Candidate 00Z/12Z times, newest first, looking back several days. */
 export function recentSoundingSlots(now = new Date()): Date[] {
   const slots: Date[] = [];
@@ -181,9 +200,10 @@ export async function fetchObservedSounding(options: {
       lastReason = "Sounding too shallow";
       continue;
     }
+    const levels = thinLevels(parsed.levels);
     const lat = parsed.lat || station?.lat || 0;
     const lon = parsed.lon || station?.lon || 0;
-    const analysis = analyzeSounding(parsed.levels);
+    const analysis = analyzeSounding(levels);
     return {
       status: "ok",
       mode: "observed",
@@ -193,7 +213,7 @@ export async function fetchObservedSounding(options: {
       latitude: lat,
       longitude: lon,
       validTime: parsed.validTime ?? slot.toISOString(),
-      levels: parsed.levels,
+      levels,
       params: analysis.params,
       parcelTraces: analysis.parcelTraces,
       attribution:
