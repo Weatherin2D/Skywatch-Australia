@@ -3,6 +3,7 @@
 import { ChevronDown, Link2, Pause, Play } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { CellDetailsPanel } from "@/components/home/cell-details-panel";
 import { ChaseHud } from "@/components/home/chase-hud";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
@@ -1063,6 +1064,11 @@ function HomeDashboardInner({
               showStormCells={chaseEnabled}
               selectedStormCellId={selectedCellId}
               focusStormCellId={focusCellId}
+              onSelectStormCell={(id) => {
+                setSelectedCellId(id);
+                setFocusCellId(id);
+                if (id) setChaseEnabled(true);
+              }}
               mapSettings={mapSettings}
               showLightning={showLightning}
               lightningStrikes={lightningStrikes}
@@ -1286,6 +1292,9 @@ function HomeDashboardInner({
                     radar: true,
                     lightning: true,
                   }));
+                } else {
+                  setSelectedCellId(null);
+                  setFocusCellId(null);
                 }
               }}
               onSelect={(id) => {
@@ -1294,6 +1303,18 @@ function HomeDashboardInner({
               }}
             />
           )}
+
+          {chaseEnabled && selectedCellId ? (
+            <CellDetailsPanel
+              cell={
+                stormCells.find((c) => c.id === selectedCellId) ?? null
+              }
+              onClose={() => {
+                setSelectedCellId(null);
+                setFocusCellId(null);
+              }}
+            />
+          ) : null}
 
           <HomeWarningsPanel />
 

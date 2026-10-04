@@ -4,17 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Crosshair, Navigation, Radio } from "lucide-react";
 import {
   bearingBetween,
+  compassLabel,
   distanceKm,
   type StormCell,
 } from "@/lib/weather/storm-cell-types";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import { cn } from "@/lib/utils";
-
-function compass(deg: number | null): string {
-  if (deg == null || !Number.isFinite(deg)) return "—";
-  const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-  return dirs[Math.round(deg / 45) % 8]!;
-}
 
 export function ChaseHud({
   cells,
@@ -49,21 +44,24 @@ export function ChaseHud({
         const bearing = bearingBetween(origin.lat, origin.lon, c.lat, c.lon);
         return { cell: c, km, bearing };
       })
-      .sort((a, b) => a.km - b.km || b.cell.strength - a.cell.strength);
+      .sort((a, b) => a.km - b.km || b.cell.score - a.cell.score);
   }, [cells, origin]);
 
-  // Optional browser notification when a strong cell is within 120 km.
+  // Browser notification when an alert-level cell is within 120 km.
   useEffect(() => {
     if (!notifyNear || typeof window === "undefined") return;
     if (typeof Notification === "undefined") return;
-    const near = ranked.find((r) => r.km <= 120 && r.cell.strength >= 0.45);
+    const near = ranked.find(
+      (r) => r.km <= 120 && r.cell.alertLevel !== "none",
+    );
     if (!near || Notification.permission !== "granted") return;
     const key = `chase-near-${near.cell.id}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
     try {
-      new Notification("SkyWatch chase alert", {
-        body: `Strong cell near ${near.cell.label} — ${Math.round(near.km)} km ${compass(near.bearing)} of ${origin.label}`,
+      new Notification("SkyWatch cell alert", {
+        body: `${near.cell.alertLevel.toUpperCase()} ${near.cell.score}/100 near ${near.cell.label} — ${Math.round(near.km)} km ${compassLabel(near.bearing)} of ${origin.label}`,
+        tag: `skywatch-auto-${near.cell.id}`,
       });
     } catch {
       /* ignore */
@@ -75,13 +73,13 @@ export function ChaseHud({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cyan)]">
-            Chase HUD
+            Active cells
           </p>
           <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-white">
-            Cells of interest
+            Cell tracker
           </h2>
           <p className="text-[11px] text-white/55">
-            From {origin.label} · lightning-tracked guidance
+            From {origin.label} · score, path & alerts
           </p>
         </div>
         <button
@@ -95,7 +93,7 @@ export function ChaseHud({
           )}
         >
           <Crosshair className="h-3.5 w-3.5" aria-hidden />
-          {enabled ? "Chase on" : "Chase off"}
+          {enabled ? "Cells on" : "Cells off"}
         </button>
       </div>
 
@@ -115,7 +113,7 @@ export function ChaseHud({
                 setNotifyNear(next);
               }}
             />
-            Notify when a strong cell is within 120 km
+            Notify when a Watch/Warning cell is within 120 km
           </label>
 
           {loading && !cells.length ? (
@@ -144,12 +142,20 @@ export function ChaseHud({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">
+                        <span className="mr-1.5 inline-flex min-w-[2rem] justify-center rounded-md bg-white/10 px-1 py-0.5 text-[11px] font-bold text-[var(--cyan)]">
+                          {cell.score}
+                        </span>
                         {cell.label}
+                        {cell.alertLevel !== "none" ? (
+                          <span className="ml-1 text-[10px] font-bold uppercase text-amber-200/90">
+                            {cell.alertLevel}
+                          </span>
+                        ) : null}
                       </p>
                       <p className="text-[11px] text-white/55">
                         {cell.ratePerMin}/min · {cell.strikes15m} strikes
                         {cell.speedKmh != null
-                          ? ` · moving ${compass(cell.motionDeg)} ${Math.round(cell.speedKmh)} km/h`
+                          ? ` · ${compassLabel(cell.motionDeg)} ${Math.round(cell.speedKmh)} km/h`
                           : ""}
                       </p>
                     </div>
@@ -159,7 +165,7 @@ export function ChaseHud({
                         {Math.round(km)} km
                       </p>
                       <p className="text-[10px] text-white/45">
-                        {compass(bearing)}
+                        {compassLabel(bearing)}
                       </p>
                     </div>
                   </button>
@@ -174,7 +180,8 @@ export function ChaseHud({
         </>
       ) : (
         <p className="text-sm text-white/60">
-          Turn Chase on to rank nearby lightning cells and focus the map.
+          Turn Active cells on to show scores, projected paths, and cell
+          details on the map.
         </p>
       )}
     </section>

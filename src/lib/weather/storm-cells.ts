@@ -11,19 +11,33 @@ import type { LightningStrike } from "@/lib/weather/lightning";
 import { LIGHTNING_AU_BOUNDS } from "@/lib/weather/lightning";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
 import {
+  alertLevelFromScore,
   bearingBetween,
+  compassLabel,
+  destinationPoint,
   distanceKm,
   type StormCell,
+  type StormCellAlert,
+  type StormCellProjectedPoint,
   type StormCellTrackPoint,
   type StormCellsPayload,
 } from "@/lib/weather/storm-cell-types";
 
 export type {
   StormCell,
+  StormCellAlert,
+  StormCellAlertLevel,
+  StormCellProjectedPoint,
   StormCellTrackPoint,
   StormCellsPayload,
 } from "@/lib/weather/storm-cell-types";
-export { bearingBetween, distanceKm } from "@/lib/weather/storm-cell-types";
+export {
+  alertLevelFromScore,
+  bearingBetween,
+  compassLabel,
+  destinationPoint,
+  distanceKm,
+} from "@/lib/weather/storm-cell-types";
 
 const CELL_GRID_DEG = 0.55;
 const MIN_STRIKES_15 = 4;
@@ -32,11 +46,16 @@ const WINDOW_15 = 15 * 60;
 const WINDOW_45 = 45 * 60;
 const WINDOW_OLD = 45 * 60;
 const WINDOW_MID = 25 * 60;
+const PROJECT_MINUTES = [15, 30, 60] as const;
 
 function cellKey(lat: number, lon: number): string {
   const i = Math.floor(lat / CELL_GRID_DEG);
   const j = Math.floor(lon / CELL_GRID_DEG);
   return `${i}:${j}`;
+}
+
+function stableCellId(key: string): string {
+  return `cell-${key.replace(":", "x")}`;
 }
 
 function labelFor(lat: number, lon: number): string {
@@ -66,9 +85,7 @@ type Bucket = {
   tSum: number;
 };
 
-function bucketStrikes(
-  strikes: LightningStrike[],
-): Map<string, Bucket> {
+function bucketStrikes(strikes: LightningStrike[]): Map<string, Bucket> {
   const map = new Map<string, Bucket>();
   for (const s of strikes) {
     if (
@@ -104,6 +121,7 @@ function mergeBuckets(buckets: Map<string, Bucket>): Bucket[] {
     if (visited.has(start)) continue;
     const stack = [start];
     visited.add(start);
+    let seedKey = start;
     const acc: Bucket = {
       key: start,
       latSum: 0,
@@ -112,10 +130,15 @@ function mergeBuckets(buckets: Map<string, Bucket>): Bucket[] {
       maxI: 0,
       tSum: 0,
     };
+    let bestN = 0;
     while (stack.length) {
       const k = stack.pop()!;
       const b = buckets.get(k);
       if (!b) continue;
+      if (b.n > bestN) {
+        bestN = b.n;
+        seedKey = k;
+      }
       acc.latSum += b.latSum;
       acc.lonSum += b.lonSum;
       acc.n += b.n;
@@ -132,7 +155,10 @@ function mergeBuckets(buckets: Map<string, Bucket>): Bucket[] {
         }
       }
     }
-    if (acc.n > 0) groups.push(acc);
+    if (acc.n > 0) {
+      acc.key = seedKey;
+      groups.push(acc);
+    }
   }
   return groups;
 }
@@ -143,6 +169,113 @@ function centroid(b: Bucket): { lat: number; lon: number; time: number } {
     lon: b.lonSum / b.n,
     time: Math.round(b.tSum / b.n),
   };
+}
+
+function projectPath(
+  lat: number,
+  lon: number,
+  motionDeg: number | null,
+  speedKmh: number | null,
+): StormCellProjectedPoint[] {
+  if (
+    motionDeg == null ||
+    speedKmh == null ||
+    !Number.isFinite(speedKmh) ||
+    speedKmh < 2
+  ) {
+    return [];
+  }
+  return PROJECT_MINUTES.map((minutesAhead) => {
+    const dist = (speedKmh * minutesAhead) / 60;
+    const p = destinationPoint(lat, lon, motionDeg, dist);
+    return {
+      lat: Math.round(p.lat * 1000) / 1000,
+      lon: Math.round(p.lon * 1000) / 1000,
+      minutesAhead,
+    };
+  });
+}
+
+function buildScore(opts: {
+  strikes15m: number;
+  ratePerMin: number;
+  maxIntensity: number;
+  speedKmh: number | null;
+  strikes45m: number;
+}): { strength: number; score: number } {
+  const rateTerm = Math.min(1, opts.ratePerMin / 6);
+  const countTerm = Math.min(1, opts.strikes15m / 35);
+  const intensityTerm = Math.min(1, opts.maxIntensity / 70);
+  const motionTerm =
+    opts.speedKmh != null && opts.speedKmh >= 5
+      ? Math.min(1, opts.speedKmh / 60) * 0.15
+      : 0;
+  // Sustained activity: 45m count vs 15m burst
+  const sustain =
+    opts.strikes45m > 0
+      ? Math.min(1, opts.strikes15m / Math.max(1, opts.strikes45m / 2)) * 0.1
+      : 0;
+  const strength = Math.min(
+    1,
+    countTerm * 0.35 + rateTerm * 0.35 + intensityTerm * 0.2 + motionTerm + sustain,
+  );
+  const score = Math.max(1, Math.min(100, Math.round(strength * 100)));
+  return { strength: Math.round(strength * 100) / 100, score };
+}
+
+function buildAnalysis(opts: {
+  label: string;
+  strikes15m: number;
+  strikes45m: number;
+  ratePerMin: number;
+  motionDeg: number | null;
+  speedKmh: number | null;
+  score: number;
+  alertLevel: ReturnType<typeof alertLevelFromScore>;
+}): { analysis: string[]; summary: string } {
+  const analysis: string[] = [];
+  const burstRatio =
+    opts.strikes45m > 0 ? opts.strikes15m / (opts.strikes45m / 3) : 1;
+  if (burstRatio >= 1.35) {
+    analysis.push("Lightning rate is increasing over the last 15 minutes.");
+  } else if (burstRatio <= 0.65 && opts.strikes45m >= 12) {
+    analysis.push("Activity is easing versus the prior half-hour.");
+  } else {
+    analysis.push("Lightning rate is holding roughly steady.");
+  }
+
+  if (opts.speedKmh != null && opts.motionDeg != null && opts.speedKmh >= 5) {
+    analysis.push(
+      `Estimated motion ${compassLabel(opts.motionDeg)} at ~${Math.round(opts.speedKmh)} km/h (projected 30–60 min path available).`,
+    );
+  } else {
+    analysis.push("Motion is uncertain — projected path unavailable.");
+  }
+
+  analysis.push(
+    `${opts.strikes15m} strikes in 15 min (${opts.ratePerMin}/min) near ${opts.label}.`,
+  );
+
+  if (opts.alertLevel === "warning") {
+    analysis.push(
+      "SkyWatch Warning — intense lightning cell; treat as elevated thunderstorm risk in the vicinity.",
+    );
+  } else if (opts.alertLevel === "watch") {
+    analysis.push(
+      "SkyWatch Watch — active thunderstorm cell; monitor nearby places along the track.",
+    );
+  } else {
+    analysis.push("Below automated alert threshold — guidance only.");
+  }
+
+  const levelWord =
+    opts.alertLevel === "warning"
+      ? "Warning"
+      : opts.alertLevel === "watch"
+        ? "Watch"
+        : "Cell";
+  const summary = `${levelWord} · score ${opts.score}/100 · ${opts.ratePerMin}/min near ${opts.label}`;
+  return { analysis, summary };
 }
 
 export function buildStormCells(
@@ -172,10 +305,9 @@ export function buildStormCells(
   const midGroups = mergeBuckets(bucketStrikes(newer));
 
   const cells: StormCell[] = nowGroups
-    .map((g, idx) => {
+    .map((g) => {
       const c = centroid(g);
       const label = labelFor(c.lat, c.lon);
-      // Match to older / mid centroids for motion.
       let prev: { lat: number; lon: number; time: number } | null = null;
       let bestD = Infinity;
       for (const og of oldGroups) {
@@ -216,13 +348,28 @@ export function buildStormCells(
         (s) => distanceKm(s.lat, s.lon, c.lat, c.lon) < 35,
       ).length;
       const rate = Math.round((g.n / 15) * 10) / 10;
-      const strength = Math.min(
-        1,
-        g.n / 40 + rate / 8 + Math.min(1, g.maxI / 80) * 0.25,
-      );
+      const { strength, score } = buildScore({
+        strikes15m: g.n,
+        ratePerMin: rate,
+        maxIntensity: g.maxI,
+        speedKmh,
+        strikes45m,
+      });
+      const alertLevel = alertLevelFromScore(score);
+      const projectedPath = projectPath(c.lat, c.lon, motionDeg, speedKmh);
+      const { analysis, summary } = buildAnalysis({
+        label,
+        strikes15m: g.n,
+        strikes45m,
+        ratePerMin: rate,
+        motionDeg,
+        speedKmh,
+        score,
+        alertLevel,
+      });
 
       return {
-        id: `cell-${idx}-${Math.round(c.lat * 100)}-${Math.round(c.lon * 100)}`,
+        id: stableCellId(g.key),
         label,
         lat: Math.round(c.lat * 1000) / 1000,
         lon: Math.round(c.lon * 1000) / 1000,
@@ -233,17 +380,36 @@ export function buildStormCells(
         motionDeg,
         speedKmh,
         track,
-        strength: Math.round(strength * 100) / 100,
+        projectedPath,
+        strength,
+        score,
+        alertLevel,
+        analysis,
+        summary,
       } satisfies StormCell;
     })
-    .sort((a, b) => b.strength - a.strength || b.strikes15m - a.strikes15m)
+    .sort((a, b) => b.score - a.score || b.strikes15m - a.strikes15m)
     .slice(0, MAX_CELLS);
+
+  const alerts: StormCellAlert[] = cells
+    .filter((c) => c.alertLevel !== "none")
+    .map((c) => ({
+      id: c.id,
+      score: c.score,
+      alertLevel: c.alertLevel as Exclude<typeof c.alertLevel, "none">,
+      label: c.label,
+      lat: c.lat,
+      lon: c.lon,
+      summary: c.summary,
+      href: `/warnings/auto/${encodeURIComponent(c.id)}`,
+    }));
 
   return {
     generated: nowSec,
     status: "ok",
     radarValidTime,
     cells,
+    alerts,
     attribution: "Blitzortung / LightningMaps · RainViewer timing",
     note: "SkyWatch guidance — cells from lightning clusters, not official BoM tracks.",
   };
@@ -279,4 +445,12 @@ export async function fetchStormCells(): Promise<StormCellsPayload> {
     status: snap.status === "error" ? "degraded" : "ok",
     attribution: `${snap.attribution || "Blitzortung"} · RainViewer timing`,
   };
+}
+
+/** Lookup a single cell by id from a fresh payload. */
+export async function fetchStormCellById(
+  id: string,
+): Promise<StormCell | null> {
+  const payload = await fetchStormCells();
+  return payload.cells.find((c) => c.id === id) ?? null;
 }

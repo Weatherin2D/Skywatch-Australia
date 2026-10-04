@@ -67,6 +67,7 @@ export function HomeMapDynamic({
   showStormCells,
   selectedStormCellId,
   focusStormCellId,
+  onSelectStormCell,
 }: {
   mode: MapMode;
   regionId?: MapRegionId;
@@ -117,6 +118,7 @@ export function HomeMapDynamic({
   showStormCells?: boolean;
   selectedStormCellId?: string | null;
   focusStormCellId?: string | null;
+  onSelectStormCell?: (id: string | null) => void;
 }) {
   return (
     <HomeMap
@@ -161,6 +163,7 @@ export function HomeMapDynamic({
       showStormCells={showStormCells}
       selectedStormCellId={selectedStormCellId}
       focusStormCellId={focusStormCellId}
+      onSelectStormCell={onSelectStormCell}
     />
   );
 }

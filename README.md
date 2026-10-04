@@ -15,13 +15,14 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/models` | Multi-model map lab (ECMWF / ICON / GFS) — product picker, diff mode, click values, meteogram, mini Skew-T, transect cross-section |
 | `/model-comparison` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
 | `/ensemble` | ECMWF ensemble spaghetti (2 m temp / precip) for saved place |
-| `/radar` | Storm Cell Tracker + Chase HUD (`?chase=1&cell=`) on live radar |
+| `/radar` | Active Cell Tracker overlay (`?chase=1&cell=`) — scores, projected paths, details |
+| `/warnings` | BoM warnings, or Automated thunderstorm cells via `?source=auto` |
+| `/warnings/auto/[cellId]` | SkyWatch automated cell alert detail (score, analysis, path) |
 | `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
 | `/forecast/[geohash]` | Direct forecast for a BoM location (incl. 24–48h rain timeline) |
-| `/warnings` | Live BoM warnings + optional browser Notification alerts (client-side) |
 | `/archive` | Forward-growing archive from midnight AEST today — satellite, synoptic, lightning with date/time picker |
 | `/risk` | MetEye thunderstorm risk map for the full MetEye horizon |
 | `/more` | Secondary tools + mobile install hint (PWA) |

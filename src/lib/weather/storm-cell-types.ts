@@ -6,6 +6,15 @@ export type StormCellTrackPoint = {
   time: number;
 };
 
+export type StormCellAlertLevel = "none" | "watch" | "warning";
+
+export type StormCellProjectedPoint = {
+  lat: number;
+  lon: number;
+  /** Minutes ahead of valid time */
+  minutesAhead: number;
+};
+
 export type StormCell = {
   id: string;
   label: string;
@@ -23,8 +32,28 @@ export type StormCell = {
   speedKmh: number | null;
   /** Short trail: older → newer */
   track: StormCellTrackPoint[];
-  /** 0–1 severity score for HUD sorting */
+  /** Forward projection from motion (empty when motion unknown) */
+  projectedPath: StormCellProjectedPoint[];
+  /** 0–1 severity score for internal ranking */
   strength: number;
+  /** Calibrated display score out of 100 */
+  score: number;
+  alertLevel: StormCellAlertLevel;
+  /** Short analysis bullets for details / automated alerts */
+  analysis: string[];
+  /** One-line summary for alert cards */
+  summary: string;
+};
+
+export type StormCellAlert = {
+  id: string;
+  score: number;
+  alertLevel: Exclude<StormCellAlertLevel, "none">;
+  label: string;
+  lat: number;
+  lon: number;
+  summary: string;
+  href: string;
 };
 
 export type StormCellsPayload = {
@@ -32,6 +61,7 @@ export type StormCellsPayload = {
   status: string;
   radarValidTime: number | null;
   cells: StormCell[];
+  alerts: StormCellAlert[];
   attribution: string;
   note: string;
 };
@@ -67,4 +97,42 @@ export function bearingBetween(
     Math.cos(φ1) * Math.sin(φ2) -
     Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Destination point given start, bearing (deg), and distance (km). */
+export function destinationPoint(
+  lat: number,
+  lon: number,
+  bearingDeg: number,
+  distanceKmVal: number,
+): { lat: number; lon: number } {
+  const R = 6371;
+  const δ = distanceKmVal / R;
+  const θ = (bearingDeg * Math.PI) / 180;
+  const φ1 = (lat * Math.PI) / 180;
+  const λ1 = (lon * Math.PI) / 180;
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const sinδ = Math.sin(δ);
+  const cosδ = Math.cos(δ);
+  const φ2 = Math.asin(sinφ1 * cosδ + cosφ1 * sinδ * Math.cos(θ));
+  const λ2 =
+    λ1 +
+    Math.atan2(Math.sin(θ) * sinδ * cosφ1, cosδ - sinφ1 * Math.sin(φ2));
+  return {
+    lat: (φ2 * 180) / Math.PI,
+    lon: ((((λ2 * 180) / Math.PI) + 540) % 360) - 180,
+  };
+}
+
+export function alertLevelFromScore(score: number): StormCellAlertLevel {
+  if (score >= 75) return "warning";
+  if (score >= 55) return "watch";
+  return "none";
+}
+
+export function compassLabel(deg: number | null): string {
+  if (deg == null || !Number.isFinite(deg)) return "—";
+  const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return dirs[Math.round(deg / 45) % 8]!;
 }

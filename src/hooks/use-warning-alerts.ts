@@ -64,10 +64,10 @@ export function useWarningAlerts(pollMs = 180_000) {
     if (typeof Notification === "undefined") return;
     if (Notification.permission !== "granted") return;
 
-    const warnings = await fetchWarnings();
     const notified = readNotifiedIds();
     const fresh: BomWarningSummary[] = [];
 
+    const warnings = await fetchWarnings();
     for (const w of warnings) {
       if (w.severity === "cancelled") continue;
       if (!severityMeetsFloor(w.severity, current.severityFloor)) continue;
@@ -76,27 +76,74 @@ export function useWarningAlerts(pollMs = 180_000) {
       fresh.push(w);
     }
 
-    if (fresh.length === 0) return;
-
-    markNotified(fresh.map((w) => w.id));
-
-    for (const w of fresh.slice(0, 5)) {
-      const title = `${w.severity.toUpperCase()}: ${w.shortTitle}`;
-      const body = `${w.states.join(", ") || w.state} — ${w.title}`;
-      try {
-        const n = new Notification(title, {
-          body,
-          tag: `skywatch-warn-${w.id}`,
-          icon: "/icon",
-        });
-        n.onclick = () => {
-          window.focus();
-          window.location.href = w.href;
-          n.close();
-        };
-      } catch {
-        /* ignore */
+    if (fresh.length) {
+      markNotified(fresh.map((w) => w.id));
+      for (const w of fresh.slice(0, 5)) {
+        const title = `${w.severity.toUpperCase()}: ${w.shortTitle}`;
+        const body = `${w.states.join(", ") || w.state} — ${w.title}`;
+        try {
+          const n = new Notification(title, {
+            body,
+            tag: `skywatch-warn-${w.id}`,
+            icon: "/icon",
+          });
+          n.onclick = () => {
+            window.focus();
+            window.location.href = w.href;
+            n.close();
+          };
+        } catch {
+          /* ignore */
+        }
       }
+    }
+
+    // Also notify on new SkyWatch automated thunderstorm cells (Watch/Warning).
+    try {
+      const res = await fetch("/api/weather/storm-cells", { cache: "no-store" });
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        alerts?: {
+          id: string;
+          score: number;
+          alertLevel: "watch" | "warning";
+          label: string;
+          summary: string;
+          href: string;
+        }[];
+      };
+      const alerts = json.alerts ?? [];
+      const freshCells = alerts.filter((a) => {
+        if (notified.has(`auto:${a.id}`)) return false;
+        // Map floor: severe → watch+, critical → warning only.
+        if (current.severityFloor === "critical") {
+          return a.alertLevel === "warning";
+        }
+        return true;
+      });
+      if (!freshCells.length) return;
+      markNotified(freshCells.map((a) => `auto:${a.id}`));
+      for (const a of freshCells.slice(0, 3)) {
+        try {
+          const n = new Notification(
+            `SkyWatch ${a.alertLevel.toUpperCase()}: ${a.label}`,
+            {
+              body: a.summary,
+              tag: `skywatch-auto-${a.id}`,
+              icon: "/icon",
+            },
+          );
+          n.onclick = () => {
+            window.focus();
+            window.location.href = a.href;
+            n.close();
+          };
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore automated scan failures */
     }
   }, []);
 

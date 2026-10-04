@@ -112,6 +112,7 @@ type Props = {
   showStormCells?: boolean;
   selectedStormCellId?: string | null;
   focusStormCellId?: string | null;
+  onSelectStormCell?: (id: string | null) => void;
 };
 
 function MapClickHandler({
@@ -452,6 +453,7 @@ export function HomeMap({
   showStormCells = false,
   selectedStormCellId = null,
   focusStormCellId = null,
+  onSelectStormCell,
 }: Props) {
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
@@ -673,6 +675,7 @@ export function HomeMap({
           enabled={showStormCells}
           selectedId={selectedStormCellId}
           focusId={focusStormCellId}
+          onSelect={onSelectStormCell}
         />
         <MapTools
           bounds={bounds}

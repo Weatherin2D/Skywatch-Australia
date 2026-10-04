@@ -48,9 +48,10 @@ export function WarningAlertSettings() {
             Browser alerts
           </h2>
           <p className="mt-1 max-w-xl text-xs text-white/65">
-            Get a notification when a new Critical or Severe warning appears for
-            your selected states. Stored only on this device — no account or
-            email.
+            Get a notification when a new BoM Critical/Severe warning appears
+            for your selected states, and when SkyWatch raises an Automated
+            thunderstorm Watch/Warning. Stored only on this device — no account
+            or email.
           </p>
         </div>
         <button
