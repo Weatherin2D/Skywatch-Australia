@@ -951,31 +951,34 @@ function drawLightningBolt(
   cy: number,
   scale = 1,
 ): void {
-  // Relative polyline for a simple bolt (x,y), tip at top.
+  // Classic 4-segment zig-zag (tip → mid → mid → tip).
   const pts: [number, number][] = [
-    [0, -7],
-    [2.2, -2.2],
-    [0.4, -2.2],
-    [3.2, 3.8],
-    [-0.6, 0.6],
-    [1.2, 0.6],
-    [-2.8, 7],
-    [-0.8, 1.4],
-    [-2.4, 1.4],
+    [0.5, -8],
+    [3.5, -1],
+    [-0.5, -1],
+    [4, 8],
+    [0.5, 2],
+    [-3.5, 8],
   ];
-  const s = scale;
-  // Fill by painting thick segments along the path.
+  const s = Math.max(0.85, scale);
   for (let i = 0; i < pts.length - 1; i++) {
     const [x0, y0] = pts[i]!;
     const [x1, y1] = pts[i + 1]!;
-    const steps = 8;
+    const steps = 10;
     for (let k = 0; k <= steps; k++) {
       const t = k / steps;
       const x = cx + (x0 + (x1 - x0) * t) * s;
       const y = cy + (y0 + (y1 - y0) * t) * s;
-      blendPixel(png, width, height, x, y, 255, 255, 255, 230);
-      blendPixel(png, width, height, x + 1, y, 255, 255, 255, 180);
-      blendPixel(png, width, height, x, y + 1, 255, 255, 255, 160);
+      // Slightly thicker core so bolts stay readable on rain fills.
+      for (const [dx, dy, a] of [
+        [0, 0, 245],
+        [1, 0, 210],
+        [0, 1, 200],
+        [-1, 0, 170],
+        [0, -1, 170],
+      ] as const) {
+        blendPixel(png, width, height, x + dx, y + dy, 255, 255, 255, a);
+      }
     }
   }
 }
