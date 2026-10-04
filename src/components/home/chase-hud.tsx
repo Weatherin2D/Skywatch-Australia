@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Crosshair, Navigation, Radio } from "lucide-react";
-import type { StormCell } from "@/lib/weather/storm-cells";
-import { bearingBetween, distanceKm } from "@/lib/weather/storm-cells";
+import {
+  bearingBetween,
+  distanceKm,
+  type StormCell,
+} from "@/lib/weather/storm-cell-types";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import { cn } from "@/lib/utils";
 

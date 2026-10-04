@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { StormCellsPayload } from "@/lib/weather/storm-cells";
+import type { StormCellsPayload } from "@/lib/weather/storm-cell-types";
 
 export function useStormCells(refreshMs = 45_000, enabled = true) {
   const [data, setData] = useState<StormCellsPayload | null>(null);

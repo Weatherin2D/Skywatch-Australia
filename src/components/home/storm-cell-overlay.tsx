@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect } from "react";
 import { CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
-import type { StormCell } from "@/lib/weather/storm-cells";
+import type { StormCell } from "@/lib/weather/storm-cell-types";
 
 export function StormCellOverlay({
   cells,

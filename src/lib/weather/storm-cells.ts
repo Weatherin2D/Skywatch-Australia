@@ -2,47 +2,28 @@
  * SkyWatch storm cells — cluster live lightning into tracked cells with
  * short motion vectors. Radar timestamps are used as the valid-time spine;
  * detection is lightning-density based (RainViewer tiles are not a full grid).
+ *
+ * Server-only module (Blitzortung feed). Client code must import types/geo
+ * from `@/lib/weather/storm-cell-types`.
  */
 
 import type { LightningStrike } from "@/lib/weather/lightning";
 import { LIGHTNING_AU_BOUNDS } from "@/lib/weather/lightning";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
+import {
+  bearingBetween,
+  distanceKm,
+  type StormCell,
+  type StormCellTrackPoint,
+  type StormCellsPayload,
+} from "@/lib/weather/storm-cell-types";
 
-export type StormCellTrackPoint = {
-  lat: number;
-  lon: number;
-  time: number;
-};
-
-export type StormCell = {
-  id: string;
-  label: string;
-  lat: number;
-  lon: number;
-  /** Strikes in the recent 15-minute window */
-  strikes15m: number;
-  /** Strikes in the recent 45-minute window */
-  strikes45m: number;
-  ratePerMin: number;
-  maxIntensity: number;
-  /** Motion toward next estimated position (degrees from north, meteorological) */
-  motionDeg: number | null;
-  /** Speed km/h from centroid drift */
-  speedKmh: number | null;
-  /** Short trail: older → newer */
-  track: StormCellTrackPoint[];
-  /** 0–1 severity score for HUD sorting */
-  strength: number;
-};
-
-export type StormCellsPayload = {
-  generated: number;
-  status: string;
-  radarValidTime: number | null;
-  cells: StormCell[];
-  attribution: string;
-  note: string;
-};
+export type {
+  StormCell,
+  StormCellTrackPoint,
+  StormCellsPayload,
+} from "@/lib/weather/storm-cell-types";
+export { bearingBetween, distanceKm } from "@/lib/weather/storm-cell-types";
 
 const CELL_GRID_DEG = 0.55;
 const MIN_STRIKES_15 = 4;
@@ -51,39 +32,6 @@ const WINDOW_15 = 15 * 60;
 const WINDOW_45 = 45 * 60;
 const WINDOW_OLD = 45 * 60;
 const WINDOW_MID = 25 * 60;
-
-function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const r = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return 2 * r * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
-function bearingDeg(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x =
-    Math.cos(φ1) * Math.sin(φ2) -
-    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
 
 function cellKey(lat: number, lon: number): string {
   const i = Math.floor(lat / CELL_GRID_DEG);
@@ -232,7 +180,7 @@ export function buildStormCells(
       let bestD = Infinity;
       for (const og of oldGroups) {
         const oc = centroid(og);
-        const d = haversineKm(c.lat, c.lon, oc.lat, oc.lon);
+        const d = distanceKm(c.lat, c.lon, oc.lat, oc.lon);
         if (d < bestD && d < 80) {
           bestD = d;
           prev = oc;
@@ -242,7 +190,7 @@ export function buildStormCells(
       let bestMid = Infinity;
       for (const mg of midGroups) {
         const mc = centroid(mg);
-        const d = haversineKm(c.lat, c.lon, mc.lat, mc.lon);
+        const d = distanceKm(c.lat, c.lon, mc.lat, mc.lon);
         if (d < bestMid && d < 60) {
           bestMid = d;
           mid = mc;
@@ -259,13 +207,13 @@ export function buildStormCells(
       const from = prev ?? mid;
       if (from) {
         const dtH = Math.max(0.15, (c.time - from.time) / 3600);
-        const dist = haversineKm(from.lat, from.lon, c.lat, c.lon);
-        motionDeg = Math.round(bearingDeg(from.lat, from.lon, c.lat, c.lon));
+        const dist = distanceKm(from.lat, from.lon, c.lat, c.lon);
+        motionDeg = Math.round(bearingBetween(from.lat, from.lon, c.lat, c.lon));
         speedKmh = Math.round((dist / dtH) * 10) / 10;
       }
 
       const strikes45m = recent45.filter(
-        (s) => haversineKm(s.lat, s.lon, c.lat, c.lon) < 35,
+        (s) => distanceKm(s.lat, s.lon, c.lat, c.lon) < 35,
       ).length;
       const rate = Math.round((g.n / 15) * 10) / 10;
       const strength = Math.min(
@@ -299,24 +247,6 @@ export function buildStormCells(
     attribution: "Blitzortung / LightningMaps · RainViewer timing",
     note: "SkyWatch guidance — cells from lightning clusters, not official BoM tracks.",
   };
-}
-
-export function bearingBetween(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  return bearingDeg(lat1, lon1, lat2, lon2);
-}
-
-export function distanceKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  return haversineKm(lat1, lon1, lat2, lon2);
 }
 
 async function fetchRadarTipUnix(): Promise<number | null> {

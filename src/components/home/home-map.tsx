@@ -40,7 +40,7 @@ import { RiskPolygonLayer } from "@/components/risk/risk-polygon-layer";
 import { StormCellOverlay } from "@/components/home/storm-cell-overlay";
 import type { DisplayFeature } from "@/lib/forecast/types";
 import type { LightningStrike } from "@/lib/weather/lightning";
-import type { StormCell } from "@/lib/weather/storm-cells";
+import type { StormCell } from "@/lib/weather/storm-cell-types";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import {

@@ -9,7 +9,7 @@ import type {
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { DisplayFeature } from "@/lib/forecast/types";
 import type { WeatherFrame } from "@/lib/weather/maps";
-import type { StormCell } from "@/lib/weather/storm-cells";
+import type { StormCell } from "@/lib/weather/storm-cell-types";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 
