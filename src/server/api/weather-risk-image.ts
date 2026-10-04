@@ -18,8 +18,8 @@ const EMPTY_PNG = Buffer.from(
 );
 
 /**
- * GET /api/weather/risk-image?source=bom|pulse|access|auto&day=1…N
- * BoM MetEye PNG (default) or SkyWatch Pulse / Access risk raster.
+ * GET /api/weather/risk-image?source=bom|pulse|access|ifs|ukmo|auto&day=1…N
+ * BoM MetEye PNG (default) or SkyWatch model risk raster.
  */
 export async function GET(req: NextRequest) {
   const sourceParam = (req.nextUrl.searchParams.get("source") || "bom")

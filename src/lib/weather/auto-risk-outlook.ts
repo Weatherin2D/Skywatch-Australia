@@ -2,6 +2,8 @@
  * SkyWatch model-risk outlooks from Open-Meteo fields.
  * - Pulse: multi-model best_match blend (CAPE/LI/triggers/daylight heating)
  * - Access: BoM ACCESS-G (`bom_access_global`) when the open feed is live
+ * - IFS: ECMWF IFS HRES (~9 km)
+ * - UKMO: UK Met Office Global (~10 km)
  * Same day horizon as MetEye (~7 Sydney-local days). Guidance only.
  */
 
@@ -28,8 +30,8 @@ import {
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
 const EMPTY_CACHE_MS = 90_000;
-const BATCH = 55;
-const BATCH_CONCURRENCY = 3;
+const BATCH = 45;
+const BATCH_CONCURRENCY = 2;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
 /** Dense national fill (~0.7° / ~75 km). Towns kept as anchors. */
 const GRID_STEP_DEG = 0.7;
@@ -71,7 +73,7 @@ type DayMetrics = {
   diurnalHeating: number;
 };
 
-export type ModelRiskKind = "pulse" | "access";
+export type ModelRiskKind = "pulse" | "access" | "ifs" | "ukmo";
 
 type ModelRiskConfig = {
   kind: ModelRiskKind;
@@ -80,7 +82,7 @@ type ModelRiskConfig = {
   label: string;
   attribution: string;
   emptyMessage: string;
-  /** ACCESS-G does not expose 100 m winds on Open-Meteo. */
+  /** Some models omit 100 m winds on Open-Meteo. */
   include100mWinds: boolean;
 };
 
@@ -104,6 +106,24 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
       "BoM ACCESS-G open data is currently unavailable (or shows no elevated risk). Access will populate when the feed resumes.",
     include100mWinds: false,
   },
+  ifs: {
+    kind: "ifs",
+    openMeteoModels: "ecmwf_ifs",
+    label: "IFS",
+    attribution:
+      "SkyWatch IFS · ECMWF IFS HRES via Open-Meteo (~9 km). Guidance only — not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in SkyWatch IFS guidance.",
+    include100mWinds: true,
+  },
+  ukmo: {
+    kind: "ukmo",
+    openMeteoModels: "ukmo_global_deterministic_10km",
+    label: "UKMO",
+    attribution:
+      "SkyWatch UKMO · UK Met Office Global via Open-Meteo (~10 km). Guidance only — not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in SkyWatch UKMO guidance.",
+    include100mWinds: false,
+  },
 };
 
 type CacheEntry = {
@@ -116,10 +136,14 @@ type CacheEntry = {
 const caches: Record<ModelRiskKind, CacheEntry | null> = {
   pulse: null,
   access: null,
+  ifs: null,
+  ukmo: null,
 };
 const inflightByKind: Record<ModelRiskKind, Promise<CacheEntry> | null> = {
   pulse: null,
   access: null,
+  ifs: null,
+  ukmo: null,
 };
 
 function sleep(ms: number) {
@@ -265,13 +289,13 @@ async function fetchBatch(
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(400 * attempt);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) await sleep(Math.min(8000, 700 * 2 ** attempt));
     try {
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(25_000),
       });
       if (res.status === 429) {
         lastErr = new Error("Open-Meteo 429");
@@ -352,8 +376,8 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   let windU = 0;
   let windV = 0;
   let pressureHpa = 1013;
-  /** Most unstable (minimum) LI; default stable. */
-  let liftedIndex = 12;
+  /** Most unstable (minimum) LI; null until a real value arrives. */
+  let liftedIndex: number | null = null;
   let morningMinT = Number.POSITIVE_INFINITY;
   let afternoonMaxT = Number.NEGATIVE_INFINITY;
   let afternoonCape = 0;
@@ -400,7 +424,9 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
       if (t != null) temp = t;
     }
     cin = Math.min(cin, ci);
-    if (li != null) liftedIndex = Math.min(liftedIndex, li);
+    if (li != null) {
+      liftedIndex = liftedIndex == null ? li : Math.min(liftedIndex, li);
+    }
     if (dp != null) dew = Math.max(dew, dp);
     if (t != null) temp = Math.max(temp, t);
     rh = Math.max(rh, r);
@@ -418,7 +444,9 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
         afternoonMaxT = Math.max(afternoonMaxT, t);
         afternoonCape = Math.max(afternoonCape, c);
         if (dp != null) afternoonDew = Math.max(afternoonDew, dp);
-        if (li != null) liftedIndex = Math.min(liftedIndex, li);
+        if (li != null) {
+          liftedIndex = liftedIndex == null ? li : Math.min(liftedIndex, li);
+        }
       }
     }
     n += 1;
@@ -468,7 +496,8 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     windV,
     pressureHpa,
     liftTrigger: 0,
-    liftedIndex,
+    // Models without LI (IFS/UKMO on Open-Meteo) stay neutral — don't fake stable.
+    liftedIndex: liftedIndex ?? 0,
     diurnalHeating,
   };
 }
@@ -792,7 +821,7 @@ async function loadAllSites(
         out.push({ lat: b.lats[j]!, lon: b.lons[j]!, loc });
       }
     }
-    if (i + BATCH_CONCURRENCY < batches.length) await sleep(120);
+    if (i + BATCH_CONCURRENCY < batches.length) await sleep(280);
   }
   return out;
 }
@@ -1035,5 +1064,7 @@ export function resolveModelRiskKind(
   const s = (sourceParam || "").trim().toLowerCase();
   if (s === "pulse" || s === "auto") return "pulse";
   if (s === "access") return "access";
+  if (s === "ifs" || s === "ecmwf" || s === "ecmwf_ifs") return "ifs";
+  if (s === "ukmo" || s === "uk") return "ukmo";
   return null;
 }

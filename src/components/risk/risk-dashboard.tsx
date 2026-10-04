@@ -35,7 +35,7 @@ const RISK_MAP_SETTINGS: MapSettingsState = {
   satelliteBasemap: false,
 };
 
-type RiskSource = "bom" | "pulse" | "access";
+type RiskSource = "bom" | "pulse" | "access" | "ifs" | "ukmo";
 
 type RiskCatalog = {
   status: "ok" | "empty";
@@ -133,6 +133,8 @@ function readSourceFromUrl(): RiskSource {
   const s = (sp.get("source") || "").toLowerCase();
   if (s === "pulse" || s === "auto") return "pulse";
   if (s === "access") return "access";
+  if (s === "ifs" || s === "ecmwf" || s === "ecmwf_ifs") return "ifs";
+  if (s === "ukmo" || s === "uk") return "ukmo";
   return "bom";
 }
 
@@ -145,7 +147,80 @@ function syncSourceToUrl(source: RiskSource) {
 }
 
 function isModelSource(source: RiskSource): boolean {
-  return source === "pulse" || source === "access";
+  return (
+    source === "pulse" ||
+    source === "access" ||
+    source === "ifs" ||
+    source === "ukmo"
+  );
+}
+
+const RISK_SOURCE_OPTIONS: { id: RiskSource; label: string }[] = [
+  { id: "bom", label: "BoM" },
+  { id: "pulse", label: "Pulse" },
+  { id: "ifs", label: "IFS" },
+  { id: "ukmo", label: "UKMO" },
+  { id: "access", label: "Access" },
+];
+
+function sourceBlurb(source: RiskSource): string {
+  switch (source) {
+    case "bom":
+      return "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon.";
+    case "access":
+      return "SkyWatch Access — categorical risk from BoM ACCESS-G model fields (~15 km).";
+    case "ifs":
+      return "SkyWatch IFS — categorical risk from ECMWF IFS HRES (~9 km).";
+    case "ukmo":
+      return "SkyWatch UKMO — categorical risk from UK Met Office Global (~10 km).";
+    default:
+      return "SkyWatch Pulse — multi-model convective guidance with daylight heating, LI, and boundary triggers.";
+  }
+}
+
+function sourceLoadingLabel(source: RiskSource): string {
+  switch (source) {
+    case "bom":
+      return "Loading MetEye thunderstorm forecast…";
+    case "access":
+      return "Building Access risk outlook…";
+    case "ifs":
+      return "Building IFS risk outlook…";
+    case "ukmo":
+      return "Building UKMO risk outlook…";
+    default:
+      return "Building Pulse risk outlook…";
+  }
+}
+
+function sourceEmptyFallback(source: RiskSource): string {
+  switch (source) {
+    case "bom":
+      return "No thunderstorm areas in the current BoM MetEye forecast.";
+    case "access":
+      return "No elevated thunderstorm risk in SkyWatch Access guidance.";
+    case "ifs":
+      return "No elevated thunderstorm risk in SkyWatch IFS guidance.";
+    case "ukmo":
+      return "No elevated thunderstorm risk in SkyWatch UKMO guidance.";
+    default:
+      return "No elevated thunderstorm risk in SkyWatch Pulse guidance.";
+  }
+}
+
+function sourceKeyTitle(source: RiskSource): string {
+  switch (source) {
+    case "bom":
+      return "Thunderstorms";
+    case "access":
+      return "Access risk";
+    case "ifs":
+      return "IFS risk";
+    case "ukmo":
+      return "UKMO risk";
+    default:
+      return "Pulse risk";
+  }
 }
 
 export function RiskDashboard() {
@@ -276,32 +351,22 @@ export function RiskDashboard() {
             Risk
           </h1>
           <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-            {source === "bom"
-              ? "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon."
-              : source === "access"
-                ? "SkyWatch Access — categorical risk from BoM ACCESS-G model fields (~15 km)."
-                : "SkyWatch Pulse — multi-model convective guidance with daylight heating, LI, and boundary triggers."}
+            {sourceBlurb(source)}
           </p>
         </div>
 
         <div
-          className="inline-flex rounded-xl border border-white/15 bg-white/[0.04] p-1"
+          className="inline-flex max-w-full flex-wrap rounded-xl border border-white/15 bg-white/[0.04] p-1"
           role="group"
           aria-label="Risk outlook source"
         >
-          {(
-            [
-              { id: "bom" as const, label: "BoM" },
-              { id: "pulse" as const, label: "Pulse" },
-              { id: "access" as const, label: "Access" },
-            ] as const
-          ).map((opt) => (
+          {RISK_SOURCE_OPTIONS.map((opt) => (
             <button
               key={opt.id}
               type="button"
               onClick={() => setSourceAndUrl(opt.id)}
               className={cn(
-                "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition",
+                "rounded-lg px-3 py-1.5 text-sm font-semibold transition",
                 source === opt.id
                   ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
                   : "text-white/65 hover:text-white",
@@ -395,11 +460,7 @@ export function RiskDashboard() {
           <div className="relative h-[min(68vh,720px)] min-h-[360px] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
             {loading ? (
               <div className="flex h-full items-center justify-center text-sm text-white/60">
-                {source === "bom"
-                  ? "Loading MetEye thunderstorm forecast…"
-                  : source === "access"
-                    ? "Building Access risk outlook…"
-                    : "Building Pulse risk outlook…"}
+                {sourceLoadingLabel(source)}
               </div>
             ) : error ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
@@ -426,12 +487,7 @@ export function RiskDashboard() {
                 {!loading && data?.status === "empty" ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
-                      {data.message ??
-                        (source === "bom"
-                          ? "No thunderstorm areas in the current BoM MetEye forecast."
-                          : source === "access"
-                            ? "No elevated thunderstorm risk in SkyWatch Access guidance."
-                            : "No elevated thunderstorm risk in SkyWatch Pulse guidance.")}
+                      {data.message ?? sourceEmptyFallback(source)}
                     </p>
                   </div>
                 ) : null}
@@ -455,7 +511,11 @@ export function RiskDashboard() {
               : catalog?.attribution ??
                 (source === "access"
                   ? "Source: SkyWatch Access · BoM ACCESS-G via Open-Meteo"
-                  : "Source: SkyWatch Pulse · Open-Meteo multi-model blend")}
+                  : source === "ifs"
+                    ? "Source: SkyWatch IFS · ECMWF IFS HRES via Open-Meteo"
+                    : source === "ukmo"
+                      ? "Source: SkyWatch UKMO · UK Met Office Global via Open-Meteo"
+                      : "Source: SkyWatch Pulse · Open-Meteo multi-model blend")}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",
@@ -475,11 +535,7 @@ export function RiskDashboard() {
               Key
             </p>
             <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-bold text-white">
-              {source === "bom"
-                ? "Thunderstorms"
-                : source === "access"
-                  ? "Access risk"
-                  : "Pulse risk"}
+              {sourceKeyTitle(source)}
             </h2>
           </div>
           {source === "bom" ? (
@@ -496,7 +552,11 @@ export function RiskDashboard() {
               <p className="text-xs leading-relaxed text-white/50">
                 {source === "access"
                   ? "Same SkyWatch ladder as Pulse, driven by BoM ACCESS-G fields when the open feed is live."
-                  : "Categorical colours follow the SkyWatch ladder. L1/L2 hatches overlay supercell-interesting environments — guidance only, not an official warning."}
+                  : source === "ifs"
+                    ? "Same SkyWatch ladder as Pulse, driven by ECMWF IFS HRES (~9 km)."
+                    : source === "ukmo"
+                      ? "Same SkyWatch ladder as Pulse, driven by UK Met Office Global (~10 km)."
+                      : "Categorical colours follow the SkyWatch ladder. L1/L2 hatches overlay supercell-interesting environments — guidance only, not an official warning."}
               </p>
               <AutoRiskBlurbList usedIds={usedCategoryIds} />
             </>

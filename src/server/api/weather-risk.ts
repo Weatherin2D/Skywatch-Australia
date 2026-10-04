@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * GET /api/weather/risk?source=bom|pulse|access|auto
- * Catalog of thunderstorm risk — BoM MetEye (default), SkyWatch Pulse, or Access.
+ * GET /api/weather/risk?source=bom|pulse|access|ifs|ukmo|auto
+ * Catalog of thunderstorm risk — BoM MetEye (default) or SkyWatch model outlooks.
  * `auto` is accepted as a legacy alias for `pulse`.
  */
 export async function GET(req: NextRequest) {
