@@ -35,7 +35,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/storm-activity` | Lightning hotspot summary for Storm Tracker |
-| `/api/weather/storm-cells` | Storm cell tracks from radar timestamps + lightning clusters |
+| `/api/weather/storm-cells` | Active cells: score/100, projected paths, analysis, automated alerts[] |
 | `/api/weather/models` | Multi-model comparison (`days=1..7`) via Open-Meteo |
 | `/api/weather/ecmwf-map` | Model map catalog (`product`, `model=ecmwf|icon|gfs`) |
 | `/api/weather/ecmwf-map/frame` | Georeferenced field PNG (`product`, `time`, `model`, optional `diff`) |
