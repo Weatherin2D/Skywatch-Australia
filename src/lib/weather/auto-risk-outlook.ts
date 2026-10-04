@@ -34,7 +34,7 @@ const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
 const EMPTY_CACHE_MS = 90_000;
 /** Open-Meteo multi-location batches — keep under Vercel 60s budget. */
-const BATCH = 80;
+const BATCH = 50;
 /** Keep modest concurrency to limit Open-Meteo 429s from Vercel egress. */
 const BATCH_CONCURRENCY = 3;
 /** Abort remaining waves so the handler can return before the platform 504s. */
@@ -61,13 +61,36 @@ type DayMetrics = {
   temp: number;
   rh: number;
   cloud: number;
+  cloudLow: number;
+  cloudMid: number;
+  cloudHigh: number;
   precipProb: number;
   precipMm: number;
+  /** Explicit rain accumulation (mm). */
+  rainMm: number;
+  /** Convective showers accumulation (mm) when the model provides it. */
+  showersMm: number;
+  /** Peak WMO weather code for the day (thunderstorm codes 95–99). */
+  weatherCode: number;
   shearKts: number;
   /** Peak-hour wind components (m/s, meteorological → u/v). */
   windU: number;
   windV: number;
   pressureHpa: number;
+  /** Min vapour pressure deficit (kPa) — lower = moister column. */
+  vpdMin: number;
+  /** Peak surface soil temperature (°C). */
+  soilTemp: number;
+  /** Peak near-surface soil moisture (m³/m³); 0 when unavailable. */
+  soilMoisture: number;
+  /** Peak boundary-layer height (m); 0 when unavailable. */
+  blHeight: number;
+  /** Min freezing-level height (m); 0 when unavailable. */
+  freezingLevelM: number;
+  /** Peak sunshine duration in an hour (s). */
+  sunshineSec: number;
+  /** Peak direct shortwave (W/m²). */
+  directRadiation: number;
   /**
    * Spatial lift / trigger proxy 0–1 from neighbouring samples
    * (dryline, front, convergence, moisture boundary).
@@ -84,6 +107,50 @@ type DayMetrics = {
 
 export type ModelRiskKind = "pulse" | "access" | "ifs" | "ukmo";
 
+/** Surface / near-surface fields every model risk source requests. */
+const HOURLY_CORE = [
+  "temperature_2m",
+  "dew_point_2m",
+  "relative_humidity_2m",
+  "cloud_cover",
+  "cloud_cover_low",
+  "cloud_cover_mid",
+  "cloud_cover_high",
+  "precipitation",
+  "precipitation_probability",
+  "rain",
+  "showers",
+  "weather_code",
+  "pressure_msl",
+  "cape",
+  "convective_inhibition",
+  "shortwave_radiation",
+  "direct_radiation",
+  "vapour_pressure_deficit",
+  "wind_speed_10m",
+  "wind_direction_10m",
+  "wind_gusts_10m",
+  "soil_temperature_0cm",
+  "sunshine_duration",
+] as const;
+
+/** Extra fields when the Open-Meteo model actually populates them. */
+const HOURLY_LI = ["lifted_index"] as const;
+const HOURLY_SHEAR_LADDER = [
+  "wind_speed_80m",
+  "wind_direction_80m",
+  "wind_speed_100m",
+  "wind_direction_100m",
+  "wind_speed_180m",
+  "wind_direction_180m",
+] as const;
+const HOURLY_PULSE_EXTRA = [
+  "soil_moisture_0_to_1cm",
+  "boundary_layer_height",
+  "freezing_level_height",
+] as const;
+const HOURLY_IFS_EXTRA = ["boundary_layer_height"] as const;
+
 type ModelRiskConfig = {
   kind: ModelRiskKind;
   /** Open-Meteo `models=` value */
@@ -91,8 +158,8 @@ type ModelRiskConfig = {
   label: string;
   attribution: string;
   emptyMessage: string;
-  /** Some models omit 100 m winds on Open-Meteo. */
-  include100mWinds: boolean;
+  /** Hourly variables to request — tailored to what the model returns. */
+  hourlyFields: readonly string[];
 };
 
 const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
@@ -101,37 +168,52 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "best_match",
     label: "Pulse",
     attribution:
-      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE, LI, CIN, shear, boundaries, daylight heating). Guidance only — not an official warning.",
+      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE, LI, CIN, cloud layers, showers, shear ladder, soil/BL, VPD, weather codes, boundaries, daylight heating). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch Pulse guidance.",
-    include100mWinds: true,
+    hourlyFields: [
+      ...HOURLY_CORE,
+      ...HOURLY_LI,
+      ...HOURLY_SHEAR_LADDER,
+      ...HOURLY_PULSE_EXTRA,
+    ],
   },
   access: {
     kind: "access",
     openMeteoModels: "bom_access_global",
     label: "Access",
     attribution:
-      "SkyWatch Access · BoM ACCESS-G via Open-Meteo (~15 km). Guidance only — not an official warning.",
+      "SkyWatch Access · BoM ACCESS-G via Open-Meteo (~15 km; CAPE/LI/CIN, cloud layers, soil/BL, VPD when the feed is live). Guidance only — not an official warning.",
     emptyMessage:
       "BoM ACCESS-G open data is currently unavailable (or shows no elevated risk). Access will populate when the feed resumes.",
-    include100mWinds: false,
+    // ACCESS-G often omits elevated winds on the open feed — still ask for LI/BL/soil.
+    hourlyFields: [
+      ...HOURLY_CORE,
+      ...HOURLY_LI,
+      ...HOURLY_PULSE_EXTRA,
+    ],
   },
   ifs: {
     kind: "ifs",
     openMeteoModels: "ecmwf_ifs",
     label: "IFS",
     attribution:
-      "SkyWatch IFS · ECMWF IFS HRES via Open-Meteo (~9 km). Guidance only — not an official warning.",
+      "SkyWatch IFS · ECMWF IFS HRES via Open-Meteo (~9 km; CAPE/CIN, cloud layers, showers, 80–180 m shear, BL height, VPD, weather codes). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch IFS guidance.",
-    include100mWinds: true,
+    // IFS on Open-Meteo regularly leaves LI / soil moisture / freezing level null.
+    hourlyFields: [
+      ...HOURLY_CORE,
+      ...HOURLY_SHEAR_LADDER,
+      ...HOURLY_IFS_EXTRA,
+    ],
   },
   ukmo: {
     kind: "ukmo",
     openMeteoModels: "ukmo_global_deterministic_10km",
     label: "UKMO",
     attribution:
-      "SkyWatch UKMO · UK Met Office Global via Open-Meteo (~10 km). Guidance only — not an official warning.",
+      "SkyWatch UKMO · UK Met Office Global via Open-Meteo (~10 km; CAPE/CIN, cloud layers, rain, gust shear, soil temp, VPD, weather codes — no elevated winds/LI on the open feed). Guidance only — not an official warning.",
     emptyMessage: "No elevated thunderstorm risk in SkyWatch UKMO guidance.",
-    include100mWinds: false,
+    hourlyFields: [...HOURLY_CORE],
   },
 };
 
@@ -268,29 +350,12 @@ async function fetchBatch(
   // NOTE: Do NOT request pressure-level winds (500hPa etc.) in multi-location
   // batches — Open-Meteo regularly hangs on those and every site times out,
   // which previously left production stuck on an empty outlook.
-  const hourly = [
-    "temperature_2m",
-    "dew_point_2m",
-    "relative_humidity_2m",
-    "cloud_cover",
-    "precipitation_probability",
-    "precipitation",
-    "cape",
-    "convective_inhibition",
-    "lifted_index",
-    "shortwave_radiation",
-    "wind_speed_10m",
-    "wind_direction_10m",
-    ...(config.include100mWinds
-      ? (["wind_speed_100m", "wind_direction_100m"] as const)
-      : []),
-    "wind_gusts_10m",
-    "pressure_msl",
-  ];
+  // Hourly fields are per-model (see MODEL_CONFIG) so we only ask for what
+  // each feed actually populates on Open-Meteo.
   const params = new URLSearchParams({
     latitude: lats.map((v) => v.toFixed(4)).join(","),
     longitude: lons.map((v) => v.toFixed(4)).join(","),
-    hourly: hourly.join(","),
+    hourly: config.hourlyFields.join(","),
     models: config.openMeteoModels,
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
@@ -376,6 +441,41 @@ function hourFromIso(t: string): number | null {
   return Number.isFinite(h) ? h : null;
 }
 
+/** Deepest available low-level shear ladder (10 m → 80/100/180 m), else gust proxy. */
+function shearFromHour(
+  h: Record<string, unknown[]>,
+  i: number,
+): number {
+  const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
+  const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
+  const gust = num(h.wind_gusts_10m?.[i]) ?? 0;
+  let sh = 0;
+  const layers: [string, string, number][] = [
+    ["wind_speed_180m", "wind_direction_180m", 1.55],
+    ["wind_speed_100m", "wind_direction_100m", 2.4],
+    ["wind_speed_80m", "wind_direction_80m", 2.9],
+  ];
+  for (const [spdKey, dirKey, scale] of layers) {
+    const spd = num(h[spdKey]?.[i]);
+    const dir = num(h[dirKey]?.[i]);
+    if (spd != null && dir != null) {
+      sh = Math.max(sh, vectorDiffKts(spd, dir, s10, d10) * scale);
+    }
+  }
+  sh = Math.max(sh, Math.max(0, gust - s10) * 0.55);
+  sh = Math.max(sh, clamp01(s10 / 45) * 18);
+  return sh;
+}
+
+/** WMO codes that imply thunder / severe convection. */
+function thunderWeatherBoost(code: number): number {
+  if (code === 99 || code === 96) return 1; // TS + hail
+  if (code === 95 || code === 97) return 0.85; // thunderstorm
+  if (code === 91 || code === 92 || code === 93 || code === 94) return 0.55;
+  if (code === 29 || code === 17 || code === 18 || code === 19) return 0.4;
+  return 0;
+}
+
 function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   const h = loc.hourly;
   if (!h?.time?.length || !idxs.length) return null;
@@ -386,12 +486,25 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   let temp = -20;
   let rh = 0;
   let cloud = 0;
+  let cloudLow = 0;
+  let cloudMid = 0;
+  let cloudHigh = 0;
   let precipProb = 0;
   let precipMm = 0;
+  let rainMm = 0;
+  let showersMm = 0;
+  let weatherCode = 0;
   let shear = 0;
   let windU = 0;
   let windV = 0;
   let pressureHpa = 1013;
+  let vpdMin = Number.POSITIVE_INFINITY;
+  let soilTemp = -20;
+  let soilMoisture = 0;
+  let blHeight = 0;
+  let freezingLevelM = 0;
+  let sunshineSec = 0;
+  let directRadiation = 0;
   /** Most unstable (minimum) LI; null until a real value arrives. */
   let liftedIndex: number | null = null;
   let morningMinT = Number.POSITIVE_INFINITY;
@@ -407,27 +520,31 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     const ci = num(h.convective_inhibition?.[i]) ?? 0;
     const li = num(h.lifted_index?.[i]);
     const sw = num(h.shortwave_radiation?.[i]) ?? 0;
+    const dirRad = num(h.direct_radiation?.[i]) ?? 0;
     const dp = num(h.dew_point_2m?.[i]);
     const t = num(h.temperature_2m?.[i]);
     const r = num(h.relative_humidity_2m?.[i]) ?? 0;
     const cl = num(h.cloud_cover?.[i]) ?? 0;
+    const clLow = num(h.cloud_cover_low?.[i]) ?? 0;
+    const clMid = num(h.cloud_cover_mid?.[i]) ?? 0;
+    const clHigh = num(h.cloud_cover_high?.[i]) ?? 0;
     const pp = num(h.precipitation_probability?.[i]) ?? 0;
     const pr = num(h.precipitation?.[i]) ?? 0;
+    const rain = num(h.rain?.[i]) ?? 0;
+    const showers = num(h.showers?.[i]) ?? 0;
+    const wcode = num(h.weather_code?.[i]) ?? 0;
     const pmsl = num(h.pressure_msl?.[i]);
+    const vpd = num(h.vapour_pressure_deficit?.[i]);
+    const soilT = num(h.soil_temperature_0cm?.[i]);
+    const soilM = num(h.soil_moisture_0_to_1cm?.[i]);
+    const blh = num(h.boundary_layer_height?.[i]);
+    const fz = num(h.freezing_level_height?.[i]);
+    const sun = num(h.sunshine_duration?.[i]) ?? 0;
     const hour = hourFromIso(String(h.time[i] ?? ""));
 
     const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
-    const s100 = num(h.wind_speed_100m?.[i]);
-    const d100 = num(h.wind_direction_100m?.[i]);
-    const gust = num(h.wind_gusts_10m?.[i]) ?? 0;
-
-    let sh = 0;
-    if (s100 != null && d100 != null) {
-      sh = vectorDiffKts(s100, d100, s10, d10) * 2.4;
-    }
-    sh = Math.max(sh, Math.max(0, gust - s10) * 0.55);
-    sh = Math.max(sh, clamp01(s10 / 45) * 18);
+    const sh = shearFromHour(h, i);
 
     if (c >= cape) {
       cape = c;
@@ -439,7 +556,10 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
       if (dp != null) dew = dp;
       if (t != null) temp = t;
     }
-    cin = Math.min(cin, ci);
+    // CIN: keep the most inhibiting (most negative) value; some models
+    // publish positive CIN — treat those as uncapped (0).
+    const cinVal = ci > 0 ? 0 : ci;
+    cin = Math.min(cin, cinVal);
     if (li != null) {
       liftedIndex = liftedIndex == null ? li : Math.min(liftedIndex, li);
     }
@@ -447,10 +567,28 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     if (t != null) temp = Math.max(temp, t);
     rh = Math.max(rh, r);
     cloud = Math.max(cloud, cl);
+    cloudLow = Math.max(cloudLow, clLow);
+    cloudMid = Math.max(cloudMid, clMid);
+    cloudHigh = Math.max(cloudHigh, clHigh);
     precipProb = Math.max(precipProb, pp);
     precipMm += Math.max(0, pr);
+    rainMm += Math.max(0, rain);
+    showersMm += Math.max(0, showers);
+    if (thunderWeatherBoost(wcode) >= thunderWeatherBoost(weatherCode)) {
+      weatherCode = wcode;
+    }
     shear = Math.max(shear, sh);
     maxShortwave = Math.max(maxShortwave, sw);
+    directRadiation = Math.max(directRadiation, dirRad);
+    sunshineSec = Math.max(sunshineSec, sun);
+    if (vpd != null) vpdMin = Math.min(vpdMin, vpd);
+    if (soilT != null) soilTemp = Math.max(soilTemp, soilT);
+    if (soilM != null) soilMoisture = Math.max(soilMoisture, soilM);
+    if (blh != null) blHeight = Math.max(blHeight, blh);
+    if (fz != null) {
+      freezingLevelM =
+        freezingLevelM <= 0 ? fz : Math.min(freezingLevelM, fz);
+    }
 
     if (hour != null && t != null) {
       if (hour >= 5 && hour <= 9) {
@@ -483,19 +621,26 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     windV = uv.v;
   }
   if (peakP != null) pressureHpa = peakP;
+  if (!Number.isFinite(vpdMin)) vpdMin = 2.5;
 
-  // Daylight heating pulse: insolation + diurnal temp rise + moist afternoon CAPE.
+  // Daylight heating pulse: insolation + soil heat + BL growth + moist CAPE.
   const deltaT =
     Number.isFinite(morningMinT) && Number.isFinite(afternoonMaxT)
       ? afternoonMaxT - morningMinT
       : 0;
   const moistPulse = clamp01(((afternoonDew > -19 ? afternoonDew : dew) - 12) / 12);
-  // Weight insolation + moisture so tropics still pulse with modest CAPE.
+  const soilHeat = clamp01((soilTemp - 28) / 18);
+  const blGrowth = clamp01(blHeight / 2200);
+  const sunFrac = clamp01(sunshineSec / 3600);
   const diurnalHeating = clamp01(
-    clamp01(deltaT / 10) * 0.28 +
-      clamp01(maxShortwave / 650) * 0.34 +
-      clamp01(afternoonCape / 900) * 0.22 +
-      moistPulse * 0.16,
+    clamp01(deltaT / 10) * 0.2 +
+      clamp01(maxShortwave / 650) * 0.22 +
+      clamp01(directRadiation / 550) * 0.12 +
+      sunFrac * 0.08 +
+      soilHeat * 0.1 +
+      blGrowth * 0.08 +
+      clamp01(afternoonCape / 900) * 0.12 +
+      moistPulse * 0.08,
   );
 
   return {
@@ -505,12 +650,25 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     temp,
     rh,
     cloud,
+    cloudLow,
+    cloudMid,
+    cloudHigh,
     precipProb,
     precipMm,
+    rainMm,
+    showersMm,
+    weatherCode,
     shearKts: shear,
     windU,
     windV,
     pressureHpa,
+    vpdMin,
+    soilTemp,
+    soilMoisture,
+    blHeight,
+    freezingLevelM,
+    sunshineSec,
+    directRadiation,
     liftTrigger: 0,
     // Models without LI (IFS/UKMO on Open-Meteo) stay neutral — don't fake stable.
     liftedIndex: liftedIndex ?? 0,
@@ -543,7 +701,17 @@ function applyLiftTriggers(sites: SiteMetrics[]): void {
       if (dKm < 40 || dKm > NEIGHBOR_KM) continue;
       n += 1;
       dewGrad = Math.max(dewGrad, Math.abs(a.m.dewpoint - b.m.dewpoint) / dKm);
+      // VPD contrast sharpens dryline / moisture-boundary detection.
+      dewGrad = Math.max(
+        dewGrad,
+        (Math.abs(a.m.vpdMin - b.m.vpdMin) / dKm) * 4.5,
+      );
       tempGrad = Math.max(tempGrad, Math.abs(a.m.temp - b.m.temp) / dKm);
+      // Soil-temp contrast adds a daytime heating boundary signal.
+      tempGrad = Math.max(
+        tempGrad,
+        Math.abs(a.m.soilTemp - b.m.soilTemp) / dKm / 1.4,
+      );
       pressGrad = Math.max(
         pressGrad,
         Math.abs(a.m.pressureHpa - b.m.pressureHpa) / dKm,
@@ -607,7 +775,9 @@ function liBrake(li: number): number {
 
 /**
  * Map environment metrics → categorical rank 0–8 + hatch 0/1/2.
- * Includes synoptic boundary lift, daylight heating pulse, and Lifted Index.
+ * Uses the full surface/near-surface Open-Meteo suite each model provides:
+ * CAPE/CIN/LI, cloud layers, rain/showers, weather codes, VPD, soil/BL,
+ * shear ladder, synoptic boundaries, and daylight heating.
  */
 export function scoreEnvironment(
   m: DayMetrics,
@@ -618,8 +788,15 @@ export function scoreEnvironment(
   composite: number;
 } {
   const cape = Math.max(0, m.cape);
-  const moisture = clamp01((m.dewpoint - 12) / 12);
+  const dewMoisture = clamp01((m.dewpoint - 12) / 12);
   const rhBoost = clamp01((m.rh - 45) / 45);
+  // Low VPD = moist boundary layer (kPa). Typical storm days < ~1.2.
+  const vpdMoisture = clamp01((2.2 - m.vpdMin) / 2.0);
+  const soilMoist = clamp01(m.soilMoisture / 0.25);
+  const moisture = clamp01(
+    dewMoisture * 0.55 + vpdMoisture * 0.3 + rhBoost * 0.1 + soilMoist * 0.05,
+  );
+
   const li = m.liftedIndex;
   const liInstab = liInstability(li);
   const liSupp = liBrake(li);
@@ -637,10 +814,22 @@ export function scoreEnvironment(
             ? 0.75
             : 1;
   const shear = clamp01(m.shearKts / 65);
+
+  // Convective precip prefers showers/rain over generic precipitation totals.
+  const convectivePrecip = Math.max(m.showersMm, m.rainMm * 0.85, m.precipMm * 0.7);
+  const thunderCode = thunderWeatherBoost(m.weatherCode);
+  // Deep convective cloud: mid+high with some low base moisture.
+  const deepCloud = clamp01(
+    clamp01(m.cloudMid / 100) * 0.45 +
+      clamp01(m.cloudHigh / 100) * 0.35 +
+      clamp01(m.cloudLow / 100) * 0.2,
+  );
   const precipLift =
-    clamp01(m.precipProb / 100) * 0.45 +
-    clamp01(m.cloud / 100) * 0.15 +
-    clamp01(m.precipMm / 16) * 0.4;
+    clamp01(m.precipProb / 100) * 0.28 +
+    clamp01(m.cloud / 100) * 0.08 +
+    deepCloud * 0.18 +
+    clamp01(convectivePrecip / 14) * 0.28 +
+    thunderCode * 0.18;
 
   const tropical = lat >= -23.5;
   const subtrop = lat >= -28 && lat < -23.5;
@@ -654,8 +843,10 @@ export function scoreEnvironment(
     (tropical ? 1.25 : subtrop ? 1.05 : 0.75) *
     clamp01(0.5 + moisture * 0.5);
   const synopticTrigger = clamp01(m.liftTrigger);
-  const trigger = clamp01(Math.max(synopticTrigger, heatTrigger * 0.95));
-  const lift = clamp01(precipLift * 0.4 + trigger * 0.6);
+  const trigger = clamp01(
+    Math.max(synopticTrigger, heatTrigger * 0.95, thunderCode * 0.7),
+  );
+  const lift = clamp01(precipLift * 0.42 + trigger * 0.58);
 
   // Ordinary pulse cells: moist afternoon heating. Tropical LI can sit mildly +.
   const pulseLiMax = tropical ? 6.5 : subtrop ? 5 : 3.5;
@@ -671,15 +862,16 @@ export function scoreEnvironment(
   const shearTerm = pulse ? shear * 0.05 + 0.1 : shear * 0.15;
 
   const composite =
-    (instability * 0.38 * cinBrake * liSuppEff +
-      moisture * 0.16 +
-      rhBoost * 0.05 +
+    (instability * 0.36 * cinBrake * liSuppEff +
+      moisture * 0.15 +
+      rhBoost * 0.04 +
       shearTerm +
-      lift * 0.28) *
-    (pulse && (tropical || subtrop) ? 1.12 : 1);
+      lift * 0.3) *
+    (pulse && (tropical || subtrop) ? 1.12 : 1) *
+    (thunderCode >= 0.85 ? 1.08 : 1);
 
   // Organised severe tiers need shear or a real boundary — not lone CAPE spikes.
-  const organised = shear >= 0.35 || synopticTrigger >= 0.4;
+  const organised = shear >= 0.35 || synopticTrigger >= 0.4 || thunderCode >= 0.85;
 
   // Every tier is gated hard — no free climbs from bumps.
   // Higher ranks still need organised shear/synoptic signals; pulse fills 1–3.
@@ -725,10 +917,18 @@ export function scoreEnvironment(
     rank = 2; // T-Storm
   } else if (
     composite >= 0.1 &&
-    (cape >= 70 || (m.precipProb >= 40 && moisture >= 0.2))
+    (cape >= 70 ||
+      (m.precipProb >= 40 && moisture >= 0.2) ||
+      thunderCode >= 0.4 ||
+      convectivePrecip >= 3)
   ) {
     rank = 1; // Low T-Storm
   }
+
+  // Explicit model thunder weather codes punch through weak CAPE underestimates.
+  if (thunderCode >= 0.85 && rank < 3) rank = 3;
+  if (thunderCode >= 0.55 && rank < 2) rank = 2;
+  if (thunderCode >= 0.4 && rank < 1) rank = 1;
 
   // Daylight / tropical pulse path — ordinary cells without a front/dryline.
   // Kept to ranks 1–3 so tropics get area coverage, not orange specks.
@@ -764,7 +964,13 @@ export function scoreEnvironment(
   }
 
   // Broad tropical floor: moist columns with any daytime heating / showers.
-  if (tropical && rank < 1 && moisture >= 0.3 && cape >= 90 && (diurnal >= 0.2 || m.precipProb >= 30)) {
+  if (
+    tropical &&
+    rank < 1 &&
+    moisture >= 0.3 &&
+    cape >= 90 &&
+    (diurnal >= 0.2 || m.precipProb >= 30 || convectivePrecip >= 1)
+  ) {
     rank = 1;
   }
   if (
@@ -778,6 +984,13 @@ export function scoreEnvironment(
     rank = 2;
   }
 
+  // Hail-friendly column: low freezing level + strong CAPE/shear.
+  const hailFriendly =
+    m.freezingLevelM > 0 &&
+    m.freezingLevelM <= 3800 &&
+    cape >= 1400 &&
+    shear >= 0.35;
+
   let hatch: 0 | 1 | 2 = 0;
   if (
     cape >= 2600 &&
@@ -790,13 +1003,14 @@ export function scoreEnvironment(
   ) {
     hatch = 2;
   } else if (
-    cape >= 1600 &&
-    m.shearKts >= 36 &&
-    cinBrake >= 0.7 &&
-    composite >= 0.52 &&
-    rank >= 4 &&
-    trigger >= 0.45 &&
-    li <= 1
+    (cape >= 1600 &&
+      m.shearKts >= 36 &&
+      cinBrake >= 0.7 &&
+      composite >= 0.52 &&
+      rank >= 4 &&
+      trigger >= 0.45 &&
+      li <= 1) ||
+    (hailFriendly && rank >= 4 && thunderCode >= 0.55)
   ) {
     hatch = 1;
   }
@@ -976,13 +1190,13 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/${kind}.json`;
+  return `model-risk/v3/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk",
+    "skywatch-model-risk-v3",
     `${kind}.json`,
   );
 }

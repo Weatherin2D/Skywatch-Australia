@@ -168,13 +168,13 @@ function sourceBlurb(source: RiskSource): string {
     case "bom":
       return "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon.";
     case "access":
-      return "SkyWatch Access — categorical risk from BoM ACCESS-G model fields (~15 km).";
+      return "SkyWatch Access — BoM ACCESS-G fields (~15 km): CAPE/LI/CIN, cloud layers, soil/BL, VPD when the feed is live.";
     case "ifs":
-      return "SkyWatch IFS — categorical risk from ECMWF IFS HRES (~9 km).";
+      return "SkyWatch IFS — ECMWF IFS HRES (~9 km): CAPE/CIN, cloud layers, showers, 80–180 m shear, BL height, weather codes.";
     case "ukmo":
-      return "SkyWatch UKMO — categorical risk from UK Met Office Global (~10 km).";
+      return "SkyWatch UKMO — UKMO Global (~10 km): CAPE/CIN, cloud layers, rain, gust shear, soil heat, VPD, weather codes.";
     default:
-      return "SkyWatch Pulse — multi-model convective guidance with daylight heating, LI, and boundary triggers.";
+      return "SkyWatch Pulse — multi-model blend using CAPE/LI/CIN, cloud layers, showers, shear ladder, soil/BL, VPD, and boundary triggers.";
   }
 }
 
