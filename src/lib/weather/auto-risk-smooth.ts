@@ -1,8 +1,9 @@
 /**
- * Automated risk raster: Delaunay connect-the-dots corridors.
+ * Automated risk raster: compact Delaunay area bands.
  *
- * Sample sites with rank ≥ R are triangulated; only short-edged triangles
- * are filled. Nested bands follow the mesh — no giant Gaussian circles.
+ * Sample sites with rank ≥ R are triangulated; only short, non-skinny
+ * triangles are filled. Thin ribbon chaining is intentionally avoided
+ * (it produced long “snake” corridors).
  */
 
 import { PNG } from "pngjs";
@@ -26,12 +27,14 @@ const WORK_WIDTH = 720;
 const OUT_WIDTH = 2200;
 const OUTLINE_PX = 2;
 
-/** Max triangle / corridor edge (km). ~2–3 grid steps; longer spans look fake. */
-const MAX_EDGE_KM = 200;
-/** Ribbon half-width along chain edges without a filled triangle (km). */
-const CORRIDOR_HALF_KM = 22;
-/** Morphological close radius after mesh fill (px at work res) — knits joints. */
-const CLOSE_PX = 5;
+/** Max triangle edge (km). ~2–3 grid steps; longer spans look fake. */
+const MAX_EDGE_KM = 185;
+/** Reject skinny triangles (longest/shortest edge). Stops coastline “snakes”. */
+const MAX_EDGE_RATIO = 2.45;
+/** Morphological close after fill — knits triangle joints. */
+const CLOSE_PX = 4;
+/** Opening radius — strips thin ribbon snakes while keeping bulky areas. */
+const OPEN_PX = 4;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -73,14 +76,6 @@ function latLonToPixel(
   const x = ((lon - AU.minLon) / (AU.maxLon - AU.minLon)) * width - 0.5;
   const y = ((AU.maxLat - lat) / (AU.maxLat - AU.minLat)) * height - 0.5;
   return { x, y };
-}
-
-function kmPerPixel(width: number, height: number) {
-  const kmPerPxX =
-    ((AU.maxLon - AU.minLon) * 111.0 * Math.cos((-27 * Math.PI) / 180)) /
-    width;
-  const kmPerPxY = ((AU.maxLat - AU.minLat) * 111.0) / height;
-  return Math.max(0.01, Math.min(kmPerPxX, kmPerPxY));
 }
 
 type MeshPt = { x: number; y: number; lat: number; lon: number };
@@ -235,40 +230,6 @@ function fillTriangle(
   }
 }
 
-/**
- * Flat ribbon (parallelogram) along an edge — no round capsule caps.
- * Caps are what made corridors read as mashed-up circles/pills.
- */
-function stampRibbon(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  halfWidthPx: number,
-) {
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const len = Math.hypot(dx, dy);
-  if (len < 1e-3) return;
-  const hw = Math.max(1, halfWidthPx);
-  const nx = (-dy / len) * hw;
-  const ny = (dx / len) * hw;
-  // Quad corners
-  const ax = x0 + nx;
-  const ay = y0 + ny;
-  const bx = x0 - nx;
-  const by = y0 - ny;
-  const cx = x1 - nx;
-  const cy = y1 - ny;
-  const dx2 = x1 + nx;
-  const dy2 = y1 + ny;
-  fillTriangle(mask, width, height, ax, ay, bx, by, cx, cy);
-  fillTriangle(mask, width, height, ax, ay, cx, cy, dx2, dy2);
-}
-
 function dilate(
   src: Uint8Array,
   width: number,
@@ -399,8 +360,134 @@ function pruneSmallComponents(
   }
 }
 
+function triangleOk(
+  a: MeshPt,
+  b: MeshPt,
+  c: MeshPt,
+  maxEdge: number,
+): boolean {
+  const eAB = approxKm(a.lat, a.lon, b.lat, b.lon);
+  const eBC = approxKm(b.lat, b.lon, c.lat, c.lon);
+  const eCA = approxKm(c.lat, c.lon, a.lat, a.lon);
+  if (eAB > maxEdge || eBC > maxEdge || eCA > maxEdge) return false;
+  const lo = Math.min(eAB, eBC, eCA);
+  const hi = Math.max(eAB, eBC, eCA);
+  if (lo < 1 || hi / lo > MAX_EDGE_RATIO) return false;
+  // Reject near-collinear coastline strips (snake seeds).
+  const s = 0.5 * (eAB + eBC + eCA);
+  const area2 = s * (s - eAB) * (s - eBC) * (s - eCA);
+  if (area2 <= 0) return false;
+  const area = Math.sqrt(area2);
+  // Minimum area ~ equilateral of side ~0.35*maxEdge
+  const minArea = 0.05 * maxEdge * maxEdge;
+  return area >= minArea;
+}
+
+/** Drop components that are long-and-thin (ribbon snakes). */
+function pruneSnakeComponents(
+  field: Uint8Array,
+  width: number,
+  height: number,
+  minThicknessPx: number,
+) {
+  const seen = new Uint8Array(field.length);
+  const qx = new Int32Array(field.length);
+  const qy = new Int32Array(field.length);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = y * width + x;
+      if (!field[start] || seen[start]) continue;
+      const rank = field[start]!;
+      let qh = 0;
+      let qt = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt += 1;
+      seen[start] = 1;
+      const cells: number[] = [start];
+      let minX = x;
+      let maxX = x;
+      let minY = y;
+      let maxY = y;
+
+      while (qh < qt) {
+        const cx = qx[qh]!;
+        const cy = qy[qh]!;
+        qh += 1;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+        for (const [nx, ny] of [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ] as const) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (seen[ni] || field[ni] !== rank) continue;
+          seen[ni] = 1;
+          qx[qt] = nx;
+          qy[qt] = ny;
+          qt += 1;
+          cells.push(ni);
+        }
+      }
+
+      const bw = maxX - minX + 1;
+      const bh = maxY - minY + 1;
+      const box = bw * bh;
+      const fill = cells.length / Math.max(1, box);
+      const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+      // Thin elongated snakes: low bbox fill + high aspect, or fails a thickness probe.
+      const eroded = erodeMaskCells(field, cells, width, height, minThicknessPx);
+      const snake =
+        (aspect >= 3.2 && fill < 0.28) ||
+        (aspect >= 2.4 && fill < 0.18) ||
+        (cells.length > 80 && eroded < cells.length * 0.08);
+      if (snake) {
+        for (const i of cells) field[i] = 0;
+      }
+    }
+  }
+}
+
+function erodeMaskCells(
+  field: Uint8Array,
+  cells: number[],
+  width: number,
+  height: number,
+  radius: number,
+): number {
+  if (radius <= 0) return cells.length;
+  const set = new Set(cells);
+  let cur = set;
+  for (let pass = 0; pass < radius; pass++) {
+    const next = new Set<number>();
+    for (const i of cur) {
+      const x = i % width;
+      const y = (i / width) | 0;
+      if (x <= 0 || y <= 0 || x >= width - 1 || y >= height - 1) continue;
+      if (
+        cur.has(i - 1) &&
+        cur.has(i + 1) &&
+        cur.has(i - width) &&
+        cur.has(i + width)
+      ) {
+        next.add(i);
+      }
+    }
+    cur = next;
+    if (!cur.size) return 0;
+  }
+  return cur.size;
+}
+
 /**
- * Nested rank field from short-edge Delaunay triangles (connect-the-dots).
+ * Nested rank field from compact Delaunay triangles only.
+ * No ribbon chaining — that produced the long “snakes”.
  */
 function buildMeshRankField(
   points: AutoRiskSamplePoint[],
@@ -411,9 +498,6 @@ function buildMeshRankField(
   const field = new Uint8Array(width * height);
   if (!points.length) return field;
 
-  const kpp = kmPerPixel(width, height);
-  const baseHalfPx = Math.max(1.2, CORRIDOR_HALF_KM / kpp);
-
   for (let rank = 1; rank <= AUTO_RISK_MAX_RANK; rank++) {
     const mesh: MeshPt[] = [];
     for (const p of points) {
@@ -421,84 +505,41 @@ function buildMeshRankField(
       const { x, y } = latLonToPixel(p.lat, p.lon, width, height);
       mesh.push({ x, y, lat: p.lat, lon: p.lon });
     }
-    if (!mesh.length) continue;
+    if (mesh.length < 3) continue;
 
     const mask = new Uint8Array(width * height);
-    const linked = new Uint8Array(mesh.length);
     const tris = delaunay(mesh);
-    const maxEdge = MAX_EDGE_KM * (rank <= 2 ? 1.2 : rank <= 4 ? 1.05 : 0.95);
-    const ribbonHalf = baseHalfPx * (rank <= 2 ? 1.15 : 1.0);
-
-    const keepEdge = (ia: number, ib: number) => {
-      const a = mesh[ia]!;
-      const b = mesh[ib]!;
-      if (approxKm(a.lat, a.lon, b.lat, b.lon) > maxEdge) return false;
-      linked[ia] = 1;
-      linked[ib] = 1;
-      stampRibbon(mask, width, height, a.x, a.y, b.x, b.y, ribbonHalf);
-      return true;
-    };
+    const maxEdge = MAX_EDGE_KM * (rank <= 2 ? 1.15 : rank <= 4 ? 1.0 : 0.9);
 
     for (const [ia, ib, ic] of tris) {
       const a = mesh[ia]!;
       const b = mesh[ib]!;
       const c = mesh[ic]!;
-      const eAB = approxKm(a.lat, a.lon, b.lat, b.lon);
-      const eBC = approxKm(b.lat, b.lon, c.lat, c.lon);
-      const eCA = approxKm(c.lat, c.lon, a.lat, a.lon);
-      if (eAB > maxEdge || eBC > maxEdge || eCA > maxEdge) {
-        // Keep short sides as flat ribbons (no circular brushes).
-        keepEdge(ia, ib);
-        keepEdge(ib, ic);
-        keepEdge(ic, ia);
-        continue;
-      }
-      linked[ia] = 1;
-      linked[ib] = 1;
-      linked[ic] = 1;
-      // Triangle fill is the primary shape — polygonal, not radial.
+      if (!triangleOk(a, b, c, maxEdge)) continue;
       fillTriangle(mask, width, height, a.x, a.y, b.x, b.y, c.x, c.y);
     }
 
-    // Chain leftovers into corridors; never stamp isolate disks.
-    for (let i = 0; i < mesh.length; i++) {
-      if (linked[i]) continue;
-      let bestJ = -1;
-      let bestD = maxEdge;
-      for (let j = 0; j < mesh.length; j++) {
-        if (i === j) continue;
-        const d = approxKm(
-          mesh[i]!.lat,
-          mesh[i]!.lon,
-          mesh[j]!.lat,
-          mesh[j]!.lon,
-        );
-        if (d < bestD) {
-          bestD = d;
-          bestJ = j;
-        }
-      }
-      if (bestJ >= 0) keepEdge(i, bestJ);
-    }
-
-    // Sparse high ranks often only form thin ribbons — fatten them into area
-    // bands so cores don't read as tiny pills / capsules.
-    const filled = mask.reduce((n, v) => n + v, 0);
-    const fatten =
-      filled < width * height * 0.01 ? CLOSE_PX + 5 : CLOSE_PX;
+    // Knit joints, then open to kill thin corridor snakes.
     const closed = erode(
-      dilate(mask, width, height, fatten),
+      dilate(mask, width, height, CLOSE_PX),
       width,
       height,
-      Math.max(1, Math.floor(fatten * 0.55)),
+      Math.max(1, CLOSE_PX - 1),
+    );
+    const opened = dilate(
+      erode(closed, width, height, OPEN_PX),
+      width,
+      height,
+      OPEN_PX,
     );
 
     for (let i = 0; i < field.length; i++) {
-      if (closed[i]) field[i] = rank;
+      if (opened[i]) field[i] = rank;
     }
   }
 
-  pruneSmallComponents(field, width, height, 60);
+  pruneSmallComponents(field, width, height, 90);
+  pruneSnakeComponents(field, width, height, 2);
   return field;
 }
 
