@@ -26,6 +26,9 @@ import {
   aestPartsToUnix,
   unixToAestParts,
 } from "@/lib/weather/archive-time";
+import { promises as fs } from "fs";
+import path from "path";
+import { get as blobGet, put as blobPut } from "@vercel/blob";
 
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
@@ -841,7 +844,7 @@ async function loadAllSites(
         out.push({ lat: b.lats[j]!, lon: b.lons[j]!, loc });
       }
     }
-    if (i + BATCH_CONCURRENCY < batches.length) await sleep(80);
+    if (i + BATCH_CONCURRENCY < batches.length) await sleep(140);
   }
   return out;
 }
@@ -965,6 +968,110 @@ function cacheTtlMs(entry: CacheEntry): number {
   return entry.outlook.status === "ok" ? CACHE_MS : EMPTY_CACHE_MS;
 }
 
+/** Ok-only payload shared across serverless instances (catalog + risk-image). */
+type SharedPayload = {
+  at: number;
+  outlook: PublicForecastResponse;
+  dayPoints: Record<number, AutoRiskSamplePoint[]>;
+};
+
+function sharedBlobPath(kind: ModelRiskKind) {
+  return `model-risk/${kind}.json`;
+}
+
+function sharedLocalPath(kind: ModelRiskKind) {
+  return path.join(
+    process.env.TMPDIR || "/tmp",
+    "skywatch-model-risk",
+    `${kind}.json`,
+  );
+}
+
+function isFreshOkShared(parsed: SharedPayload | null): parsed is SharedPayload {
+  return Boolean(
+    parsed &&
+      parsed.outlook?.status === "ok" &&
+      parsed.dayPoints &&
+      Number.isFinite(parsed.at) &&
+      Date.now() - parsed.at < CACHE_MS,
+  );
+}
+
+async function readSharedOk(
+  kind: ModelRiskKind,
+): Promise<SharedPayload | null> {
+  if (
+    process.env.BLOB_READ_WRITE_TOKEN ||
+    process.env.BLOB_STORE_ID ||
+    process.env.VERCEL
+  ) {
+    for (const access of ["public", "private"] as const) {
+      try {
+        const result = await blobGet(sharedBlobPath(kind), {
+          access,
+          useCache: false,
+        });
+        if (!result?.stream) continue;
+        const text = await new Response(result.stream).text();
+        const parsed = JSON.parse(text) as SharedPayload;
+        if (isFreshOkShared(parsed)) return parsed;
+      } catch {
+        // try next access mode / fall through
+      }
+    }
+  }
+  try {
+    const raw = await fs.readFile(sharedLocalPath(kind), "utf8");
+    const parsed = JSON.parse(raw) as SharedPayload;
+    if (isFreshOkShared(parsed)) return parsed;
+  } catch {
+    // miss
+  }
+  return null;
+}
+
+async function writeSharedOk(
+  kind: ModelRiskKind,
+  entry: CacheEntry,
+): Promise<void> {
+  if (entry.outlook.status !== "ok") return;
+  const payload: SharedPayload = {
+    at: entry.at,
+    outlook: entry.outlook,
+    dayPoints: entry.dayPoints,
+  };
+  const body = JSON.stringify(payload);
+  try {
+    await fs.mkdir(path.dirname(sharedLocalPath(kind)), { recursive: true });
+    await fs.writeFile(sharedLocalPath(kind), body, "utf8");
+  } catch {
+    // best-effort local mirror
+  }
+  if (
+    !(
+      process.env.BLOB_READ_WRITE_TOKEN ||
+      process.env.BLOB_STORE_ID ||
+      process.env.VERCEL
+    )
+  ) {
+    return;
+  }
+  for (const access of ["public", "private"] as const) {
+    try {
+      await blobPut(sharedBlobPath(kind), body, {
+        access,
+        contentType: "application/json",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        cacheControlMaxAge: 60,
+      });
+      return;
+    } catch {
+      // try next access mode
+    }
+  }
+}
+
 async function ensureCache(
   kind: ModelRiskKind,
   opts: { force?: boolean } = {},
@@ -979,14 +1086,32 @@ async function ensureCache(
     return cached;
   }
   if (!opts.force && inflightByKind[kind]) return inflightByKind[kind]!;
-  inflightByKind[kind] = computeOutlook(config)
-    .then((entry) => {
-      caches[kind] = entry;
-      return entry;
-    })
-    .finally(() => {
-      inflightByKind[kind] = null;
-    });
+  inflightByKind[kind] = (async () => {
+    if (!opts.force) {
+      const shared = await readSharedOk(kind);
+      if (shared) {
+        const entry: CacheEntry = {
+          at: shared.at,
+          outlook: shared.outlook,
+          dayPoints: shared.dayPoints,
+          dayPng: {},
+        };
+        caches[kind] = entry;
+        return entry;
+      }
+    }
+    const entry = await computeOutlook(config);
+    caches[kind] = entry;
+    if (entry.outlook.status === "ok") {
+      // Await so the catalog response is not raced by a cold risk-image instance.
+      await writeSharedOk(kind, entry).catch((err) => {
+        console.warn(`[${kind}-risk] shared cache write failed`, err);
+      });
+    }
+    return entry;
+  })().finally(() => {
+    inflightByKind[kind] = null;
+  });
   return inflightByKind[kind]!;
 }
 
