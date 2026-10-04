@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import { CloudLightning, Gauge } from "lucide-react";
 import {
@@ -201,11 +202,7 @@ export function HomeModelComparisonPanel() {
 }
 
 export function HomeUpperAirPanel() {
-  const { place } = useSavedPlace();
-  const lat = place?.lat ?? -33.87;
-  const lon = place?.lon ?? 151.21;
-  const name = place?.name ?? STATE_CAPITALS.nsw.name;
-  const { data, loading, error } = useUpperAir(lat, lon, name);
+  const { data, loading, error } = useUpperAir();
 
   const path = useMemo(() => {
     if (!data?.profile?.length) return "";
@@ -227,15 +224,35 @@ export function HomeUpperAirPanel() {
     return pts.length ? `M${pts.join(" L")}` : "";
   }, [data]);
 
+  const validLabel = useMemo(() => {
+    if (!data?.validTime) return null;
+    const d = new Date(data.validTime);
+    if (!Number.isFinite(d.getTime())) return null;
+    return new Intl.DateTimeFormat("en-AU", {
+      timeZone: "UTC",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(d) + " UTC";
+  }, [data?.validTime]);
+
   return (
-    <PanelShell title={`Upper air — ${name}`}>
+    <PanelShell title="Upper air — Sydney">
       {loading && !data ? (
-        <p className="text-sm text-white/70">Loading upper-air profile…</p>
+        <p className="text-sm text-white/70">Loading Sydney radiosonde…</p>
       ) : null}
       {error && !data ? (
         <p className="text-sm text-white/80">{error}</p>
       ) : null}
-      {data ? (
+      {data?.status === "empty" ? (
+        <p className="text-sm text-white/80">
+          {data.message ?? "No recent Sydney Airport sounding."}
+        </p>
+      ) : null}
+      {data && data.status !== "empty" ? (
         <>
           <div className="relative h-36 overflow-hidden rounded-md border border-[var(--ink)]/15 bg-[#001a3a]">
             <svg viewBox="0 0 200 120" className="h-full w-full opacity-90">
@@ -313,7 +330,18 @@ export function HomeUpperAirPanel() {
               </strong>
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-white/45">{data.attribution}</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] text-white/45">
+              {data.attribution}
+              {validLabel ? ` · ${validLabel}` : ""}
+            </p>
+            <Link
+              href="/soundings"
+              className="text-[10px] font-semibold text-[var(--cyan)] hover:underline"
+            >
+              Full sounding
+            </Link>
+          </div>
         </>
       ) : null}
     </PanelShell>

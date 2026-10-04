@@ -1,4 +1,9 @@
-/** Upper-air / convective profile from Open-Meteo pressure levels. */
+/**
+ * Home upper-air insight panel — observed Sydney Airport radiosonde (UWYO).
+ */
+
+import { fetchObservedSounding } from "@/lib/weather/uwyo-sounding";
+import type { SoundingLevel } from "@/lib/weather/sounding-types";
 
 export type UpperAirPayload = {
   latitude: number;
@@ -15,110 +20,90 @@ export type UpperAirPayload = {
   /** Coarse temp profile for sparkline (top of atmosphere → surface). */
   profile: { label: string; tempC: number | null }[];
   attribution: string;
+  /** WMO id when sourced from an observed radiosonde. */
+  stationId?: string | null;
+  status?: "ok" | "empty";
+  message?: string;
 };
 
-function num(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
+const SYDNEY_WMO = "94767";
 
-function pickNearestHour(times: string[]): number {
-  if (!times.length) return 0;
-  const now = Date.now();
-  let best = 0;
-  let bestDiff = Infinity;
-  for (let i = 0; i < times.length; i++) {
-    const t = Date.parse(times[i]!);
-    if (!Number.isFinite(t)) continue;
-    const diff = Math.abs(t - now);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = i;
+function interpLevel(
+  levels: SoundingLevel[],
+  pHpa: number,
+): SoundingLevel | null {
+  if (!levels.length) return null;
+  if (pHpa >= levels[0]!.p) return levels[0]!;
+  if (pHpa <= levels[levels.length - 1]!.p) return levels[levels.length - 1]!;
+  for (let i = 0; i < levels.length - 1; i++) {
+    const a = levels[i]!;
+    const b = levels[i + 1]!;
+    if (pHpa <= a.p && pHpa >= b.p) {
+      const w =
+        (Math.log(a.p) - Math.log(pHpa)) / (Math.log(a.p) - Math.log(b.p));
+      return {
+        p: pHpa,
+        z: a.z + w * (b.z - a.z),
+        t: a.t + w * (b.t - a.t),
+        td: a.td + w * (b.td - a.td),
+        rh:
+          a.rh != null && b.rh != null ? a.rh + w * (b.rh - a.rh) : (a.rh ?? b.rh),
+        windDir: a.windDir,
+        windSpd:
+          a.windSpd != null && b.windSpd != null
+            ? a.windSpd + w * (b.windSpd - a.windSpd)
+            : (a.windSpd ?? b.windSpd),
+      };
     }
   }
-  return best;
+  return null;
 }
 
-export async function fetchUpperAir(options: {
-  latitude: number;
-  longitude: number;
+/** Observed Sydney Airport sounding shaped for the home upper-air panel. */
+export async function fetchUpperAir(_options?: {
+  latitude?: number;
+  longitude?: number;
   placeLabel?: string;
 }): Promise<UpperAirPayload> {
-  const { latitude, longitude, placeLabel = "Sydney" } = options;
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    hourly: [
-      "temperature_1000hPa",
-      "temperature_850hPa",
-      "temperature_700hPa",
-      "temperature_500hPa",
-      "temperature_300hPa",
-      "geopotential_height_500hPa",
-      "relative_humidity_850hPa",
-      "wind_speed_850hPa",
-      "wind_speed_500hPa",
-      "cape",
-      "convective_inhibition",
-    ].join(","),
-    forecast_days: "1",
-    timezone: "Australia/Sydney",
-  });
+  // Home panel is fixed to the Sydney observed radiosonde (not model/place).
+  const sounding = await fetchObservedSounding({ wmo: SYDNEY_WMO });
+  const levels = sounding.levels;
+  const sfc = sounding.params.parcels.find((p) => p.id === "SFC");
+  const l500 = interpLevel(levels, 500);
+  const l850 = interpLevel(levels, 850);
+  const l700 = interpLevel(levels, 700);
+  const l300 = interpLevel(levels, 300);
+  const l1000 = interpLevel(levels, 1000);
 
-  const url = `https://api.open-meteo.com/v1/forecast?${params}`;
-  let lastErr: Error | null = null;
-  let json: { hourly?: Record<string, unknown[]> } | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-        signal: AbortSignal.timeout(18_000),
-      });
-      if (res.status === 429) {
-        lastErr = new Error("Open-Meteo 429");
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-        continue;
-      }
-      if (!res.ok) throw new Error(`Upper air unavailable (${res.status})`);
-      json = (await res.json()) as { hourly?: Record<string, unknown[]> };
-      break;
-    } catch (err) {
-      lastErr = err instanceof Error ? err : new Error(String(err));
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-    }
-  }
-  if (!json) throw lastErr || new Error("Upper air unavailable");
-
-  const h = json.hourly || {};
-  const times = (h.time || []).map(String);
-  const i = pickNearestHour(times);
-
-  const wind850 = num(h.wind_speed_850hPa?.[i]);
-  const wind500 = num(h.wind_speed_500hPa?.[i]);
-  const shear =
-    wind850 != null && wind500 != null ? Math.abs(wind500 - wind850) : null;
-
-  const profile = [
-    { label: "300", tempC: num(h.temperature_300hPa?.[i]) },
-    { label: "500", tempC: num(h.temperature_500hPa?.[i]) },
-    { label: "700", tempC: num(h.temperature_700hPa?.[i]) },
-    { label: "850", tempC: num(h.temperature_850hPa?.[i]) },
-    { label: "1000", tempC: num(h.temperature_1000hPa?.[i]) },
-  ];
+  const shearKts = sounding.params.shear0to6Kts;
+  const shearKmh =
+    shearKts != null && Number.isFinite(shearKts) ? shearKts * 1.852 : null;
 
   return {
-    latitude,
-    longitude,
-    placeLabel,
-    validTime: times[i] ?? null,
-    cape: num(h.cape?.[i]),
-    cin: num(h.convective_inhibition?.[i]),
-    shearKmh: shear,
-    height500m: num(h.geopotential_height_500hPa?.[i]),
-    temp850C: num(h.temperature_850hPa?.[i]),
-    temp500C: num(h.temperature_500hPa?.[i]),
-    rh850Pct: num(h.relative_humidity_850hPa?.[i]),
-    profile,
-    attribution: "Open-Meteo pressure-level forecast",
+    latitude: sounding.latitude,
+    longitude: sounding.longitude,
+    placeLabel: "Sydney",
+    validTime: sounding.validTime,
+    cape: sfc?.cape ?? null,
+    cin: sfc?.cin ?? null,
+    shearKmh,
+    height500m: l500?.z ?? null,
+    temp850C: l850?.t ?? null,
+    temp500C: l500?.t ?? null,
+    rh850Pct: l850?.rh ?? null,
+    profile: [
+      { label: "300", tempC: l300?.t ?? null },
+      { label: "500", tempC: l500?.t ?? null },
+      { label: "700", tempC: l700?.t ?? null },
+      { label: "850", tempC: l850?.t ?? null },
+      { label: "1000", tempC: l1000?.t ?? null },
+    ],
+    attribution:
+      sounding.status === "ok"
+        ? "Observed radiosonde · Sydney Airport (UWYO BUFR)"
+        : sounding.attribution,
+    stationId: SYDNEY_WMO,
+    status: sounding.status,
+    message: sounding.message,
   };
 }

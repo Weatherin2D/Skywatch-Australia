@@ -341,15 +341,58 @@ export function recentSoundingSlots(now = new Date()): Date[] {
   return slots;
 }
 
+async function tryObservedSlot(
+  wmo: string,
+  name: string,
+  stationLat: number,
+  stationLon: number,
+  slot: Date,
+): Promise<
+  | { ok: true; payload: SoundingPayload }
+  | { ok: false; reason: string }
+> {
+  if (!Number.isFinite(slot.getTime())) {
+    return { ok: false, reason: "Invalid time" };
+  }
+  const result = await fetchUwyoCsv(wmo, slot);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  const parsed = parseCsvLevels(result.csv);
+  if (parsed.levels.length < 8) {
+    return { ok: false, reason: "Sounding too shallow" };
+  }
+  const levels = thinLevels(parsed.levels);
+  const analysis = analyzeSounding(levels);
+  return {
+    ok: true,
+    payload: {
+      status: "ok",
+      mode: "observed",
+      model: null,
+      stationId: wmo,
+      stationName: name,
+      latitude: parsed.lat || stationLat,
+      longitude: parsed.lon || stationLon,
+      validTime: parsed.validTime ?? slot.toISOString(),
+      levels,
+      params: analysis.params,
+      parcelTraces: analysis.parcelTraces,
+      attribution:
+        "University of Wyoming Atmospheric Science Radiosonde Archive (BUFR)",
+    },
+  };
+}
+
 export async function fetchObservedSounding(options: {
   wmo: string;
-  /** ISO time; if omitted, try recent 00/12Z slots. */
+  /** ISO time; if omitted, try recent 00/12Z slots then UWYO inventory. */
   time?: string | null;
 }): Promise<SoundingPayload> {
   const station = getSoundingStation(options.wmo);
   const name = station
     ? `${station.name}, ${station.state}`
     : `WMO ${options.wmo}`;
+  const stationLat = station?.lat ?? 0;
+  const stationLon = station?.lon ?? 0;
 
   const slots = options.time
     ? [new Date(options.time)]
@@ -357,37 +400,43 @@ export async function fetchObservedSounding(options: {
 
   let lastReason = "No recent sounding found";
   for (const slot of slots.slice(0, 10)) {
-    if (!Number.isFinite(slot.getTime())) continue;
-    const result = await fetchUwyoCsv(options.wmo, slot);
-    if (!result.ok) {
-      lastReason = result.reason;
-      await sleep(120);
-      continue;
+    const tried = await tryObservedSlot(
+      options.wmo,
+      name,
+      stationLat,
+      stationLon,
+      slot,
+    );
+    if (tried.ok) return tried.payload;
+    lastReason = tried.reason;
+    await sleep(120);
+  }
+
+  // Fall back to latest inventory launch when fixed 00/12Z probes miss
+  // (common for some AU sites whose BUFR times are 11Z/23Z).
+  if (!options.time) {
+    try {
+      const year = new Date().getUTCFullYear();
+      const archive = await fetchObservedSoundingArchive({
+        wmo: options.wmo,
+        years: [year, year - 1],
+      });
+      for (const inv of archive.slots.slice(0, 8)) {
+        const tried = await tryObservedSlot(
+          options.wmo,
+          name,
+          stationLat,
+          stationLon,
+          new Date(inv.time),
+        );
+        if (tried.ok) return tried.payload;
+        lastReason = tried.reason;
+        await sleep(100);
+      }
+    } catch (err) {
+      lastReason =
+        err instanceof Error ? err.message : "Inventory lookup failed";
     }
-    const parsed = parseCsvLevels(result.csv);
-    if (parsed.levels.length < 8) {
-      lastReason = "Sounding too shallow";
-      continue;
-    }
-    const levels = thinLevels(parsed.levels);
-    const lat = parsed.lat || station?.lat || 0;
-    const lon = parsed.lon || station?.lon || 0;
-    const analysis = analyzeSounding(levels);
-    return {
-      status: "ok",
-      mode: "observed",
-      model: null,
-      stationId: options.wmo,
-      stationName: name,
-      latitude: lat,
-      longitude: lon,
-      validTime: parsed.validTime ?? slot.toISOString(),
-      levels,
-      params: analysis.params,
-      parcelTraces: analysis.parcelTraces,
-      attribution:
-        "University of Wyoming Atmospheric Science Radiosonde Archive (BUFR)",
-    };
   }
 
   const empty = analyzeSounding([]);
@@ -397,8 +446,8 @@ export async function fetchObservedSounding(options: {
     model: null,
     stationId: options.wmo,
     stationName: name,
-    latitude: station?.lat ?? 0,
-    longitude: station?.lon ?? 0,
+    latitude: stationLat,
+    longitude: stationLon,
     validTime: null,
     levels: [],
     params: empty.params,

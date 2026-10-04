@@ -74,12 +74,7 @@ export function useModelComparison(
   return useJsonResource<ModelComparisonPayload>(url, refreshMs);
 }
 
-export function useUpperAir(
-  lat = -33.87,
-  lon = 151.21,
-  place = "Sydney",
-  refreshMs = 10 * 60_000,
-) {
-  const url = `/api/weather/upper-air?lat=${lat}&lon=${lon}&place=${encodeURIComponent(place)}`;
-  return useJsonResource<UpperAirPayload>(url, refreshMs);
+/** Fixed to observed Sydney Airport radiosonde (home upper-air panel). */
+export function useUpperAir(refreshMs = 15 * 60_000) {
+  return useJsonResource<UpperAirPayload>("/api/weather/upper-air", refreshMs);
 }

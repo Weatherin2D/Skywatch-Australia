@@ -35,7 +35,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/models` | Multi-model comparison (`days=1..7`) via Open-Meteo |
 | `/api/weather/climate` | Extended outlook guidance via Open-Meteo ensemble/forecast |
 | `/api/weather/hazards` | UV / fire / marine snapshot for a geohash |
-| `/api/weather/upper-air` | CAPE/CIN/shear + temp profile (Open-Meteo pressure levels) |
+| `/api/weather/upper-air` | Home panel: latest observed Sydney Airport radiosonde (UWYO) |
 | `/api/weather/sounding` | Sounding profile (`mode=observed|model|box`) — UWYO BUFR or Open-Meteo levels / 3×3 box |
 | `/api/weather/sounding?archive=1` | Observed UWYO inventory slots for a station (`station`, optional `year`) |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
