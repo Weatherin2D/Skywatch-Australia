@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  RADAR_NATIVE_MAX_ZOOM,
   rainviewerRawTileUrl,
   recolourRadarPng,
 } from "@/lib/weather/radar-palette";
@@ -19,6 +20,9 @@ const PATH_RE = /^\/v2\/radar\/[a-z0-9]+$/i;
  * SkyWatch dBZ colour scale.
  *
  * GET /api/weather/radar-tile?host=&path=&z=&x=&y=
+ *
+ * RainViewer only has real reflectivity through ~z7. Requests above that are
+ * remapped to the parent native tile so clients never cache empty placeholders.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -42,14 +46,25 @@ export async function GET(req: NextRequest) {
     !Number.isInteger(xi) ||
     !Number.isInteger(yi) ||
     zi < 0 ||
-    zi > 12 ||
+    zi > 22 ||
     xi < 0 ||
     yi < 0
   ) {
     return NextResponse.json({ error: "Invalid tile coords" }, { status: 400 });
   }
 
-  const cacheKey = radarTileCacheKey(host, path, zi, xi, yi);
+  // Collapse overzoom requests onto the native parent tile.
+  let fetchZ = zi;
+  let fetchX = xi;
+  let fetchY = yi;
+  if (zi > RADAR_NATIVE_MAX_ZOOM) {
+    const scale = 2 ** (zi - RADAR_NATIVE_MAX_ZOOM);
+    fetchZ = RADAR_NATIVE_MAX_ZOOM;
+    fetchX = Math.floor(xi / scale);
+    fetchY = Math.floor(yi / scale);
+  }
+
+  const cacheKey = radarTileCacheKey(host, path, fetchZ, fetchX, fetchY);
   const cached = getCachedRadarTile(cacheKey);
   if (cached) {
     return new NextResponse(new Uint8Array(cached), {
@@ -61,11 +76,12 @@ export async function GET(req: NextRequest) {
         "X-Radar-Cache": "HIT",
         "X-Radar-Source": "rainviewer-raw",
         "X-Radar-Palette": "skywatch-dbz",
+        "X-Radar-Native-Z": String(fetchZ),
       },
     });
   }
 
-  const upstream = rainviewerRawTileUrl(host, path, zi, xi, yi);
+  const upstream = rainviewerRawTileUrl(host, path, fetchZ, fetchX, fetchY);
   try {
     const res = await fetch(upstream, {
       headers: { Accept: "image/png" },
@@ -91,6 +107,7 @@ export async function GET(req: NextRequest) {
         "X-Radar-Cache": "MISS",
         "X-Radar-Source": "rainviewer-raw",
         "X-Radar-Palette": "skywatch-dbz",
+        "X-Radar-Native-Z": String(fetchZ),
       },
     });
   } catch (err) {

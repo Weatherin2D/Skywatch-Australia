@@ -19,6 +19,7 @@ import {
   type WeatherMapsPayload,
 } from "@/lib/weather/maps";
 import { warmFramesInBackground } from "@/lib/weather/fetch-frame";
+import { warmRadarFramesInBackground } from "@/lib/weather/warm-radar-tiles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -334,6 +335,14 @@ export async function GET(request: NextRequest) {
     const activeProduct = wantAll ? DEFAULT_SATELLITE_PRODUCT : product;
     const frames = satellite.products[activeProduct].frames;
     const activeMeta = getSatelliteProduct(activeProduct);
+
+    // Prime the radar tile cache for the newest frames so the first map paint
+    // hits memory instead of waiting on RainViewer + recolour.
+    warmRadarFramesInBackground(
+      radarAll.slice(-2).flatMap((f) =>
+        f.path ? [{ host, path: f.path }] : [],
+      ),
+    );
 
     const payload: WeatherMapsPayload = {
       generated,

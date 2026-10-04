@@ -3,21 +3,33 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
-import { radarWarmupTileUrls } from "@/lib/weather/radar-palette";
+import {
+  RADAR_NATIVE_MAX_ZOOM,
+  radarWarmupTileUrls,
+} from "@/lib/weather/radar-palette";
 import type { WeatherFrame } from "@/lib/weather/maps";
+
+const TRANSPARENT_TILE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 function createBufferLayer(zIndex: number): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
     className: "skywatch-radar-tiles",
-    keepBuffer: 12,
+    keepBuffer: 16,
     updateWhenIdle: false,
-    updateWhenZooming: false,
+    // Keep scaled tiles visible while the gesture runs — blanking mid-zoom
+    // felt like the radar "vanished".
+    updateWhenZooming: true,
+    updateInterval: 80,
     zIndex,
-    // RainViewer only serves up to z12 — overzoom past that so tight zooms
-    // still show scaled radar instead of vanishing.
-    maxZoom: 18,
-    maxNativeZoom: 12,
+    // RainViewer only has real data through ~z7. Overzoom past that so tight
+    // zooms keep showing scaled reflectivity instead of empty z8–12 tiles.
+    maxZoom: 22,
+    maxNativeZoom: RADAR_NATIVE_MAX_ZOOM,
+    minZoom: 0,
+    errorTileUrl: TRANSPARENT_TILE,
+    crossOrigin: true,
   });
 }
 
@@ -51,8 +63,23 @@ export function SmoothRadarLayer({
     pendingUrlRef.current = null;
     a.addTo(map);
     b.addTo(map);
+
+    // After zoom, force the front buffer to re-evaluate so overzoomed native
+    // tiles stay painted (Leaflet can leave a stale empty grid otherwise).
+    const onZoomEnd = () => {
+      const buffers = buffersRef.current;
+      if (!buffers) return;
+      const front = buffers[frontRef.current]!;
+      front.redraw();
+      if (displayedUrlRef.current) {
+        front.setOpacity(opacityRef.current);
+      }
+    };
+    map.on("zoomend", onZoomEnd);
+
     return () => {
       loadGenRef.current += 1;
+      map.off("zoomend", onZoomEnd);
       a.off();
       b.off();
       map.removeLayer(a);
@@ -120,13 +147,29 @@ export function SmoothRadarLayer({
 
     const loadInto = (layer: L.TileLayer, onReady: () => void) => {
       layer.off("load");
-      layer.once("load", onReady);
+      layer.off("tileerror");
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(failSafe);
+        onReady();
+      };
+      // Don't wait forever on a slow/partial tile set — show what we have.
+      const failSafe = window.setTimeout(finish, 900);
+      layer.once("load", finish);
       layer.setOpacity(0);
       layer.setUrl(url, false);
     };
 
     // First paint / remount: load into the front buffer and show when ready.
     if (!displayedUrlRef.current || frontUrl !== url) {
+      // If we already have a painted frame, keep it up while the next URL
+      // loads into the back buffer (covers Strict Mode remount + URL change).
+      if (displayedUrlRef.current && frontUrl && frontUrl !== url) {
+        loadInto(back, () => reveal(back, front, backIdx));
+        return;
+      }
       loadInto(front, () => reveal(front, back, frontIdx));
       return;
     }
@@ -185,32 +228,36 @@ export function useRadarFramePreloader(
       } catch {
         /* map may be tearing down */
       }
-      // Current native zoom only — neighbouring zooms doubled tile API cost.
-      const native = Math.max(3, Math.min(12, z));
-      return [native];
+      // Always warm native zooms — overzoomed views still fetch z≤7 tiles.
+      const native = Math.max(3, Math.min(RADAR_NATIVE_MAX_ZOOM, z));
+      if (z > RADAR_NATIVE_MAX_ZOOM) return [RADAR_NATIVE_MAX_ZOOM];
+      // Warm current + one coarser level so zoom-out stays instant.
+      const coarser = Math.max(3, native - 1);
+      return coarser === native ? [native] : [coarser, native];
     };
 
     const pushFrame = (idx: number, force = false) => {
       const tpl = templates[idx];
       if (!tpl) return;
       const zooms = zoomLevels();
-      const cacheKey = `${tpl}|${zooms.join(",")}`;
+      const cacheKey = `${tpl}|${zooms.join(",")}|${Math.round(map.getZoom())}`;
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      for (const url of radarWarmupTileUrls(tpl, zooms, bounds, 24)) {
+      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 36 : 28;
+      for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }
     };
 
     const n = templates.length;
-    // Current + next two frames only — wider look-ahead hammered the tile API.
-    for (let step = 0; step <= 2; step++) {
+    // Current + next three frames — enough for smooth play without flooding.
+    for (let step = 0; step <= 3; step++) {
       pushFrame((activeIndex + step) % n, step === 0);
     }
 
     let active = 0;
-    const CONCURRENCY = 4;
+    const CONCURRENCY = 8;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -237,7 +284,7 @@ export function useRadarFramePreloader(
         pushFrame(activeIndex % n, true);
         pushFrame((activeIndex + 1) % n, true);
         pump();
-      }, 350);
+      }, 180);
     };
     map.on("moveend", onViewChange);
     map.on("zoomend", onViewChange);

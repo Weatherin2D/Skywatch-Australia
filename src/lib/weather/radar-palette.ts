@@ -145,6 +145,12 @@ export function recolourRadarPng(input: Buffer): Buffer {
   return PNG.sync.write(png);
 }
 
+/**
+ * RainViewer serves useful reflectivity only through ~z7. Higher zooms return
+ * empty/placeholder tiles — Leaflet must overzoom from this native max.
+ */
+export const RADAR_NATIVE_MAX_ZOOM = 7;
+
 /** Upstream RainViewer tile URL — Universal Blue, unsmoothed, no snow. */
 export function rainviewerRawTileUrl(
   host: string,
@@ -216,7 +222,7 @@ export function radarWarmupTileUrls(
 ): string[] {
   const urls: string[] = [];
   for (const z of zooms) {
-    if (z < 0 || z > 12) continue;
+    if (z < 0 || z > RADAR_NATIVE_MAX_ZOOM) continue;
     const n = 2 ** z;
     let x0 = Math.floor(lonToTileX(bounds.west, z)) - 1;
     let x1 = Math.ceil(lonToTileX(bounds.east, z)) + 1;
