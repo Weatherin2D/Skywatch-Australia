@@ -26,16 +26,18 @@ import {
   aestPartsToUnix,
   unixToAestParts,
 } from "@/lib/weather/archive-time";
-import { unstable_cache } from "next/cache";
 
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
 const EMPTY_CACHE_MS = 90_000;
 /** Open-Meteo multi-location batches — keep under Vercel 60s budget. */
 const BATCH = 80;
-const BATCH_CONCURRENCY = 4;
+/** Keep modest concurrency to limit Open-Meteo 429s from Vercel egress. */
+const BATCH_CONCURRENCY = 3;
 /** Abort remaining waves so the handler can return before the platform 504s. */
 const FETCH_BUDGET_MS = 45_000;
+/** Below this fraction of SAMPLE_SITES, treat the outlook as incomplete (short TTL). */
+const MIN_SITE_COVERAGE = 0.4;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
 /** National fill (~1.2° / ~130 km). Towns kept as anchors. Target ~450–550 sites. */
 const GRID_STEP_DEG = 1.2;
@@ -293,8 +295,8 @@ async function fetchBatch(
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(Math.min(2500, 400 * 2 ** attempt));
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await sleep(Math.min(4000, 600 * 2 ** attempt));
     try {
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
@@ -303,6 +305,13 @@ async function fetchBatch(
       });
       if (res.status === 429) {
         lastErr = new Error("Open-Meteo 429");
+        // Honor Retry-After when present; otherwise back off harder on rate limits.
+        const retryAfter = Number(res.headers.get("retry-after"));
+        await sleep(
+          Number.isFinite(retryAfter)
+            ? Math.min(8000, Math.max(500, retryAfter * 1000))
+            : Math.min(5000, 1000 * 2 ** attempt),
+        );
         continue;
       }
       if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
@@ -922,50 +931,39 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
     r.legend.some((i) => i.used && i.order < 100),
   );
   const feedDown = rows.length === 0;
+  const coverage = rows.length / Math.max(1, SAMPLE_SITES.length);
+  const incomplete = !feedDown && coverage < MIN_SITE_COVERAGE;
   const outlook: PublicForecastResponse = {
-    status: anyRisk ? "ok" : "empty",
+    status: anyRisk && !incomplete ? "ok" : "empty",
     issuedAt: new Date().toISOString(),
     mapView: { center: [-25.5, 134.5], zoom: 4 },
-    days: rolled,
+    days: incomplete
+      ? rolled.map((d) => ({
+          ...d,
+          legend: autoRiskLegendItems(),
+        }))
+      : rolled,
     defaultDay: 1,
-    message: anyRisk
-      ? undefined
-      : feedDown
-        ? config.emptyMessage
-        : `No elevated thunderstorm risk in SkyWatch ${config.label} guidance.`,
+    message:
+      incomplete
+        ? `SkyWatch ${config.label} guidance is still refreshing — try again in a moment.`
+        : anyRisk
+          ? undefined
+          : feedDown
+            ? config.emptyMessage
+            : `No elevated thunderstorm risk in SkyWatch ${config.label} guidance.`,
   };
 
   console.info(
-    `[${config.kind}-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites, days=${FORECAST_DAYS}`,
+    `[${config.kind}-risk] scored ${rows.length}/${SAMPLE_SITES.length} sites (coverage=${coverage.toFixed(2)}), days=${FORECAST_DAYS}, status=${outlook.status}`,
   );
 
-  return { at: Date.now(), outlook, dayPoints, dayPng };
+  return { at: Date.now(), outlook, dayPoints: incomplete ? {} : dayPoints, dayPng };
 }
 
 function cacheTtlMs(entry: CacheEntry): number {
   return entry.outlook.status === "ok" ? CACHE_MS : EMPTY_CACHE_MS;
 }
-
-/** Shared across Vercel instances so catalog + risk-image see the same dayPoints. */
-type SharedPayload = {
-  at: number;
-  outlook: PublicForecastResponse;
-  dayPoints: Record<number, AutoRiskSamplePoint[]>;
-};
-
-const loadSharedModelRisk = unstable_cache(
-  async (kind: ModelRiskKind): Promise<SharedPayload> => {
-    const entry = await computeOutlook(MODEL_CONFIG[kind]);
-    return {
-      at: entry.at,
-      outlook: entry.outlook,
-      dayPoints: entry.dayPoints,
-    };
-  },
-  ["model-risk-shared-v2"],
-  // Short enough that ACCESS empty shells recover; long enough to stop 504 storms.
-  { revalidate: 180 },
-);
 
 async function ensureCache(
   kind: ModelRiskKind,
@@ -981,24 +979,14 @@ async function ensureCache(
     return cached;
   }
   if (!opts.force && inflightByKind[kind]) return inflightByKind[kind]!;
-  inflightByKind[kind] = (async () => {
-    let entry: CacheEntry;
-    if (opts.force) {
-      entry = await computeOutlook(config);
-    } else {
-      const shared = await loadSharedModelRisk(kind);
-      entry = {
-        at: shared.at,
-        outlook: shared.outlook,
-        dayPoints: shared.dayPoints,
-        dayPng: {},
-      };
-    }
-    caches[kind] = entry;
-    return entry;
-  })().finally(() => {
-    inflightByKind[kind] = null;
-  });
+  inflightByKind[kind] = computeOutlook(config)
+    .then((entry) => {
+      caches[kind] = entry;
+      return entry;
+    })
+    .finally(() => {
+      inflightByKind[kind] = null;
+    });
   return inflightByKind[kind]!;
 }
 
