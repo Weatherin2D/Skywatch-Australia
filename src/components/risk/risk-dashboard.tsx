@@ -24,6 +24,7 @@ import {
   AUTO_HATCH_LEGEND,
   AUTO_RISK_CATEGORIES,
   autoRiskLegendItems,
+  type AutoHatchId,
 } from "@/lib/weather/auto-risk-categories";
 import {
   MODEL_RISK_PRODUCTS,
@@ -125,19 +126,34 @@ function ModelProductBlurbList({
     return map;
   }, [product]);
 
+  // Always list the full ladder (through L2 Hatched for categorical risk).
+  // Dim unused tiers in the colour key; blurbs stay available for every step.
   const items =
     product === "risk" ? autoRiskLegendItems() : chanceLegendItems(product);
-  const active = items.filter((i) => usedIds.size === 0 || usedIds.has(i.id));
-  if (!active.length) return null;
+  if (!items.length) return null;
 
   return (
     <ul className="space-y-2 border-t border-white/10 pt-3">
-      {active.slice(0, 5).map((item) => {
+      {items.map((item) => {
         const blurb = blurbs.get(item.id);
         if (!blurb) return null;
+        const used = usedIds.size === 0 || usedIds.has(item.id);
         return (
-          <li key={item.id} className="text-xs leading-relaxed text-white/50">
-            <span className="font-semibold text-white/70">{item.label}: </span>
+          <li
+            key={item.id}
+            className={cn(
+              "text-xs leading-relaxed",
+              used ? "text-white/50" : "text-white/30",
+            )}
+          >
+            <span
+              className={cn(
+                "font-semibold",
+                used ? "text-white/70" : "text-white/40",
+              )}
+            >
+              {item.label}:{" "}
+            </span>
             {blurb}
           </li>
         );
@@ -383,11 +399,29 @@ export function RiskDashboard() {
 
   const region = getMapRegion(regionId);
   const daySlots = data?.days ?? [];
-  const autoLegendItems: DisplayLegendItem[] = active?.legend?.length
-    ? active.legend
-    : product === "risk"
-      ? autoRiskLegendItems()
-      : chanceLegendItems(product);
+  // Colour key always shows the full categorical ladder through L2 Hatched
+  // (or the full chance bands). Day-used flags only dim unused swatches.
+  const autoLegendItems: DisplayLegendItem[] = useMemo(() => {
+    if (product === "risk") {
+      const dayLeg = active?.legend ?? [];
+      const usedRanks = new Set(
+        dayLeg
+          .filter((i) => i.used && i.order < 100)
+          .map((i) => i.order),
+      );
+      const usedHatches = new Set<AutoHatchId>();
+      for (const i of dayLeg) {
+        if (!i.used) continue;
+        if (i.id === "l1_hatched") usedHatches.add("l1");
+        if (i.id === "l2_hatched") usedHatches.add("l2");
+      }
+      return autoRiskLegendItems(
+        dayLeg.length ? { usedRanks, usedHatches } : undefined,
+      );
+    }
+    if (active?.legend?.length) return active.legend;
+    return chanceLegendItems(product);
+  }, [product, active?.legend]);
 
   const setSourceAndUrl = (next: RiskSource) => {
     const nextProduct = next === "bom" ? "risk" : product;
