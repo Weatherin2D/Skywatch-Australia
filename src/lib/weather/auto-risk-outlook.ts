@@ -60,6 +60,13 @@ type DayMetrics = {
    * (dryline, front, convergence, moisture boundary).
    */
   liftTrigger: number;
+  /** Most unstable Lifted Index of the day (°C); more negative = more unstable. */
+  liftedIndex: number;
+  /**
+   * Daylight heating / pulse potential 0–1
+   * (afternoon insolation + temp rise + moist CAPE — cells without synoptic boundaries).
+   */
+  diurnalHeating: number;
 };
 
 type CacheEntry = {
@@ -196,6 +203,8 @@ async function fetchBatch(
       "precipitation",
       "cape",
       "convective_inhibition",
+      "lifted_index",
+      "shortwave_radiation",
       "wind_speed_10m",
       "wind_direction_10m",
       "wind_speed_100m",
@@ -260,6 +269,12 @@ function windUV(spdKmh: number, dirDeg: number): { u: number; v: number } {
   };
 }
 
+function hourFromIso(t: string): number | null {
+  if (t.length < 13) return null;
+  const h = Number(t.slice(11, 13));
+  return Number.isFinite(h) ? h : null;
+}
+
 function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   const h = loc.hourly;
   if (!h?.time?.length || !idxs.length) return null;
@@ -276,12 +291,21 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   let windU = 0;
   let windV = 0;
   let pressureHpa = 1013;
+  /** Most unstable (minimum) LI; default stable. */
+  let liftedIndex = 12;
+  let morningMinT = Number.POSITIVE_INFINITY;
+  let afternoonMaxT = Number.NEGATIVE_INFINITY;
+  let afternoonCape = 0;
+  let afternoonDew = -20;
+  let maxShortwave = 0;
   let peakIdx = idxs[0]!;
   let n = 0;
 
   for (const i of idxs) {
     const c = num(h.cape?.[i]) ?? 0;
     const ci = num(h.convective_inhibition?.[i]) ?? 0;
+    const li = num(h.lifted_index?.[i]);
+    const sw = num(h.shortwave_radiation?.[i]) ?? 0;
     const dp = num(h.dew_point_2m?.[i]);
     const t = num(h.temperature_2m?.[i]);
     const r = num(h.relative_humidity_2m?.[i]) ?? 0;
@@ -289,6 +313,7 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     const pp = num(h.precipitation_probability?.[i]) ?? 0;
     const pr = num(h.precipitation?.[i]) ?? 0;
     const pmsl = num(h.pressure_msl?.[i]);
+    const hour = hourFromIso(String(h.time[i] ?? ""));
 
     const s10 = num(h.wind_speed_10m?.[i]) ?? 0;
     const d10 = num(h.wind_direction_10m?.[i]) ?? 0;
@@ -314,6 +339,7 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
       if (t != null) temp = t;
     }
     cin = Math.min(cin, ci);
+    if (li != null) liftedIndex = Math.min(liftedIndex, li);
     if (dp != null) dew = Math.max(dew, dp);
     if (t != null) temp = Math.max(temp, t);
     rh = Math.max(rh, r);
@@ -321,6 +347,19 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     precipProb = Math.max(precipProb, pp);
     precipMm += Math.max(0, pr);
     shear = Math.max(shear, sh);
+    maxShortwave = Math.max(maxShortwave, sw);
+
+    if (hour != null && t != null) {
+      if (hour >= 5 && hour <= 9) {
+        morningMinT = Math.min(morningMinT, t);
+      }
+      if (hour >= 11 && hour <= 17) {
+        afternoonMaxT = Math.max(afternoonMaxT, t);
+        afternoonCape = Math.max(afternoonCape, c);
+        if (dp != null) afternoonDew = Math.max(afternoonDew, dp);
+        if (li != null) liftedIndex = Math.min(liftedIndex, li);
+      }
+    }
     n += 1;
   }
   if (!n) return null;
@@ -340,6 +379,19 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
   }
   if (peakP != null) pressureHpa = peakP;
 
+  // Daylight heating pulse: insolation + diurnal temp rise + moist afternoon CAPE.
+  const deltaT =
+    Number.isFinite(morningMinT) && Number.isFinite(afternoonMaxT)
+      ? afternoonMaxT - morningMinT
+      : 0;
+  const moistPulse = clamp01(((afternoonDew > -19 ? afternoonDew : dew) - 14) / 10);
+  const diurnalHeating = clamp01(
+    clamp01(deltaT / 11) * 0.35 +
+      clamp01(maxShortwave / 750) * 0.3 +
+      clamp01(afternoonCape / 1400) * 0.25 +
+      moistPulse * 0.1,
+  );
+
   return {
     cape,
     cin,
@@ -354,6 +406,8 @@ function metricsForDay(loc: HourlyLoc, idxs: number[]): DayMetrics | null {
     windV,
     pressureHpa,
     liftTrigger: 0,
+    liftedIndex,
+    diurnalHeating,
   };
 }
 
@@ -423,8 +477,35 @@ function applyLiftTriggers(sites: SiteMetrics[]): void {
   }
 }
 
-/** Map environment metrics → categorical rank 0–8 + hatch 0/1/2. */
-export function scoreEnvironment(m: DayMetrics): {
+/** Map Lifted Index → instability 0–1 (more negative = more unstable). */
+function liInstability(li: number): number {
+  if (li <= -6) return 1;
+  if (li <= -4) return 0.9;
+  if (li <= -2) return 0.78;
+  if (li <= 0) return 0.58;
+  if (li <= 2) return 0.38; // tropical-marginal LI still useful with CAPE
+  if (li <= 4) return 0.2;
+  if (li <= 6) return 0.1;
+  return 0.04;
+}
+
+/** Strongly positive LI suppresses convective risk. */
+function liBrake(li: number): number {
+  if (li >= 10) return 0.15;
+  if (li >= 8) return 0.3;
+  if (li >= 6) return 0.5;
+  if (li >= 4) return 0.7;
+  return 1;
+}
+
+/**
+ * Map environment metrics → categorical rank 0–8 + hatch 0/1/2.
+ * Includes synoptic boundary lift, daylight heating pulse, and Lifted Index.
+ */
+export function scoreEnvironment(
+  m: DayMetrics,
+  lat = -25,
+): {
   rank: number;
   hatch: 0 | 1 | 2;
   composite: number;
@@ -432,8 +513,11 @@ export function scoreEnvironment(m: DayMetrics): {
   const cape = Math.max(0, m.cape);
   const moisture = clamp01((m.dewpoint - 12) / 12);
   const rhBoost = clamp01((m.rh - 45) / 45);
-  // Conservative CAPE scale — everyday convection stays low on the ladder.
-  const instability = clamp01(cape / 3600);
+  const li = m.liftedIndex;
+  const liInstab = liInstability(li);
+  const liSupp = liBrake(li);
+  // CAPE + LI together — LI catches unstable columns that CAPE alone underplays.
+  const instability = clamp01(clamp01(cape / 3600) * 0.55 + liInstab * 0.45);
   const cin = m.cin;
   const cinBrake =
     cin <= -120
@@ -450,34 +534,65 @@ export function scoreEnvironment(m: DayMetrics): {
     clamp01(m.precipProb / 100) * 0.45 +
     clamp01(m.cloud / 100) * 0.15 +
     clamp01(m.precipMm / 16) * 0.4;
-  const trigger = clamp01(m.liftTrigger);
-  const lift = clamp01(precipLift * 0.6 + trigger * 0.4);
+
+  const tropical = lat >= -23.5;
+  const subtrop = lat >= -28 && lat < -23.5;
+  const diurnal = clamp01(m.diurnalHeating);
+  // Daylight heating is a valid trigger — especially tropics/subtropics.
+  const heatTrigger =
+    diurnal *
+    (tropical ? 1.2 : subtrop ? 1.0 : 0.75) *
+    clamp01(0.55 + moisture * 0.45);
+  const synopticTrigger = clamp01(m.liftTrigger);
+  const trigger = clamp01(Math.max(synopticTrigger, heatTrigger * 0.95));
+  const lift = clamp01(precipLift * 0.45 + trigger * 0.55);
+
+  // Ordinary pulse cells: moist afternoon heating, workable CIN/LI, weak shear OK.
+  const pulse =
+    diurnal >= 0.38 &&
+    moisture >= 0.38 &&
+    cape >= 220 &&
+    li <= 3.5 &&
+    cinBrake >= 0.5 &&
+    liSupp >= 0.7;
+
+  // Pulse storms don't need deep shear in the composite.
+  const shearTerm = pulse ? shear * 0.06 + 0.08 : shear * 0.15;
 
   const composite =
-    instability * 0.4 * cinBrake +
-    moisture * 0.15 +
-    rhBoost * 0.05 +
-    shear * 0.15 +
-    lift * 0.25;
+    (instability * 0.38 * cinBrake * liSupp +
+      moisture * 0.14 +
+      rhBoost * 0.05 +
+      shearTerm +
+      lift * 0.28) *
+    (pulse && (tropical || subtrop) ? 1.08 : 1);
 
   // Every tier is gated hard — no free climbs from bumps.
+  // Higher ranks still need organised shear/synoptic signals; pulse fills 1–3.
   let rank = 0;
   if (
     composite >= 0.88 &&
     cape >= 3000 &&
     shear >= 0.6 &&
-    trigger >= 0.55 &&
-    moisture >= 0.45
+    synopticTrigger >= 0.5 &&
+    moisture >= 0.45 &&
+    li <= 0
   ) {
     rank = 8; // V-High
   } else if (
     composite >= 0.78 &&
     cape >= 2400 &&
     shear >= 0.5 &&
-    moisture >= 0.4
+    moisture >= 0.4 &&
+    li <= 1
   ) {
     rank = 7; // High
-  } else if (composite >= 0.68 && cape >= 1800 && moisture >= 0.35) {
+  } else if (
+    composite >= 0.68 &&
+    cape >= 1800 &&
+    moisture >= 0.35 &&
+    li <= 2
+  ) {
     rank = 6; // Moderate
   } else if (composite >= 0.58 && cape >= 1300 && moisture >= 0.3) {
     rank = 5; // Severe
@@ -494,7 +609,28 @@ export function scoreEnvironment(m: DayMetrics): {
     rank = 1; // Low T-Storm
   }
 
-  // No rank bumps — categories must be earned at the gate.
+  // Daylight / tropical pulse path — ordinary cells without a front/dryline.
+  if (pulse) {
+    if (
+      rank < 3 &&
+      (tropical || subtrop) &&
+      cape >= 700 &&
+      moisture >= 0.5 &&
+      li <= 2.5 &&
+      diurnal >= 0.45
+    ) {
+      rank = 3; // Low
+    } else if (
+      rank < 2 &&
+      cape >= 320 &&
+      moisture >= 0.4 &&
+      (tropical || subtrop || diurnal >= 0.55)
+    ) {
+      rank = 2; // T-Storm
+    } else if (rank < 1 && cape >= 140 && moisture >= 0.32) {
+      rank = 1; // Low T-Storm
+    }
+  }
 
   let hatch: 0 | 1 | 2 = 0;
   if (
@@ -503,7 +639,8 @@ export function scoreEnvironment(m: DayMetrics): {
     cin > -35 &&
     composite >= 0.72 &&
     rank >= 5 &&
-    trigger >= 0.6
+    synopticTrigger >= 0.55 &&
+    li <= -1
   ) {
     hatch = 2;
   } else if (
@@ -512,7 +649,8 @@ export function scoreEnvironment(m: DayMetrics): {
     cinBrake >= 0.7 &&
     composite >= 0.52 &&
     rank >= 4 &&
-    trigger >= 0.5
+    trigger >= 0.45 &&
+    li <= 1
   ) {
     hatch = 1;
   }
@@ -610,7 +748,7 @@ async function computeOutlook(): Promise<CacheEntry> {
     }
     applyLiftTriggers(siteMetrics);
     for (const site of siteMetrics) {
-      const scored = scoreEnvironment(site.m);
+      const scored = scoreEnvironment(site.m, site.lat);
       if (scored.rank <= 0 && scored.hatch === 0) continue;
       points.push({
         lat: site.lat,
@@ -742,7 +880,7 @@ export async function getAutoRiskCatalog(opts: { force?: boolean } = {}) {
     legend: autoRiskLegendItems(),
     blurbs: autoRiskCategoryBlurbs(),
     attribution:
-      "SkyWatch automated guidance from Open-Meteo model fields (GFS/ICON/ECMWF blend via best_match). Guidance only — not an official warning.",
+      "SkyWatch automated guidance from Open-Meteo model fields (CAPE, LI, CIN, shear, boundaries, and daylight heating). Guidance only — not an official warning.",
     message: outlook.message,
     outlook,
   };
