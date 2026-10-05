@@ -441,21 +441,32 @@ export function RiskDashboard() {
     return ids;
   }, [active?.legend]);
 
-  const dayHasRisk = (day: RolledDay | null | undefined) =>
-    Boolean(
-      day?.legend?.some((item) =>
+  const dayHasRisk = (day: RolledDay | null | undefined) => {
+    if (!day) return false;
+    const catalogDay = catalog?.days?.find((d) => d.day === day.effectiveDay);
+    if (catalogDay?.available) return true;
+    return Boolean(
+      day.legend?.some((item) =>
         isModelSource(source) ? item.used && item.order < 100 : item.used,
       ),
     );
+  };
 
+  // Prefer API imageUrl when present — avoids blank maps if legend used-flags
+  // were over-pruned while dayPoints still have signal.
+  const catalogImageUrl =
+    selectedDay != null
+      ? (catalog?.days?.find((d) => d.day === selectedDay)?.imageUrl ?? null)
+      : null;
   const productQs =
     isModelSource(source) && product !== "risk" ? `&product=${product}` : "";
   const riskImageUrl =
-    selectedDay != null && dayHasRisk(active)
+    catalogImageUrl ??
+    (selectedDay != null && dayHasRisk(active)
       ? `/api/weather/risk-image?source=${source}${productQs}&day=${selectedDay}&t=${encodeURIComponent(
           data?.issuedAt ?? String(selectedDay),
         )}`
-      : null;
+      : null);
 
   const region = getMapRegion(regionId);
   const daySlots = data?.days ?? [];

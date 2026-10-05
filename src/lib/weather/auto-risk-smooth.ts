@@ -38,7 +38,7 @@ const OPEN_PX = 2;
 /** Guaranteed width (px) of each outer band around the next-higher core. */
 const NEST_GAP_PX = 5;
 /** Drop sample sites with fewer than this many neighbours inside NEIGHBOR_KM. */
-const MIN_SAMPLE_NEIGHBORS = 2;
+const MIN_SAMPLE_NEIGHBORS = 1;
 const SAMPLE_NEIGHBOR_KM = 165;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
@@ -1042,15 +1042,17 @@ export function summarizeUsed(
 }
 
 /**
- * Fast legend used-flags from consolidated sample sites (no Delaunay bake).
- * Matches the painted map closely enough for the key without blowing the
- * Vercel 60s budget during catalog compute (7 days × 6 products).
+ * Fast legend used-flags. Prefer consolidated neighbours so lone pinpricks
+ * don't light Severe in the key, but never wipe an entire day's signal —
+ * outlook status / map visibility use dayPoints, not this alone.
  */
 export function summarizeUsedForLegend(
   points: AutoRiskSamplePoint[],
 ): { ranks: Set<number>; hatches: Set<AutoHatchId> } {
   if (!points.length) return { ranks: new Set(), hatches: new Set() };
   const kept = consolidateSamplePoints(points);
+  // If consolidation removed everything, fall back to raw samples so the
+  // catalog does not report a false "no risk" empty outlook.
   return summarizeUsed(kept.length ? kept : points);
 }
 

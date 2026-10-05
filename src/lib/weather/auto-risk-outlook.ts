@@ -1748,8 +1748,10 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
 
   for (const product of MODEL_RISK_PRODUCTS) {
     const rolled = rolledByProduct[product];
-    const anySignal = rolled.some((r) =>
-      r.legend.some((i) => i.used && i.order < 100),
+    // Signal from scored dayPoints — NOT legend used-flags. Legend consolidate
+    // can dim ranks without meaning the outlook is empty.
+    const anySignal = Object.values(products[product].dayPoints).some((pts) =>
+      productHasSignal(pts),
     );
     const suppressClear = incomplete && !anySignal;
     const meta = PRODUCT_META[product];
@@ -1813,13 +1815,13 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v8/${kind}.json`;
+  return `model-risk/v9/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v8",
+    "skywatch-model-risk-v9",
     `${kind}.json`,
   );
 }
@@ -1953,11 +1955,18 @@ async function ensureCache(
   if (!opts.force && inflightByKind[kind]) return inflightByKind[kind]!;
   inflightByKind[kind] = (async () => {
     if (!opts.force) {
-      // Prefer fresh shared, then soft-stale — recomputing Open-Meteo for every
-      // cold Vercel isolate routinely 504s past the 60s platform limit.
-      const shared =
-        (await readSharedOk(kind)) ??
-        (await readSharedOk(kind, { allowSoftStale: true }));
+      // Prefer fresh shared, then soft-stale — but never soft-serve an empty
+      // risk product when a newer compute could restore areas (false empty
+      // from aggressive legend consolidate previously poisoned the blob).
+      const fresh = await readSharedOk(kind);
+      const soft =
+        fresh ?? (await readSharedOk(kind, { allowSoftStale: true }));
+      const softRiskOk =
+        soft?.products?.risk?.outlook?.status === "ok" ||
+        MODEL_RISK_PRODUCTS.some(
+          (p) => soft?.products?.[p]?.outlook?.status === "ok",
+        );
+      const shared = fresh ?? (softRiskOk ? soft : null);
       if (shared?.products) {
         const products = emptyProductLayers();
         for (const p of MODEL_RISK_PRODUCTS) {
@@ -2081,6 +2090,8 @@ export async function getModelRiskCatalog(
   const outlook = await getModelRiskOutlook(kind, opts);
   const issued = outlook.issuedAt ?? new Date().toISOString();
   const productQs = product === "risk" ? "" : `&product=${product}`;
+  const entry = await ensureCache(kind, opts);
+  const layer = layerFor(entry, product);
   return {
     status: outlook.status,
     source: kind,
@@ -2093,9 +2104,10 @@ export async function getModelRiskCatalog(
     updatedAt: issued,
     issuedAt: issued,
     days: outlook.days.map((d) => {
-      const available = (d.legend ?? []).some(
-        (item) => item.used && item.order < 100,
-      );
+      const points = layer.dayPoints[d.effectiveDay] ?? [];
+      const available =
+        productHasSignal(points) ||
+        (d.legend ?? []).some((item) => item.used && item.order < 100);
       return {
         day: d.effectiveDay,
         label: d.label,
