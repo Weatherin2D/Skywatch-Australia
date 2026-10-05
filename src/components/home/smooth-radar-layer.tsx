@@ -35,8 +35,11 @@ function createBufferLayer(zIndex: number): L.TileLayer {
 
 /**
  * Dual-buffer radar tiles: keep the current frame fully visible until the next
- * frame's visible tiles have loaded, then snap instantly. Never remounts layers
- * on frame change (remounting was the blank-flash source).
+ * frame's visible tiles have loaded (or a short failsafe), then snap.
+ *
+ * Failsafe MUST stay well under the playback interval (~650ms at 1×). A longer
+ * wait meant every new frame cancelled the previous reveal and the loop froze
+ * on the first painted frame.
  */
 export function SmoothRadarLayer({
   url,
@@ -64,13 +67,10 @@ export function SmoothRadarLayer({
     a.addTo(map);
     b.addTo(map);
 
-    // After zoom/pan, force the front buffer to re-evaluate so overzoomed
-    // native tiles stay painted (Leaflet can leave a stale empty grid).
     const refreshFront = () => {
       const buffers = buffersRef.current;
-      if (!buffers) return;
+      if (!buffers || !displayedUrlRef.current) return;
       const front = buffers[frontRef.current]!;
-      if (!displayedUrlRef.current) return;
       front.redraw();
       front.setOpacity(opacityRef.current);
     };
@@ -97,8 +97,6 @@ export function SmoothRadarLayer({
     buffers[frontRef.current]!.setOpacity(opacity);
   }, [opacity]);
 
-  // Include `map` so buffer remounts (Strict Mode / map rebuild) reload the
-  // current frame — otherwise freshly created empty buffers stay blank.
   useEffect(() => {
     const buffers = buffersRef.current;
     if (!buffers) return;
@@ -133,6 +131,7 @@ export function SmoothRadarLayer({
 
     const gen = ++loadGenRef.current;
     pendingUrlRef.current = url;
+    const hasPaintedFrame = Boolean(displayedUrlRef.current && frontUrl);
 
     const reveal = (layer: L.TileLayer, hide: L.TileLayer, newFront: number) => {
       if (gen !== loadGenRef.current) return;
@@ -146,7 +145,11 @@ export function SmoothRadarLayer({
       pendingUrlRef.current = null;
     };
 
-    const loadInto = (layer: L.TileLayer, onReady: () => void) => {
+    const loadInto = (
+      layer: L.TileLayer,
+      onReady: () => void,
+      failSafeMs: number,
+    ) => {
       layer.off("load");
       layer.off("tileerror");
       let settled = false;
@@ -156,27 +159,23 @@ export function SmoothRadarLayer({
         window.clearTimeout(failSafe);
         onReady();
       };
-      // Don't wait forever on a slow/partial tile set — show what we have.
-      const failSafe = window.setTimeout(finish, 700);
+      // Show partial tiles quickly — must beat the animation interval so the
+      // next frame doesn't cancel this reveal forever.
+      const failSafe = window.setTimeout(finish, failSafeMs);
       layer.once("load", finish);
       layer.setOpacity(0);
       layer.setUrl(url, false);
     };
 
-    // First paint / remount: load into the front buffer and show when ready.
-    if (!displayedUrlRef.current || frontUrl !== url) {
-      // If we already have a painted frame, keep it up while the next URL
-      // loads into the back buffer (covers Strict Mode remount + URL change).
-      if (displayedUrlRef.current && frontUrl && frontUrl !== url) {
-        loadInto(back, () => reveal(back, front, backIdx));
-        return;
-      }
-      loadInto(front, () => reveal(front, back, frontIdx));
+    // Subsequent frames: swap via back buffer with a short failsafe so 1×/2×
+    // playback (~650/360ms) never outruns the reveal.
+    if (hasPaintedFrame && frontUrl !== url) {
+      loadInto(back, () => reveal(back, front, backIdx), 160);
       return;
     }
 
-    // Subsequent frames: load into the hidden back buffer, then snap.
-    loadInto(back, () => reveal(back, front, backIdx));
+    // First paint / remount.
+    loadInto(front, () => reveal(front, back, frontIdx), 400);
   }, [url, map]);
 
   return null;
@@ -229,16 +228,13 @@ export function useRadarFramePreloader(
       } catch {
         /* map may be tearing down */
       }
-      // Always warm native zooms — overzoomed views still fetch z≤7 tiles.
       const native = Math.max(3, Math.min(RADAR_NATIVE_MAX_ZOOM, z));
       if (z > RADAR_NATIVE_MAX_ZOOM) {
-        // Warm native max + one coarser so zoom-out stays instant.
         const coarser = Math.max(3, RADAR_NATIVE_MAX_ZOOM - 1);
         return [coarser, RADAR_NATIVE_MAX_ZOOM];
       }
       const coarser = Math.max(3, native - 1);
-      const finer =
-        native < RADAR_NATIVE_MAX_ZOOM ? native + 1 : native;
+      const finer = native < RADAR_NATIVE_MAX_ZOOM ? native + 1 : native;
       return [...new Set([coarser, native, finer])];
     };
 
@@ -257,13 +253,13 @@ export function useRadarFramePreloader(
     };
 
     const n = templates.length;
-    // Current + next four frames — enough for smooth play without flooding.
-    for (let step = 0; step <= 4; step++) {
+    // Warm current + neighbours so playback never stalls on cold tiles.
+    for (const step of [0, 1, 2, 3, 4, n - 1]) {
       pushFrame((activeIndex + step) % n, step === 0);
     }
 
     let active = 0;
-    const CONCURRENCY = 12;
+    const CONCURRENCY = 14;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -281,7 +277,6 @@ export function useRadarFramePreloader(
     };
     pump();
 
-    // Re-warm when the user pans/zooms into a new viewport.
     let moveTimer: number | null = null;
     const onViewChange = () => {
       if (moveTimer != null) window.clearTimeout(moveTimer);
@@ -290,7 +285,7 @@ export function useRadarFramePreloader(
         pushFrame(activeIndex % n, true);
         pushFrame((activeIndex + 1) % n, true);
         pump();
-      }, 120);
+      }, 100);
     };
     map.on("moveend", onViewChange);
     map.on("zoomend", onViewChange);

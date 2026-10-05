@@ -32,6 +32,7 @@ import {
 } from "@/components/home/synoptic-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
 import { MapFullscreenButton } from "@/components/home/map-fullscreen";
+import { MapChromeFix } from "@/components/home/map-chrome-fix";
 import {
   RadarFramePreloader,
   SmoothRadarLayer,
@@ -270,6 +271,7 @@ function SatelliteRadarOverlay({
         touchZoom={false}
         style={{ background: "transparent" }}
       >
+        <MapChromeFix />
         <FitRegionBounds
           bounds={bounds}
           animate={false}
@@ -564,6 +566,7 @@ export function HomeMap({
         attributionControl
         fadeAnimation={false}
       >
+        <MapChromeFix />
         <MapModeEffect mode={mode} />
         <MapClickHandler onMapClick={onMapClick} />
         <FitRegionBounds bounds={bounds} animate isNational={isNational} />

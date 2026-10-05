@@ -1,6 +1,6 @@
 /* SkyWatch Australia — offline shell + cache-first immutable weather assets */
-const SHELL_CACHE = "skywatch-shell-v4";
-const FRAME_CACHE = "skywatch-frames-v4";
+const SHELL_CACHE = "skywatch-shell-v5";
+const FRAME_CACHE = "skywatch-frames-v5";
 /** Do not precache HTML routes — that trapped navigations on stale shells. */
 const SHELL_URLS = ["/manifest.webmanifest"];
 

@@ -564,9 +564,12 @@ function HomeDashboardInner({
 
   // Soft live tip updates: keep the same wall-clock frame when a new tip
   // arrives. Hard-reset only when product/region (or radar loop) changes.
+  // Depend on tipTime + length — NOT the frames array identity — so maps
+  // polls don't keep resetting playback / clearing autoplay.
+  const loopLen = loopFrames.length;
   useEffect(() => {
     if (!useTimeline) return;
-    if (loopFrames.length === 0) {
+    if (loopLen === 0) {
       setPlaying(false);
       setFrameIndex(0);
       return;
@@ -579,10 +582,16 @@ function HomeDashboardInner({
     hardLoopKeyRef.current = hardLoopKey;
     prevTipRef.current = tipTime;
 
-    if (hardChanged || prevTip === 0) {
+    if (hardChanged) {
       autoPlayKeyRef.current = "";
       userPausedRef.current = false;
       setPlaying(false);
+      setFrameIndex(0);
+      return;
+    }
+
+    // First tip for this loop — park on frame 0; autoplay effect will start.
+    if (prevTip === 0) {
       setFrameIndex(0);
       return;
     }
@@ -594,7 +603,7 @@ function HomeDashboardInner({
         : -1;
       if (nextIndex < 0) {
         // Sliding window dropped the current stamp — stay near the live tip.
-        nextIndex = Math.max(0, loopFrames.length - 2);
+        nextIndex = Math.max(0, loopLen - 2);
       }
       setFrameIndex(nextIndex);
       // Keep playing if the user hadn't paused.
@@ -603,9 +612,11 @@ function HomeDashboardInner({
       }
     } else {
       // Length/order tweaks without a newer tip — clamp index.
-      setFrameIndex((prev) => Math.min(prev, loopFrames.length - 1));
+      setFrameIndex((prev) => Math.min(prev, loopLen - 1));
     }
-  }, [hardLoopKey, tipTime, loopFrames, useTimeline]);
+    // loopFrames only read inside tipAdvanced path; tipTime/loopLen gate reruns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [hardLoopKey, tipTime, loopLen, useTimeline]);
 
   // Auto-start once a usable buffer is warm (or the whole loop is ready).
   useEffect(() => {
