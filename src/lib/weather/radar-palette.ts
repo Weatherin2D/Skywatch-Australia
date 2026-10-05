@@ -146,6 +146,98 @@ export function recolourRadarPng(input: Buffer): Buffer {
 }
 
 /**
+ * RainViewer z8+ “empty” placeholders are mostly semi-transparent black/white
+ * checkers — not real reflectivity. Treat as fully transparent.
+ */
+export function isRainviewerPlaceholderPng(input: Buffer): boolean {
+  try {
+    const png = PNG.sync.read(input);
+    const { data, width, height } = png;
+    const total = width * height;
+    if (total < 64) return true;
+    let opaque = 0;
+    let placeholderish = 0;
+    // Sample every 8th pixel for speed.
+    for (let i = 0; i < data.length; i += 32) {
+      const a = data[i + 3]!;
+      if (a === 0) continue;
+      opaque += 1;
+      const r = data[i]!;
+      const g = data[i + 1]!;
+      const b = data[i + 2]!;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      // Near-black or near-white with partial alpha, or flat grey.
+      if (
+        (max <= 45 && a < 220) ||
+        (min >= 210 && a < 240) ||
+        (max - min <= 8 && max <= 60 && a < 200)
+      ) {
+        placeholderish += 1;
+      }
+    }
+    if (opaque === 0) return false; // already empty — fine
+    return placeholderish / opaque >= 0.85;
+  } catch {
+    return false;
+  }
+}
+
+const TRANSPARENT_TILE_PNG: Buffer = (() => {
+  const png = new PNG({ width: 1, height: 1 });
+  png.data[0] = 0;
+  png.data[1] = 0;
+  png.data[2] = 0;
+  png.data[3] = 0;
+  return PNG.sync.write(png);
+})();
+
+export function transparentRadarTilePng(): Buffer {
+  return Buffer.from(TRANSPARENT_TILE_PNG);
+}
+
+/**
+ * Crop a child tile out of a recoloured native parent and nearest-neighbour
+ * upscale to 256². Used when the client requests z > RADAR_NATIVE_MAX_ZOOM.
+ */
+export function extractOverzoomTile(
+  parentPng: Buffer,
+  scale: number,
+  childX: number,
+  childY: number,
+): Buffer {
+  if (scale <= 1) return parentPng;
+  const parent = PNG.sync.read(parentPng);
+  const srcSize = parent.width;
+  const childSize = srcSize / scale;
+  if (!Number.isFinite(childSize) || childSize < 1) {
+    return transparentRadarTilePng();
+  }
+  const ox = (childX % scale) * childSize;
+  const oy = (childY % scale) * childSize;
+  const out = new PNG({ width: 256, height: 256 });
+  for (let y = 0; y < 256; y++) {
+    const sy = Math.min(
+      srcSize - 1,
+      Math.floor(oy + (y * childSize) / 256),
+    );
+    for (let x = 0; x < 256; x++) {
+      const sx = Math.min(
+        srcSize - 1,
+        Math.floor(ox + (x * childSize) / 256),
+      );
+      const si = (sy * srcSize + sx) << 2;
+      const di = (y * 256 + x) << 2;
+      out.data[di] = parent.data[si]!;
+      out.data[di + 1] = parent.data[si + 1]!;
+      out.data[di + 2] = parent.data[si + 2]!;
+      out.data[di + 3] = parent.data[si + 3]!;
+    }
+  }
+  return PNG.sync.write(out);
+}
+
+/**
  * RainViewer serves useful reflectivity only through ~z7. Higher zooms return
  * empty/placeholder tiles — Leaflet must overzoom from this native max.
  */

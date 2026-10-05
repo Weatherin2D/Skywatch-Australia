@@ -476,12 +476,14 @@ export function HomeMap({
     setFullscreenTarget(mapShellRef.current);
   }, [satelliteLoop, regionId]);
 
+  // Esri Canvas dark base. Unloaded areas must stay navy (not Leaflet #ddd) —
+  // see globals.css. keepBuffer + updateWhenZooming:false cut grey flash on pan.
   const basemapUrl = useSatelliteBasemap
     ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
     : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
-  const basemapAttr = useSatelliteBasemap
-    ? "Esri World Imagery"
-    : "Esri";
+  const basemapAttr = useSatelliteBasemap ? "Esri World Imagery" : "Esri";
+  const darkTilePlaceholder =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
   // Satellite: full-bleed region crop (national or state) — image is already
   // georeferenced to `bounds`, so CSS overlays use the same projection.
@@ -556,17 +558,26 @@ export function HomeMap({
         zoom={4}
         minZoom={3}
         maxZoom={18}
-        className="h-full w-full"
+        className="h-full w-full !bg-[#0a1628]"
+        style={{ background: "#0a1628" }}
         zoomControl={false}
         attributionControl
+        fadeAnimation={false}
       >
         <MapModeEffect mode={mode} />
         <MapClickHandler onMapClick={onMapClick} />
         <FitRegionBounds bounds={bounds} animate isNational={isNational} />
         <TileLayer
-          key={useSatelliteBasemap ? "sat" : "dark"}
+          key={useSatelliteBasemap ? "sat" : "esri-dark"}
           url={basemapUrl}
           attribution={basemapAttr}
+          keepBuffer={16}
+          updateWhenZooming={false}
+          updateWhenIdle
+          maxZoom={18}
+          maxNativeZoom={16}
+          errorTileUrl={darkTilePlaceholder}
+          crossOrigin
         />
         {mapSatelliteImageUrl && mapSatelliteImageBounds ? (
           <ImageOverlay

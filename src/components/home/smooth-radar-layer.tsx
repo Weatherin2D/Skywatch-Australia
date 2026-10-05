@@ -16,12 +16,12 @@ function createBufferLayer(zIndex: number): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
     className: "skywatch-radar-tiles",
-    keepBuffer: 16,
-    updateWhenIdle: false,
-    // Keep scaled tiles visible while the gesture runs — blanking mid-zoom
-    // felt like the radar "vanished".
-    updateWhenZooming: true,
-    updateInterval: 80,
+    keepBuffer: 24,
+    // Hold painted tiles through the gesture — updating mid-zoom was blanking
+    // the radar so it looked like it "vanished" on pinch/scroll.
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    updateInterval: 120,
     zIndex,
     // RainViewer only has real data through ~z7. Overzoom past that so tight
     // zooms keep showing scaled reflectivity instead of empty z8–12 tiles.
@@ -64,22 +64,23 @@ export function SmoothRadarLayer({
     a.addTo(map);
     b.addTo(map);
 
-    // After zoom, force the front buffer to re-evaluate so overzoomed native
-    // tiles stay painted (Leaflet can leave a stale empty grid otherwise).
-    const onZoomEnd = () => {
+    // After zoom/pan, force the front buffer to re-evaluate so overzoomed
+    // native tiles stay painted (Leaflet can leave a stale empty grid).
+    const refreshFront = () => {
       const buffers = buffersRef.current;
       if (!buffers) return;
       const front = buffers[frontRef.current]!;
+      if (!displayedUrlRef.current) return;
       front.redraw();
-      if (displayedUrlRef.current) {
-        front.setOpacity(opacityRef.current);
-      }
+      front.setOpacity(opacityRef.current);
     };
-    map.on("zoomend", onZoomEnd);
+    map.on("zoomend", refreshFront);
+    map.on("moveend", refreshFront);
 
     return () => {
       loadGenRef.current += 1;
-      map.off("zoomend", onZoomEnd);
+      map.off("zoomend", refreshFront);
+      map.off("moveend", refreshFront);
       a.off();
       b.off();
       map.removeLayer(a);
@@ -156,7 +157,7 @@ export function SmoothRadarLayer({
         onReady();
       };
       // Don't wait forever on a slow/partial tile set — show what we have.
-      const failSafe = window.setTimeout(finish, 900);
+      const failSafe = window.setTimeout(finish, 700);
       layer.once("load", finish);
       layer.setOpacity(0);
       layer.setUrl(url, false);
@@ -230,10 +231,15 @@ export function useRadarFramePreloader(
       }
       // Always warm native zooms — overzoomed views still fetch z≤7 tiles.
       const native = Math.max(3, Math.min(RADAR_NATIVE_MAX_ZOOM, z));
-      if (z > RADAR_NATIVE_MAX_ZOOM) return [RADAR_NATIVE_MAX_ZOOM];
-      // Warm current + one coarser level so zoom-out stays instant.
+      if (z > RADAR_NATIVE_MAX_ZOOM) {
+        // Warm native max + one coarser so zoom-out stays instant.
+        const coarser = Math.max(3, RADAR_NATIVE_MAX_ZOOM - 1);
+        return [coarser, RADAR_NATIVE_MAX_ZOOM];
+      }
       const coarser = Math.max(3, native - 1);
-      return coarser === native ? [native] : [coarser, native];
+      const finer =
+        native < RADAR_NATIVE_MAX_ZOOM ? native + 1 : native;
+      return [...new Set([coarser, native, finer])];
     };
 
     const pushFrame = (idx: number, force = false) => {
@@ -244,20 +250,20 @@ export function useRadarFramePreloader(
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 36 : 28;
+      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 48 : 32;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }
     };
 
     const n = templates.length;
-    // Current + next three frames — enough for smooth play without flooding.
-    for (let step = 0; step <= 3; step++) {
+    // Current + next four frames — enough for smooth play without flooding.
+    for (let step = 0; step <= 4; step++) {
       pushFrame((activeIndex + step) % n, step === 0);
     }
 
     let active = 0;
-    const CONCURRENCY = 8;
+    const CONCURRENCY = 12;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -284,7 +290,7 @@ export function useRadarFramePreloader(
         pushFrame(activeIndex % n, true);
         pushFrame((activeIndex + 1) % n, true);
         pump();
-      }, 180);
+      }, 120);
     };
     map.on("moveend", onViewChange);
     map.on("zoomend", onViewChange);

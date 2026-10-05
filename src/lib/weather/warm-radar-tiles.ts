@@ -103,7 +103,7 @@ async function warmOne(
  */
 export function warmRadarFramesInBackground(
   frames: { host: string; path: string }[],
-  zooms: number[] = [4, 5, 6],
+  zooms: number[] = [4, 5, 6, 7],
 ): void {
   if (!frames.length) return;
   void Promise.resolve().then(async () => {
@@ -111,12 +111,14 @@ export function warmRadarFramesInBackground(
       [];
     for (const f of frames) {
       for (const z of zooms) {
-        for (const { x, y } of tileRange(z, AU_BOUNDS, 40)) {
+        // z7 is denser — keep the national warm window modest.
+        const cap = z >= 7 ? 36 : z >= 6 ? 48 : 56;
+        for (const { x, y } of tileRange(z, AU_BOUNDS, cap)) {
           jobs.push({ host: f.host, path: f.path, z, x, y });
         }
       }
     }
-    const CONCURRENCY = 12;
+    const CONCURRENCY = 16;
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       const slice = jobs.slice(i, i + CONCURRENCY);
       await Promise.all(

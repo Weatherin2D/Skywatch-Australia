@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   RADAR_NATIVE_MAX_ZOOM,
+  extractOverzoomTile,
+  isRainviewerPlaceholderPng,
   rainviewerRawTileUrl,
   recolourRadarPng,
+  transparentRadarTilePng,
 } from "@/lib/weather/radar-palette";
 import {
   getCachedRadarTile,
@@ -15,6 +18,21 @@ export const dynamic = "force-dynamic";
 const HOST_RE = /^https:\/\/([a-z0-9.-]+\.)?rainviewer\.com$/i;
 const PATH_RE = /^\/v2\/radar\/[a-z0-9]+$/i;
 
+function pngResponse(
+  body: Buffer,
+  headers: Record<string, string>,
+): NextResponse {
+  return new NextResponse(new Uint8Array(body), {
+    status: 200,
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control":
+        "public, max-age=1800, stale-while-revalidate=7200, immutable",
+      ...headers,
+    },
+  });
+}
+
 /**
  * Proxy RainViewer radar tiles as unsmoothed pixels, remapped to the
  * SkyWatch dBZ colour scale.
@@ -22,7 +40,8 @@ const PATH_RE = /^\/v2\/radar\/[a-z0-9]+$/i;
  * GET /api/weather/radar-tile?host=&path=&z=&x=&y=
  *
  * RainViewer only has real reflectivity through ~z7. Requests above that are
- * remapped to the parent native tile so clients never cache empty placeholders.
+ * served by cropping/upscaling the native parent tile so zoomed-in views keep
+ * paint instead of empty z8–12 placeholders.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -53,65 +72,74 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid tile coords" }, { status: 400 });
   }
 
-  // Collapse overzoom requests onto the native parent tile.
-  let fetchZ = zi;
-  let fetchX = xi;
-  let fetchY = yi;
-  if (zi > RADAR_NATIVE_MAX_ZOOM) {
-    const scale = 2 ** (zi - RADAR_NATIVE_MAX_ZOOM);
-    fetchZ = RADAR_NATIVE_MAX_ZOOM;
-    fetchX = Math.floor(xi / scale);
-    fetchY = Math.floor(yi / scale);
-  }
+  const overzoom = zi > RADAR_NATIVE_MAX_ZOOM;
+  const scale = overzoom ? 2 ** (zi - RADAR_NATIVE_MAX_ZOOM) : 1;
+  const fetchZ = overzoom ? RADAR_NATIVE_MAX_ZOOM : zi;
+  const fetchX = overzoom ? Math.floor(xi / scale) : xi;
+  const fetchY = overzoom ? Math.floor(yi / scale) : yi;
 
-  const cacheKey = radarTileCacheKey(host, path, fetchZ, fetchX, fetchY);
+  // Cache key includes requested z/x/y so overzoom crops stay distinct.
+  const cacheKey = radarTileCacheKey(host, path, zi, xi, yi);
   const cached = getCachedRadarTile(cacheKey);
   if (cached) {
-    return new NextResponse(new Uint8Array(cached), {
-      status: 200,
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control":
-          "public, max-age=1800, stale-while-revalidate=7200, immutable",
-        "X-Radar-Cache": "HIT",
-        "X-Radar-Source": "rainviewer-raw",
-        "X-Radar-Palette": "skywatch-dbz",
-        "X-Radar-Native-Z": String(fetchZ),
-      },
+    return pngResponse(cached, {
+      "X-Radar-Cache": "HIT",
+      "X-Radar-Source": "rainviewer-raw",
+      "X-Radar-Palette": "skywatch-dbz",
+      "X-Radar-Native-Z": String(fetchZ),
     });
   }
 
-  const upstream = rainviewerRawTileUrl(host, path, fetchZ, fetchX, fetchY);
-  try {
-    const res = await fetch(upstream, {
-      headers: { Accept: "image/png" },
-      // Radar frame paths are content-addressed — safe to cache hard.
-      cache: "force-cache",
-      next: { revalidate: 7200 },
-    });
-    if (!res.ok) {
+  // Parent native tile may already be cached from a sibling overzoom request.
+  const parentKey = radarTileCacheKey(host, path, fetchZ, fetchX, fetchY);
+  let parentRecoloured = getCachedRadarTile(parentKey);
+
+  if (!parentRecoloured) {
+    const upstream = rainviewerRawTileUrl(host, path, fetchZ, fetchX, fetchY);
+    try {
+      const res = await fetch(upstream, {
+        headers: { Accept: "image/png" },
+        cache: "force-cache",
+        next: { revalidate: 7200 },
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: `Upstream ${res.status}` },
+          { status: res.status === 404 ? 404 : 502 },
+        );
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (isRainviewerPlaceholderPng(buf)) {
+        const empty = transparentRadarTilePng();
+        setCachedRadarTile(parentKey, empty);
+        setCachedRadarTile(cacheKey, empty);
+        return pngResponse(empty, {
+          "X-Radar-Cache": "MISS",
+          "X-Radar-Source": "rainviewer-placeholder",
+          "X-Radar-Palette": "skywatch-dbz",
+          "X-Radar-Native-Z": String(fetchZ),
+        });
+      }
+      parentRecoloured = recolourRadarPng(buf);
+      setCachedRadarTile(parentKey, parentRecoloured);
+    } catch (err) {
+      console.error("[weather/radar-tile]", err);
       return NextResponse.json(
-        { error: `Upstream ${res.status}` },
-        { status: res.status === 404 ? 404 : 502 },
+        { error: "Radar tile unavailable" },
+        { status: 502 },
       );
     }
-    const buf = Buffer.from(await res.arrayBuffer());
-    const out = recolourRadarPng(buf);
-    setCachedRadarTile(cacheKey, out);
-    return new NextResponse(new Uint8Array(out), {
-      status: 200,
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control":
-          "public, max-age=1800, stale-while-revalidate=7200, immutable",
-        "X-Radar-Cache": "MISS",
-        "X-Radar-Source": "rainviewer-raw",
-        "X-Radar-Palette": "skywatch-dbz",
-        "X-Radar-Native-Z": String(fetchZ),
-      },
-    });
-  } catch (err) {
-    console.error("[weather/radar-tile]", err);
-    return NextResponse.json({ error: "Radar tile unavailable" }, { status: 502 });
   }
+
+  const out = overzoom
+    ? extractOverzoomTile(parentRecoloured, scale, xi, yi)
+    : parentRecoloured;
+  setCachedRadarTile(cacheKey, out);
+  return pngResponse(out, {
+    "X-Radar-Cache": "MISS",
+    "X-Radar-Source": "rainviewer-raw",
+    "X-Radar-Palette": "skywatch-dbz",
+    "X-Radar-Native-Z": String(fetchZ),
+    "X-Radar-Overzoom": overzoom ? String(scale) : "1",
+  });
 }

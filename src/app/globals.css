@@ -183,11 +183,20 @@
   }
 }
 
+/* Beat leaflet.css `#ddd` — unloaded tile areas were flashing light-grey slabs. */
 .leaflet-container {
-  background: #0a1628;
+  background: #0a1628 !important;
   font: inherit;
   width: 100%;
   height: 100%;
+}
+
+.skywatch-map,
+.skywatch-map .leaflet-container,
+.skywatch-map .leaflet-pane,
+.skywatch-map .leaflet-tile-pane,
+.skywatch-map .leaflet-map-pane {
+  background-color: #0a1628 !important;
 }
 
 .skywatch-map {
