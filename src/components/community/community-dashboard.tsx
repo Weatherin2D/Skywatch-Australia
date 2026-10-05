@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { ImagePlus, Loader2, Upload } from "lucide-react";
+import { CommunityLibrary } from "@/components/community/community-library";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CommunityPost } from "@/lib/community/types";
-import { cn } from "@/lib/utils";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -14,16 +14,6 @@ function todayLocalISO(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function formatEventDate(isoDate: string): string {
-  const d = new Date(`${isoDate}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return isoDate;
-  return d.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 export function CommunityDashboard() {
@@ -269,23 +259,16 @@ export function CommunityDashboard() {
       </section>
 
       <section aria-labelledby={`${formId}-gallery`} className="space-y-3">
-        <h2
-          id={`${formId}-gallery`}
-          className="font-[family-name:var(--font-display)] text-lg font-bold text-white"
-        >
-          Recent posts
-        </h2>
-
         {loading ? (
           <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-8 text-sm text-white/60">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            Loading community posts…
+            Loading photo library…
           </div>
         ) : null}
 
         {!loading && listError ? (
           <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-6 text-sm text-red-100">
-            <p className="font-semibold">Couldn’t load posts</p>
+            <p className="font-semibold">Couldn’t load photo library</p>
             <p className="mt-1 text-white/70">{listError}</p>
             <Button
               type="button"
@@ -298,45 +281,7 @@ export function CommunityDashboard() {
           </div>
         ) : null}
 
-        {!loading && !listError && posts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-4 py-10 text-center">
-            <p className="font-semibold text-white">No posts yet</p>
-            <p className="mt-1 text-sm text-white/55">
-              Be the first to share a weather moment.
-            </p>
-          </div>
-        ) : null}
-
-        {!loading && !listError && posts.length > 0 ? (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {posts.map((post) => (
-              <li
-                key={post.id}
-                className={cn(
-                  "overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]",
-                )}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.imageUrl}
-                  alt={post.title}
-                  className="aspect-[4/3] w-full object-cover bg-[#0a1628]"
-                  loading="lazy"
-                />
-                <div className="space-y-1 p-3">
-                  <h3 className="text-sm font-semibold text-white">
-                    {post.title}
-                  </h3>
-                  <p className="text-xs text-white/60">
-                    {post.author}
-                    <span className="mx-1.5 text-white/30">·</span>
-                    {formatEventDate(post.eventDate)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {!loading && !listError ? <CommunityLibrary posts={posts} /> : null}
       </section>
     </div>
   );

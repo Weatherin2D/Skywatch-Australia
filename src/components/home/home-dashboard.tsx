@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
 import { CellDetailsPanel } from "@/components/home/cell-details-panel";
 import { ChaseHud } from "@/components/home/chase-hud";
+import { HomeCommunityPanel } from "@/components/home/home-community-panel";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { HomeWarningsPanel } from "@/components/warnings/home-warnings-panel";
@@ -1334,6 +1335,8 @@ function HomeDashboardInner({
       </div>
 
       <HomeCapitalsPanel />
+
+      <HomeCommunityPanel />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <HomeWeekPanel />
