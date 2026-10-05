@@ -112,8 +112,17 @@ export function SkewTChart({
   activeParcel = "SFC",
   compact = false,
 }: Props) {
-  const { tPath, tdPath, barbs, isotherms, isobars, adiabats, mixLines, parcelPath } =
-    useMemo(() => {
+  const {
+    tPath,
+    tdPath,
+    barbs,
+    isotherms,
+    isobars,
+    adiabats,
+    mixLines,
+    parcelPath,
+    tempLabels,
+  } = useMemo(() => {
       const tPath = pathFrom(levels.map((l) => ({ t: l.t, p: l.p })));
       const tdPath = pathFrom(levels.map((l) => ({ t: l.td, p: l.p })));
       const barbX = W - PAD.r + 28;
@@ -136,11 +145,20 @@ export function SkewTChart({
             );
 
       const isotherms: string[] = [];
+      const isothermTemps: number[] = [];
       for (let t = T_MIN; t <= T_MAX; t += 10) {
+        isothermTemps.push(t);
         const pts: { t: number; p: number }[] = [];
         for (let p = P_BOT; p >= P_TOP; p -= 25) pts.push({ t, p });
         isotherms.push(pathFrom(pts));
       }
+
+      // Bottom axis labels at ~1000 hPa — only those that land inside the plot.
+      const xMin = PAD.l + 14;
+      const xMax = W - PAD.r - 14;
+      const tempLabels = isothermTemps
+        .map((t) => ({ t, x: xOfT(t, 1000) }))
+        .filter((lab) => lab.x >= xMin && lab.x <= xMax);
 
       const isobars: { y: number; p: number }[] = [];
       for (const p of [1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100]) {
@@ -166,6 +184,7 @@ export function SkewTChart({
         adiabats: compact ? adiabats.filter((_, i) => i % 2 === 0) : adiabats,
         mixLines: compact ? mixLines.filter((_, i) => i % 2 === 0) : mixLines,
         parcelPath,
+        tempLabels,
       };
     }, [levels, parcelTraces, activeParcel, compact]);
 
@@ -205,15 +224,21 @@ export function SkewTChart({
           strokeDasharray="3 3"
         />
       ))}
-      {isotherms.map((d, i) => (
-        <path
-          key={`iso-${i}`}
-          d={d}
-          fill="none"
-          stroke={i === 5 ? "rgba(248,113,113,0.45)" : "rgba(255,255,255,0.08)"}
-          strokeWidth={i === 5 ? 1.25 : 1}
-        />
-      ))}
+      {isotherms.map((d, i) => {
+        const t = T_MIN + i * 10;
+        const zero = t === 0;
+        return (
+          <path
+            key={`iso-${i}`}
+            d={d}
+            fill="none"
+            stroke={
+              zero ? "rgba(248,113,113,0.45)" : "rgba(255,255,255,0.08)"
+            }
+            strokeWidth={zero ? 1.25 : 1}
+          />
+        );
+      })}
       {isobars.map(({ y, p }) => (
         <g key={p}>
           <line
@@ -238,18 +263,27 @@ export function SkewTChart({
         </g>
       ))}
 
-      {!compact ? (
-        <text
-          x={xOfT(0, 1000)}
-          y={H - 10}
-          textAnchor="middle"
-          fill="rgba(248,113,113,0.8)"
-          fontSize={11}
-          fontFamily="Oswald, sans-serif"
-        >
-          0°C
-        </text>
-      ) : null}
+      {!compact
+        ? tempLabels.map(({ t, x }) => {
+            const zero = t === 0;
+            return (
+              <text
+                key={`tlab-${t}`}
+                x={x}
+                y={H - 10}
+                textAnchor="middle"
+                fill={
+                  zero ? "rgba(248,113,113,0.9)" : "rgba(255,255,255,0.55)"
+                }
+                fontSize={11}
+                fontFamily="Oswald, sans-serif"
+                fontWeight={zero ? 600 : 400}
+              >
+                {t}°
+              </text>
+            );
+          })
+        : null}
 
       {parcelPath ? (
         <path
