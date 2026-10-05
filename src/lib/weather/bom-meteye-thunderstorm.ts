@@ -510,3 +510,159 @@ export async function getMeteyeThunderstormDayPng(
     empty: frame.usedRanks.size === 0,
   };
 }
+
+export type MeteyeProbeResult = {
+  status: "ok" | "empty";
+  source: "bom";
+  product: "risk";
+  day: number;
+  lat: number;
+  lon: number;
+  distanceKm: number;
+  category: {
+    id: string;
+    label: string;
+    color: string;
+    rank: number;
+    hatch: 0 | 1 | 2;
+    hatchLabel: string | null;
+  };
+  summary: string;
+  reasons: string[];
+  conditions: Array<{ label: string; value: string; hint?: string }>;
+  guidance: string;
+};
+
+/**
+ * Sample the MetEye day PNG at a lat/lon for map-tap inspect.
+ */
+export async function probeMeteyeThunderstorm(
+  day: number,
+  lat: number,
+  lon: number,
+  opts: { force?: boolean } = {},
+): Promise<MeteyeProbeResult | null> {
+  if (!isMeteyeOutlookDay(day)) return null;
+  const result = await getMeteyeThunderstormDayPng(day, opts);
+  if (!result) return null;
+
+  const [[minLat, minLon], [maxLat, maxLon]] = BOM_METEYE_IMAGE_BOUNDS;
+  if (lat < minLat || lat > maxLat || lon < minLon || lon > maxLon) {
+    return {
+      status: "empty",
+      source: "bom",
+      product: "risk",
+      day,
+      lat,
+      lon,
+      distanceKm: 0,
+      category: {
+        id: "none",
+        label: "Outside MetEye frame",
+        color: "#3A3A3A",
+        rank: 0,
+        hatch: 0,
+        hatchLabel: null,
+      },
+      summary: "That point is outside the MetEye national thunderstorm frame.",
+      reasons: ["Tap inside the Australian map area shown on Risk."],
+      conditions: [],
+      guidance: "Official BoM MetEye thunderstorm layer (IDZ73094).",
+    };
+  }
+
+  const png = decodePng(result.png);
+  const x = Math.round(
+    ((lon - minLon) / (maxLon - minLon)) * (png.width - 1),
+  );
+  const y = Math.round(
+    ((maxLat - lat) / (maxLat - minLat)) * (png.height - 1),
+  );
+  const cx = Math.min(png.width - 1, Math.max(0, x));
+  const cy = Math.min(png.height - 1, Math.max(0, y));
+  const p = (cy * png.width + cx) * 4;
+  const rank = rankPixel(
+    png.data[p]!,
+    png.data[p + 1]!,
+    png.data[p + 2]!,
+    png.data[p + 3]!,
+  );
+  const cat =
+    METEYE_THUNDERSTORM_CATEGORIES.find((c) => c.rank === rank) ?? null;
+
+  if (!cat) {
+    return {
+      status: "empty",
+      source: "bom",
+      product: "risk",
+      day,
+      lat,
+      lon,
+      distanceKm: 0,
+      category: {
+        id: "none",
+        label: "No thunderstorm area",
+        color: "#3A3A3A",
+        rank: 0,
+        hatch: 0,
+        hatchLabel: null,
+      },
+      summary:
+        "BoM MetEye does not show a Chance or Likely thunderstorm area at this point for the selected day.",
+      reasons: [
+        "Clear / no-thunderstorm shading on the official MetEye IDZ73094 frame.",
+        "Nearby coloured areas may still apply within a few tens of kilometres.",
+      ],
+      conditions: [
+        { label: "Source", value: "BoM MetEye IDZ73094" },
+        { label: "Day", value: String(day) },
+      ],
+      guidance:
+        "Official BoM product. For warnings and watches, use the Warnings page or bom.gov.au.",
+    };
+  }
+
+  const blurb =
+    cat.id === "tstm_likely"
+      ? "Thunderstorms are likely in this period — plan for lightning, local heavy rain, and possible severe gusts if storms organise."
+      : "There is at least a low chance of thunderstorms in this period — isolated cells possible.";
+
+  return {
+    status: "ok",
+    source: "bom",
+    product: "risk",
+    day,
+    lat,
+    lon,
+    distanceKm: 0,
+    category: {
+      id: cat.id,
+      label: cat.label,
+      color: cat.color,
+      rank: cat.rank,
+      hatch: 0,
+      hatchLabel: null,
+    },
+    summary: `${cat.label} on BoM MetEye for this location.`,
+    reasons: [
+      blurb,
+      "Colour is sampled from the same MetEye thunderstorm frame shown on the map.",
+      "MetEye does not publish CAPE/shear ingredients with this layer — only Chance vs Likely.",
+    ],
+    conditions: [
+      { label: "Category", value: cat.label },
+      { label: "Source", value: "BoM MetEye IDZ73094" },
+      { label: "Day", value: String(day) },
+      {
+        label: "Issued",
+        value: new Date(result.issuedAt).toLocaleString("en-AU", {
+          timeZone: "Australia/Sydney",
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
+      },
+    ],
+    guidance:
+      "Official BoM product. For warnings and watches, use the Warnings page or bom.gov.au.",
+  };
+}

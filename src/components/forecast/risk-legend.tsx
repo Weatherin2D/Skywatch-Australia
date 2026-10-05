@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   items: DisplayLegendItem[];
+  onItemClick?: (item: DisplayLegendItem) => void;
+  activeId?: string | null;
 };
 
 function hatchKind(item: DisplayLegendItem): "none" | "l1" | "l2" {
@@ -29,7 +31,6 @@ function swatchBackground(item: DisplayLegendItem): React.CSSProperties {
     };
   }
 
-  // L1 thinner stripes, L2 thicker stripes
   const stripe =
     kind === "l2"
       ? "repeating-linear-gradient(135deg, #111 0 3px, transparent 3px 10px)"
@@ -43,7 +44,7 @@ function swatchBackground(item: DisplayLegendItem): React.CSSProperties {
   };
 }
 
-export function RiskLegend({ items }: Props) {
+export function RiskLegend({ items, onItemClick, activeId }: Props) {
   if (!items.length) {
     return (
       <div className="text-sm text-neutral-500">
@@ -56,30 +57,53 @@ export function RiskLegend({ items }: Props) {
     <ul className="flex flex-col gap-2.5">
       {items.map((item) => {
         const used = item.used !== false;
-        return (
-          <li
-            key={item.id}
-            className={cn(
-              "flex items-center gap-3",
-              !used && "opacity-55",
-            )}
-          >
+        const active = activeId === item.id;
+        const rowClass = cn(
+          "flex w-full items-center gap-3 rounded-lg text-left transition",
+          onItemClick && "px-1 py-0.5 hover:bg-white/[0.04]",
+          active && "bg-white/[0.08] ring-1 ring-[var(--cyan)]/40",
+          !used && "opacity-35",
+        );
+        const body = (
+          <>
             <span
               className={cn(
                 "h-5 w-8 shrink-0",
-                used ? "border-2 border-white" : "border border-neutral-700",
+                used ? "border-2 border-white" : "border border-white/20",
               )}
               style={swatchBackground(item)}
               aria-hidden="true"
             />
-            <span
-              className={cn(
-                "text-sm font-medium tracking-wide",
-                used ? "text-neutral-100" : "text-neutral-500",
-              )}
-            >
-              {item.label}
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  "block text-sm font-medium tracking-wide",
+                  used ? "text-neutral-100" : "text-neutral-500",
+                )}
+              >
+                {item.label}
+              </span>
+              {!used ? (
+                <span className="block text-[10px] text-white/35">
+                  Not on this day&apos;s map
+                </span>
+              ) : null}
             </span>
+          </>
+        );
+        return (
+          <li key={item.id}>
+            {onItemClick ? (
+              <button
+                type="button"
+                onClick={() => onItemClick(item)}
+                className={rowClass}
+              >
+                {body}
+              </button>
+            ) : (
+              <div className={rowClass}>{body}</div>
+            )}
           </li>
         );
       })}

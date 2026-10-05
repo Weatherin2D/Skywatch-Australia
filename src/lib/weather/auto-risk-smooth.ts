@@ -842,13 +842,16 @@ export type RenderAutoRiskOptions = {
   hatch?: boolean;
 };
 
-/** Georeferenced PNG for Leaflet ImageOverlay. */
-export function renderAutoRiskPng(
+/**
+ * Final rank/hatch fields after the same mesh → blur → prune path the PNG uses.
+ * Legend "used" flags must come from this, not raw sample points — otherwise
+ * tiny high-rank cores that get pruned still light up Severe+ in the key.
+ */
+export function buildRenderedRiskFields(
   points: AutoRiskSamplePoint[],
   options: RenderAutoRiskOptions = {},
-): Buffer {
+): { ranks: Uint8Array; hatches: Uint8Array; width: number; height: number } {
   const maxRank = options.maxRank ?? AUTO_RISK_MAX_RANK;
-  const colors = options.colors ?? COLOR_BY_RANK;
   const drawHatch = options.hatch !== false;
   const work = sizeFor(WORK_WIDTH);
   const out = sizeFor(OUT_WIDTH);
@@ -870,7 +873,6 @@ export function renderAutoRiskPng(
       )
     : new Uint8Array(work.width * work.height);
 
-  // Light soften only — heavy blur re-rounds polygons into circle-like blobs.
   const rankSoftWork = fieldToSoft(rankWork);
   const hatchSoftWork = fieldToSoft(hatchWork);
   blurFloat(rankSoftWork, work.width, work.height, 3);
@@ -897,7 +899,6 @@ export function renderAutoRiskPng(
 
   const ranks = quantizeFromSoft(rankSoft, maxRank);
   pruneSmallComponents(ranks, out.width, out.height, 140);
-  // Blur/quantize can re-open donuts — reseal nested bands.
   for (let rank = maxRank; rank >= 1; rank--) {
     fillRankHoles(ranks, out.width, out.height, rank);
   }
@@ -912,7 +913,20 @@ export function renderAutoRiskPng(
     }
   }
 
-  const { width, height } = out;
+  return { ranks, hatches, width: out.width, height: out.height };
+}
+
+/** Georeferenced PNG for Leaflet ImageOverlay. */
+export function renderAutoRiskPng(
+  points: AutoRiskSamplePoint[],
+  options: RenderAutoRiskOptions = {},
+): Buffer {
+  const colors = options.colors ?? COLOR_BY_RANK;
+  const drawHatch = options.hatch !== false;
+  const { ranks, hatches, width, height } = buildRenderedRiskFields(
+    points,
+    options,
+  );
   const png = new PNG({ width, height });
 
   for (let i = 0; i < ranks.length; i++) {
@@ -947,6 +961,7 @@ export function renderAutoRiskPng(
   return PNG.sync.write(png);
 }
 
+/** Ranks/hatches present on raw sample sites (pre-raster prune). */
 export function summarizeUsed(
   points: AutoRiskSamplePoint[],
 ): { ranks: Set<number>; hatches: Set<AutoHatchId> } {
@@ -956,6 +971,55 @@ export function summarizeUsed(
     if (p.rank >= 1) ranks.add(p.rank);
     if (p.hatch === 1) hatches.add("l1");
     if (p.hatch === 2) hatches.add("l2");
+  }
+  return { ranks, hatches };
+}
+
+/**
+ * Ranks/hatches that survive onto the painted map. Uses the work-resolution
+ * mesh (including tiny high-rank speck pruning) so the colour key matches the
+ * overlay without paying for a full 2200px PNG bake on every catalog day.
+ */
+export function summarizeUsedFromRender(
+  points: AutoRiskSamplePoint[],
+  options: RenderAutoRiskOptions = {},
+): { ranks: Set<number>; hatches: Set<AutoHatchId> } {
+  if (!points.length) return { ranks: new Set(), hatches: new Set() };
+  const maxRank = options.maxRank ?? AUTO_RISK_MAX_RANK;
+  const drawHatch = options.hatch !== false;
+  // No high cores → speck prune is a no-op; raw samples match the map.
+  const needsMesh = points.some(
+    (p) => p.rank >= 4 || (drawHatch && p.hatch > 0),
+  );
+  if (!needsMesh) return summarizeUsed(points);
+
+  const work = sizeFor(WORK_WIDTH);
+  const field = buildMeshRankField(
+    points,
+    work.width,
+    work.height,
+    (p) => p.rank,
+    maxRank,
+  );
+  const hatchField = drawHatch
+    ? buildMeshRankField(
+        points,
+        work.width,
+        work.height,
+        (p) => p.hatch,
+        2,
+      )
+    : null;
+
+  const ranks = new Set<number>();
+  const hatches = new Set<AutoHatchId>();
+  for (let i = 0; i < field.length; i++) {
+    const r = field[i]!;
+    if (r >= 1) ranks.add(r);
+    if (!hatchField || !r) continue;
+    const h = hatchField[i]!;
+    if (h === 1) hatches.add("l1");
+    if (h === 2) hatches.add("l2");
   }
   return { ranks, hatches };
 }

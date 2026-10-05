@@ -101,13 +101,16 @@ export const RAIN_CHANCE_BANDS: ChanceBand[] = [
   band(5, 80, "#154360", [21, 67, 96, 195], "80%+ chance of heavy rainfall."),
 ];
 
-/** Tornado chance (rare — tighter, lower probabilities). */
+/**
+ * Tornado chance (rare — tighter, lower probabilities).
+ * Top band is 15%+ — scoring hard-ceilings near 18%, so a 30% swatch never
+ * appeared on the map and made the key look broken.
+ */
 export const TORNADO_CHANCE_BANDS: ChanceBand[] = [
   band(1, 2, "#F5B7B1", [245, 183, 177, 165], "2% chance of a tornado."),
   band(2, 5, "#EC7063", [236, 112, 99, 170], "5% chance of a tornado."),
   band(3, 10, "#E74C3C", [231, 76, 60, 180], "10% chance of a tornado."),
-  band(4, 15, "#C0392B", [192, 57, 43, 190], "15% chance of a tornado."),
-  band(5, 30, "#7B241C", [123, 36, 28, 200], "30%+ chance of a tornado."),
+  band(4, 15, "#7B241C", [123, 36, 28, 200], "15%+ chance of a tornado."),
 ];
 
 export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {

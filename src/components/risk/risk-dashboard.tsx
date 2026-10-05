@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import { RiskLegend } from "@/components/forecast/risk-legend";
+import {
+  RiskInspectPanel,
+  type RiskInspectCategory,
+  type RiskInspectPoint,
+} from "@/components/risk/risk-inspect-panel";
 import {
   DEFAULT_MAP_SETTINGS,
   MAP_REGIONS,
@@ -75,32 +80,55 @@ function dayChipLabel(day: RolledDay): string {
   return `Day ${day.effectiveDay}`;
 }
 
-function BomRiskLegend({ usedIds }: { usedIds: Set<string> }) {
+function BomRiskLegend({
+  usedIds,
+  onItemClick,
+  activeId,
+}: {
+  usedIds: Set<string>;
+  onItemClick?: (id: string) => void;
+  activeId?: string | null;
+}) {
   return (
     <ul className="flex flex-col gap-2.5">
       {METEYE_THUNDERSTORM_CATEGORIES.map((item) => {
         const used = usedIds.size === 0 ? true : usedIds.has(item.id);
+        const active = activeId === item.id;
         return (
-          <li
-            key={item.id}
-            className={cn("flex items-center gap-3", !used && "opacity-45")}
-          >
-            <span
+          <li key={item.id}>
+            <button
+              type="button"
+              onClick={() => onItemClick?.(item.id)}
               className={cn(
-                "h-5 w-8 shrink-0",
-                used ? "border-2 border-white/80" : "border border-white/25",
-              )}
-              style={{ backgroundColor: item.color }}
-              aria-hidden
-            />
-            <span
-              className={cn(
-                "text-sm font-medium tracking-wide",
-                used ? "text-white/90" : "text-white/45",
+                "flex w-full items-center gap-3 rounded-lg px-1 py-0.5 text-left transition hover:bg-white/[0.04]",
+                active && "bg-white/[0.08] ring-1 ring-[var(--cyan)]/40",
+                !used && "opacity-35",
               )}
             >
-              {item.label}
-            </span>
+              <span
+                className={cn(
+                  "h-5 w-8 shrink-0",
+                  used ? "border-2 border-white/80" : "border border-white/25",
+                )}
+                style={{ backgroundColor: item.color }}
+                aria-hidden
+              />
+              <span className="min-w-0">
+                <span
+                  className={cn(
+                    "block text-sm font-medium tracking-wide",
+                    used ? "text-white/90" : "text-white/45",
+                  )}
+                >
+                  {item.label}
+                </span>
+                {!used ? (
+                  <span className="block text-[10px] text-white/35">
+                    Not on this day&apos;s map
+                  </span>
+                ) : null}
+              </span>
+            </button>
           </li>
         );
       })}
@@ -294,6 +322,16 @@ export function RiskDashboard() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [regionId, setRegionId] = useState<MapRegionId>("national");
   const [regionMenuOpen, setRegionMenuOpen] = useState(false);
+  const [probePoint, setProbePoint] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectError, setInspectError] = useState<string | null>(null);
+  const [inspectData, setInspectData] = useState<
+    RiskInspectPoint | RiskInspectCategory | null
+  >(null);
+  const [activeLegendId, setActiveLegendId] = useState<string | null>(null);
 
   useEffect(() => {
     setSource(readSourceFromUrl());
@@ -438,6 +476,77 @@ export function RiskDashboard() {
     syncUrl(source, next);
     setSelectedDay(null);
   };
+
+  const clearInspect = useCallback(() => {
+    setProbePoint(null);
+    setInspectData(null);
+    setInspectError(null);
+    setInspectLoading(false);
+    setActiveLegendId(null);
+  }, []);
+
+  // Clear inspect when source/product/day changes.
+  useEffect(() => {
+    clearInspect();
+  }, [source, product, selectedDay, clearInspect]);
+
+  const onMapClick = useCallback(
+    (ll: { lat: number; lng: number }) => {
+      if (selectedDay == null) return;
+      setProbePoint(ll);
+      setActiveLegendId(null);
+      setInspectLoading(true);
+      setInspectError(null);
+      setInspectData(null);
+      const productQs =
+        isModelSource(source) && product !== "risk"
+          ? `&product=${product}`
+          : "";
+      const url = `/api/weather/risk-probe?source=${source}${productQs}&day=${selectedDay}&lat=${ll.lat}&lon=${ll.lng}`;
+      void fetch(url, { cache: "no-store" })
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Could not inspect this point");
+          const json = (await res.json()) as RiskInspectPoint;
+          setInspectData({ ...json, kind: "point" });
+          setActiveLegendId(json.category?.id ?? null);
+        })
+        .catch((err) => {
+          setInspectError(
+            err instanceof Error ? err.message : "Inspect failed",
+          );
+        })
+        .finally(() => setInspectLoading(false));
+    },
+    [selectedDay, source, product],
+  );
+
+  const onLegendClick = useCallback(
+    (categoryId: string) => {
+      setProbePoint(null);
+      setActiveLegendId(categoryId);
+      setInspectLoading(true);
+      setInspectError(null);
+      setInspectData(null);
+      const productQs =
+        isModelSource(source) && product !== "risk"
+          ? `&product=${product}`
+          : "";
+      const url = `/api/weather/risk-probe?source=${source}${productQs}&category=${encodeURIComponent(categoryId)}`;
+      void fetch(url, { cache: "no-store" })
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Could not load category");
+          const json = (await res.json()) as RiskInspectCategory;
+          setInspectData({ ...json, kind: "category" });
+        })
+        .catch((err) => {
+          setInspectError(
+            err instanceof Error ? err.message : "Category lookup failed",
+          );
+        })
+        .finally(() => setInspectLoading(false));
+    },
+    [source, product],
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 px-3 pb-6 pt-3 sm:px-4 sm:pb-8 sm:pt-4">
@@ -604,7 +713,31 @@ export function RiskDashboard() {
                   riskImageBounds={BOM_METEYE_IMAGE_BOUNDS}
                   riskImageDisplay="geo"
                   riskImageOpacity={0.82}
+                  onMapClick={onMapClick}
+                  probePoint={
+                    probePoint
+                      ? {
+                          lat: probePoint.lat,
+                          lng: probePoint.lng,
+                          label:
+                            inspectData?.kind === "point"
+                              ? inspectData.category.label
+                              : "Inspect",
+                        }
+                      : null
+                  }
                 />
+                <RiskInspectPanel
+                  loading={inspectLoading}
+                  error={inspectError}
+                  data={inspectData}
+                  onClose={clearInspect}
+                />
+                {!loading && !inspectData && !inspectLoading ? (
+                  <div className="pointer-events-none absolute left-3 top-3 z-[520] rounded-full border border-white/15 bg-[#0b1224]/8 px-3 py-1 text-[11px] text-white/65 backdrop-blur-md">
+                    Tap the map to inspect a colour
+                  </div>
+                ) : null}
                 {!loading && data?.status === "empty" ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[520] flex justify-center px-4">
                     <p className="rounded-full border border-white/15 bg-[#0b1224]/85 px-4 py-2 text-center text-xs text-white/75 backdrop-blur-md sm:text-sm">
@@ -655,19 +788,27 @@ export function RiskDashboard() {
           </div>
           {source === "bom" ? (
             <>
-              <BomRiskLegend usedIds={usedCategoryIds} />
+              <BomRiskLegend
+                usedIds={usedCategoryIds}
+                onItemClick={onLegendClick}
+                activeId={activeLegendId}
+              />
               <p className="text-xs leading-relaxed text-white/50">
-                Same Chance / Likely colours as MetEye. Areas show where BoM
-                forecasts at least a low chance of thunderstorms in the period.
+                Same Chance / Likely colours as MetEye. Dimmed = not on this
+                day&apos;s map. Tap a swatch or the map for details.
               </p>
             </>
           ) : (
             <>
-              <RiskLegend items={autoLegendItems} />
+              <RiskLegend
+                items={autoLegendItems}
+                onItemClick={(item) => onLegendClick(item.id)}
+                activeId={activeLegendId}
+              />
               <p className="text-xs leading-relaxed text-white/50">
                 {product === "risk"
-                  ? "Categorical colours follow the SkyWatch ladder. L1/L2 hatches overlay supercell-interesting environments — guidance only."
-                  : `${PRODUCT_META[product].description} Contours are approximate probabilities within ~40 km — guidance only.`}
+                  ? "Only colours that survive onto today's painted map stay bright — higher ladder steps need organised shear/CAPE and are often capped in the tropics. Tap a swatch or the map for why."
+                  : `${PRODUCT_META[product].description} Dimmed bands are not on this day's map. Tap a swatch or coloured area for local odds.`}
               </p>
               <ModelProductBlurbList
                 product={product}

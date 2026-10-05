@@ -23,6 +23,12 @@ import {
   scoreHazardChances,
 } from "@/lib/weather/auto-risk-hazards";
 import {
+  explainProbeSite,
+  nearestProbeSite,
+  type AutoRiskProbeSite,
+  type RiskProbeResult,
+} from "@/lib/weather/auto-risk-probe";
+import {
   MODEL_RISK_PRODUCTS,
   PRODUCT_META,
   chanceBlurbs,
@@ -36,7 +42,7 @@ export { australWetSeasonWeight } from "@/lib/weather/auto-risk-climate";
 import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
 import {
   renderAutoRiskPng,
-  summarizeUsed,
+  summarizeUsedFromRender,
   type AutoRiskSamplePoint,
 } from "@/lib/weather/auto-risk-smooth";
 import {
@@ -266,6 +272,8 @@ type CacheEntry = {
   dayPoints: Record<number, AutoRiskSamplePoint[]>;
   dayPng: Record<number, Buffer>;
   products: Record<ModelRiskProduct, ProductLayer>;
+  /** Full scored sites per day for map tap probes (includes rank 0). */
+  dayProbeSites: Record<number, AutoRiskProbeSite[]>;
 };
 
 function emptyProductLayers(): Record<ModelRiskProduct, ProductLayer> {
@@ -1584,7 +1592,15 @@ function legendForProduct(
   product: ModelRiskProduct,
   points: AutoRiskSamplePoint[],
 ): RolledDay["legend"] {
-  const used = summarizeUsed(points);
+  // Match the painted map — not raw sample ranks (tiny Severe+ cores get pruned).
+  const used =
+    product === "risk"
+      ? summarizeUsedFromRender(points)
+      : summarizeUsedFromRender(points, {
+          maxRank: chanceBandsFor(product).length,
+          colors: chanceColorMap(chanceBandsFor(product)),
+          hatch: false,
+        });
   if (product === "risk") {
     return autoRiskLegendItems({
       usedRanks: used.ranks,
@@ -1616,6 +1632,7 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
   const issuedAt = new Date().toISOString();
 
   const products = emptyProductLayers();
+  const dayProbeSites: Record<number, AutoRiskProbeSite[]> = {};
   const rolledByProduct: Record<ModelRiskProduct, RolledDay[]> = {
     risk: [],
     tstorm: [],
@@ -1655,6 +1672,7 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
       rain: [],
       tornado: [],
     };
+    const probeSites: AutoRiskProbeSite[] = [];
     const month = monthFromKey(dayKey);
 
     for (const site of siteMetrics) {
@@ -1663,6 +1681,30 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
         lon: site.lon,
       });
       const chances = scoreHazardChances(site.m, site.lat, scored, { month });
+
+      probeSites.push({
+        lat: site.lat,
+        lon: site.lon,
+        rank: scored.rank,
+        hatch: scored.hatch,
+        composite: scored.composite,
+        suppress: scored.suppress,
+        chances,
+        cape: site.m.cape,
+        shearKts: site.m.shearKts,
+        dewpoint: site.m.dewpoint,
+        liftedIndex: site.m.liftedIndex,
+        cin: Math.min(site.m.cin, site.m.peakCin),
+        precipProb: site.m.precipProb,
+        diurnalHeating: site.m.diurnalHeating,
+        precipMm: site.m.precipMm,
+        showersMm: site.m.showersMm,
+        freezingLevelM: site.m.freezingLevelM,
+        peakWindKmh: site.m.peakWindKmh,
+        dewDepression: site.m.dewDepression,
+        weatherCode: site.m.weatherCode,
+        liftTrigger: site.m.liftTrigger,
+      });
 
       if (scored.rank > 0 || scored.hatch > 0) {
         pointsByProduct.risk.push({
@@ -1686,6 +1728,8 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
         });
       }
     }
+
+    dayProbeSites[d + 1] = probeSites;
 
     for (const product of MODEL_RISK_PRODUCTS) {
       const points = pointsByProduct[product];
@@ -1750,6 +1794,7 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
     dayPoints: products.risk.dayPoints,
     dayPng: products.risk.dayPng,
     products,
+    dayProbeSites,
   };
 }
 
@@ -1770,16 +1815,17 @@ type SharedPayload = {
       dayPoints: Record<number, AutoRiskSamplePoint[]>;
     }
   >;
+  dayProbeSites?: Record<number, AutoRiskProbeSite[]>;
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v6/${kind}.json`;
+  return `model-risk/v7/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v6",
+    "skywatch-model-risk-v7",
     `${kind}.json`,
   );
 }
@@ -1845,6 +1891,7 @@ async function writeSharedOk(
       },
       {} as SharedPayload["products"],
     ),
+    dayProbeSites: entry.dayProbeSites,
   };
   const body = JSON.stringify(payload);
   try {
@@ -1912,6 +1959,7 @@ async function ensureCache(
           dayPoints: products.risk.dayPoints,
           dayPng: {},
           products,
+          dayProbeSites: shared.dayProbeSites ?? {},
         };
         caches[kind] = entry;
         return entry;
@@ -2074,4 +2122,65 @@ export function resolveModelRiskKind(
   if (s === "ifs" || s === "ecmwf" || s === "ecmwf_ifs") return "ifs";
   if (s === "ukmo" || s === "uk") return "ukmo";
   return null;
+}
+
+/**
+ * Nearest scored sample for a map tap on a model risk / chance product.
+ */
+export async function probeModelRisk(
+  kind: ModelRiskKind,
+  opts: {
+    day: number;
+    lat: number;
+    lon: number;
+    product?: ModelRiskProduct;
+    force?: boolean;
+  },
+): Promise<RiskProbeResult | null> {
+  if (!isModelRiskDay(opts.day)) return null;
+  const product = opts.product ?? "risk";
+  const entry = await ensureCache(kind, { force: opts.force });
+  let sites = entry.dayProbeSites[opts.day] ?? [];
+  // Older shared payloads may lack probe sites — rebuild once.
+  if (!sites.length) {
+    const rebuilt = await ensureCache(kind, { force: true });
+    sites = rebuilt.dayProbeSites[opts.day] ?? [];
+  }
+  const nearest = nearestProbeSite(sites, opts.lat, opts.lon);
+  if (!nearest) return null;
+  // Ignore absurd offshore clicks far from the sample mesh.
+  if (nearest.distanceKm > 220) {
+    return {
+      status: "empty",
+      source: kind,
+      product,
+      day: opts.day,
+      lat: opts.lat,
+      lon: opts.lon,
+      distanceKm: nearest.distanceKm,
+      category: {
+        id: "none",
+        label: "Outside guidance area",
+        color: "#3A3A3A",
+        rank: 0,
+        hatch: 0,
+        hatchLabel: null,
+      },
+      summary:
+        "That point is too far from the Australian sample mesh for a reliable rating.",
+      reasons: [
+        "Tap closer to the mainland or nearby islands covered by the outlook.",
+      ],
+      conditions: [],
+      guidance:
+        "Guidance only — not an official warning. Check BoM for warnings.",
+    };
+  }
+  return explainProbeSite(nearest.site, product, {
+    source: kind,
+    day: opts.day,
+    lat: opts.lat,
+    lon: opts.lon,
+    distanceKm: nearest.distanceKm,
+  });
 }
