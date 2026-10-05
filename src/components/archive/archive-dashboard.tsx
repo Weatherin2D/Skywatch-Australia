@@ -49,6 +49,7 @@ import {
 } from "@/lib/weather/maps";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
+import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
 import { cn } from "@/lib/utils";
 
 type CatalogProduct = { id: SatelliteProductId; label: string };
@@ -499,6 +500,7 @@ function ArchiveDashboardInner() {
   }, [playing, frames, speedId]);
 
   // URL sync — skip while playing to avoid history thrash every frame.
+  // Guarded so async archive updates cannot yank users back from other routes.
   useEffect(() => {
     if (!hydrated.current || !selectedUnix || pathname !== "/archive") return;
     if (playing) return;
@@ -511,10 +513,7 @@ function ArchiveDashboardInner() {
     if (showSynoptic) params.set("synoptic", "1");
     else params.set("synoptic", "0");
     params.set("loop", String(loopHours));
-    const next = `?${params.toString()}`;
-    if (window.location.search !== next) {
-      window.history.replaceState(null, "", `/archive${next}`);
-    }
+    replaceUrlIfOnPath("/archive", `/archive?${params.toString()}`);
   }, [
     pathname,
     selectedUnix,

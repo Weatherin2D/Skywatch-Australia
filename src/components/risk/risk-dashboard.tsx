@@ -181,6 +181,8 @@ function readProductFromUrl(): ModelRiskProduct {
 
 function syncUrl(source: RiskSource, product: ModelRiskProduct) {
   if (typeof window === "undefined") return;
+  // Only touch the query while still on /risk — never rewrite another route.
+  if (window.location.pathname !== "/risk") return;
   const url = new URL(window.location.href);
   if (source === "bom") {
     url.searchParams.delete("source");
@@ -190,7 +192,7 @@ function syncUrl(source: RiskSource, product: ModelRiskProduct) {
     if (product === "risk") url.searchParams.delete("product");
     else url.searchParams.set("product", product);
   }
-  window.history.replaceState({}, "", url.toString());
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
 }
 
 function isModelSource(source: RiskSource): boolean {

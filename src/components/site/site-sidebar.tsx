@@ -12,9 +12,9 @@ export function SiteSidebar() {
   return (
     <aside
       aria-label="Quick navigation"
-      className="sticky top-[7.25rem] hidden h-[calc(100vh-7.25rem)] w-[4.75rem] shrink-0 flex-col border-r border-white/10 bg-[#070b16]/55 py-3 backdrop-blur-xl xl:flex"
+      className="sticky top-[7.25rem] z-30 hidden h-[calc(100vh-7.25rem)] w-[4.75rem] shrink-0 flex-col border-r border-white/10 bg-[#070b16]/85 py-3 backdrop-blur-xl xl:flex"
     >
-      <ul className="flex flex-1 flex-col gap-1 px-1.5">
+      <ul className="flex flex-1 flex-col gap-1 overflow-y-auto px-1.5">
         {items.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/"
@@ -31,8 +31,8 @@ export function SiteSidebar() {
                     : "text-white/55 hover:bg-white/5 hover:text-white",
                 )}
               >
-                <Icon className="h-5 w-5" aria-hidden />
-                <span className="leading-none">{label}</span>
+                <Icon className="pointer-events-none h-5 w-5" aria-hidden />
+                <span className="pointer-events-none leading-none">{label}</span>
               </Link>
             </li>
           );

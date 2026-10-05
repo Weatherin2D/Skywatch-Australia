@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,6 +22,7 @@ import { ModelsMiniSounding } from "@/components/models/models-mini-sounding";
 import { SiteShell } from "@/components/site/site-shell";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import type { CrossSectionPayload } from "@/lib/weather/cross-section";
+import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
 import { absoluteAppUrl, shareContent } from "@/lib/share";
 import type { SoundingPayload } from "@/lib/weather/sounding-types";
 import { cn } from "@/lib/utils";
@@ -197,6 +199,7 @@ function mapModelToSounding(model: MapModelId): string {
 
 export function EcmwfModelsDashboard() {
   const initial = useMemo(() => readModelsQuery(), []);
+  const pathname = usePathname();
   const { place } = useSavedPlace();
   const [catalog, setCatalog] = useState<EcmwfMapCatalog | null>(null);
   const [productId, setProductId] = useState(initial.product);
@@ -292,8 +295,12 @@ export function EcmwfModelsDashboard() {
   const activeTime = times[timeIndex] ?? null;
   const models = catalog?.models?.length ? catalog.models : FALLBACK_MODELS;
 
+  // Shareable query sync — only while still on /models. Without this guard,
+  // async catalog/frame updates could replaceState back to /models after the
+  // user clicked Warnings/Radar/etc. and make those nav buttons look broken.
   useEffect(() => {
     if (!urlReady || typeof window === "undefined") return;
+    if (pathname !== "/models") return;
     const params = new URLSearchParams();
     if (productId !== DEFAULT_PRODUCT_ID) params.set("product", productId);
     if (modelId !== DEFAULT_MODEL_ID) params.set("model", modelId);
@@ -307,12 +314,10 @@ export function EcmwfModelsDashboard() {
     if (transectMode) params.set("transect", "1");
     const qs = params.toString();
     const next = qs ? `/models?${qs}` : "/models";
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (current !== next) {
-      window.history.replaceState(window.history.state, "", next);
-    }
+    replaceUrlIfOnPath("/models", next);
   }, [
     urlReady,
+    pathname,
     productId,
     modelId,
     diffModelId,

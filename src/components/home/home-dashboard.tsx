@@ -3,6 +3,7 @@
 import { ChevronDown, Link2, Pause, Play } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
 import { CellDetailsPanel } from "@/components/home/cell-details-panel";
 import { ChaseHud } from "@/components/home/chase-hud";
 import { HomeHero } from "@/components/home/home-hero";
@@ -332,7 +333,6 @@ function HomeDashboardInner({
     const path =
       focus === "radar" ? "/radar" : focus === "satellite" ? "/satellite" : "/";
     if (pathname !== path) return;
-    if (window.location.pathname !== path) return;
 
     const params = new URLSearchParams();
     if (regionId !== DEFAULT_MAP_REGION) params.set("region", regionId);
@@ -353,11 +353,8 @@ function HomeDashboardInner({
     if (selectedCellId) params.set("cell", selectedCellId);
     const qs = params.toString();
     const next = qs ? `${path}?${qs}` : path;
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (current !== next) {
-      // Query-only replaceState keeps the map mounted; path is unchanged above.
-      window.history.replaceState(window.history.state, "", next);
-    }
+    // Query-only replace; aborts if the user already left this route.
+    replaceUrlIfOnPath(path, next);
   }, [
     urlReady,
     pathname,
