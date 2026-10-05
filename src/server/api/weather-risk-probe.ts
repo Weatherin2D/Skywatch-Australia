@@ -15,7 +15,7 @@ import {
 } from "@/lib/weather/bom-meteye-constants";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * GET /api/weather/risk-probe?source=&product=&day=&lat=&lon=

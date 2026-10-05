@@ -43,7 +43,7 @@ import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
 import {
   renderAutoRiskPng,
   samplePaintedRiskAt,
-  summarizeUsedFromRender,
+  summarizeUsedForLegend,
   type AutoRiskSamplePoint,
 } from "@/lib/weather/auto-risk-smooth";
 import {
@@ -1561,7 +1561,7 @@ async function loadAllSites(
         out.push({ lat: b.lats[j]!, lon: b.lons[j]!, loc });
       }
     }
-    if (i + BATCH_CONCURRENCY < batches.length) await sleep(140);
+    if (i + BATCH_CONCURRENCY < batches.length) await sleep(80);
   }
   return out;
 }
@@ -1593,15 +1593,8 @@ function legendForProduct(
   product: ModelRiskProduct,
   points: AutoRiskSamplePoint[],
 ): RolledDay["legend"] {
-  // Match the painted map — not raw sample ranks (tiny Severe+ cores get pruned).
-  const used =
-    product === "risk"
-      ? summarizeUsedFromRender(points)
-      : summarizeUsedFromRender(points, {
-          maxRank: chanceBandsFor(product).length,
-          colors: chanceColorMap(chanceBandsFor(product)),
-          hatch: false,
-        });
+  // Fast consolidate-based used flags — full mesh prune runs only when painting.
+  const used = summarizeUsedForLegend(points);
   if (product === "risk") {
     return autoRiskLegendItems({
       usedRanks: used.ranks,
@@ -1839,9 +1832,27 @@ function isFreshOkShared(parsed: SharedPayload | null): parsed is SharedPayload 
   );
 }
 
+/** Accept older shared payloads so cold Vercel invokes don't 504 recomputing. */
+function isSoftStaleOkShared(
+  parsed: SharedPayload | null,
+): parsed is SharedPayload {
+  if (!parsed?.products || !Number.isFinite(parsed.at)) return false;
+  if (Date.now() - parsed.at >= CACHE_MS * 4) return false; // up to ~80 min
+  return MODEL_RISK_PRODUCTS.some(
+    (p) =>
+      parsed.products[p]?.outlook?.status === "ok" ||
+      parsed.products[p]?.outlook?.status === "empty",
+  );
+}
+
 async function readSharedOk(
   kind: ModelRiskKind,
+  opts: { allowSoftStale?: boolean } = {},
 ): Promise<SharedPayload | null> {
+  const accept = (parsed: SharedPayload) =>
+    isFreshOkShared(parsed) ||
+    (opts.allowSoftStale === true && isSoftStaleOkShared(parsed));
+
   if (
     process.env.BLOB_READ_WRITE_TOKEN ||
     process.env.BLOB_STORE_ID ||
@@ -1856,7 +1867,7 @@ async function readSharedOk(
         if (!result?.stream) continue;
         const text = await new Response(result.stream).text();
         const parsed = JSON.parse(text) as SharedPayload;
-        if (isFreshOkShared(parsed)) return parsed;
+        if (accept(parsed)) return parsed;
       } catch {
         // try next access mode / fall through
       }
@@ -1865,7 +1876,7 @@ async function readSharedOk(
   try {
     const raw = await fs.readFile(sharedLocalPath(kind), "utf8");
     const parsed = JSON.parse(raw) as SharedPayload;
-    if (isFreshOkShared(parsed)) return parsed;
+    if (accept(parsed)) return parsed;
   } catch {
     // miss
   }
@@ -1942,7 +1953,11 @@ async function ensureCache(
   if (!opts.force && inflightByKind[kind]) return inflightByKind[kind]!;
   inflightByKind[kind] = (async () => {
     if (!opts.force) {
-      const shared = await readSharedOk(kind);
+      // Prefer fresh shared, then soft-stale — recomputing Open-Meteo for every
+      // cold Vercel isolate routinely 504s past the 60s platform limit.
+      const shared =
+        (await readSharedOk(kind)) ??
+        (await readSharedOk(kind, { allowSoftStale: true }));
       if (shared?.products) {
         const products = emptyProductLayers();
         for (const p of MODEL_RISK_PRODUCTS) {

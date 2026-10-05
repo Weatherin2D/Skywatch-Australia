@@ -34,7 +34,7 @@ import * as weatherArchiveIngest from "@/server/api/weather-archive-ingest";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 type Handler = (req: NextRequest, ctx?: unknown) => Promise<Response> | Response;
 

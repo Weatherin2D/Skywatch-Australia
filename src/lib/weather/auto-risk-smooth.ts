@@ -1042,46 +1042,16 @@ export function summarizeUsed(
 }
 
 /**
- * Ranks/hatches that survive onto the painted map. Uses the work-resolution
- * mesh (including island pruning) so the colour key matches the overlay.
+ * Fast legend used-flags from consolidated sample sites (no Delaunay bake).
+ * Matches the painted map closely enough for the key without blowing the
+ * Vercel 60s budget during catalog compute (7 days × 6 products).
  */
-export function summarizeUsedFromRender(
+export function summarizeUsedForLegend(
   points: AutoRiskSamplePoint[],
-  options: RenderAutoRiskOptions = {},
 ): { ranks: Set<number>; hatches: Set<AutoHatchId> } {
   if (!points.length) return { ranks: new Set(), hatches: new Set() };
-  const maxRank = options.maxRank ?? AUTO_RISK_MAX_RANK;
-  const drawHatch = options.hatch !== false;
-
-  const work = sizeFor(WORK_WIDTH);
-  const field = buildMeshRankField(
-    points,
-    work.width,
-    work.height,
-    (p) => p.rank,
-    maxRank,
-  );
-  const hatchField = drawHatch
-    ? buildMeshRankField(
-        points,
-        work.width,
-        work.height,
-        (p) => p.hatch,
-        2,
-      )
-    : null;
-
-  const ranks = new Set<number>();
-  const hatches = new Set<AutoHatchId>();
-  for (let i = 0; i < field.length; i++) {
-    const r = field[i]!;
-    if (r >= 1) ranks.add(r);
-    if (!hatchField || !r) continue;
-    const h = hatchField[i]!;
-    if (h === 1) hatches.add("l1");
-    if (h === 2) hatches.add("l2");
-  }
-  return { ranks, hatches };
+  const kept = consolidateSamplePoints(points);
+  return summarizeUsed(kept.length ? kept : points);
 }
 
 /**

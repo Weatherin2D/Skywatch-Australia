@@ -348,11 +348,31 @@ export function RiskDashboard() {
           isModelSource(source) && product !== "risk"
             ? `&product=${product}`
             : "";
-        const res = await fetch(
-          `/api/weather/risk?source=${source}${productQs}&t=${Date.now()}`,
-          { cache: "no-store" },
-        );
-        if (!res.ok) throw new Error("Could not load risk outlook");
+        let res: Response | null = null;
+        let lastErr: Error | null = null;
+        // Cold model computes can 504 on Vercel — retry briefly for shared cache.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (cancelled) return;
+          try {
+            res = await fetch(
+              `/api/weather/risk?source=${source}${productQs}&t=${Date.now()}`,
+              { cache: "no-store" },
+            );
+            if (res.ok) break;
+            lastErr = new Error(
+              res.status === 504 || res.status === 502
+                ? "Risk outlook is still building — retrying…"
+                : "Could not load risk outlook",
+            );
+          } catch (err) {
+            lastErr = err instanceof Error ? err : new Error("Failed to load");
+            res = null;
+          }
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 1800 * (attempt + 1)));
+        }
+        if (!res?.ok) {
+          throw lastErr ?? new Error("Could not load risk outlook");
+        }
         const json = (await res.json()) as RiskCatalog;
         if (cancelled) return;
         const outlook =
@@ -693,11 +713,75 @@ export function RiskDashboard() {
                 {sourceLoadingLabel(source, product)}
               </div>
             ) : error ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
                 <p className="font-[family-name:var(--font-display)] text-2xl text-white">
                   Outlook unavailable
                 </p>
                 <p className="text-sm text-white/55">{error}</p>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+                  onClick={() => {
+                    setError(null);
+                    setLoading(true);
+                    // Bump product state identity via selectedDay null + reload
+                    // by toggling a nonce through source re-fetch.
+                    setSelectedDay(null);
+                    setCatalog(null);
+                    setData(null);
+                    const productQs =
+                      isModelSource(source) && product !== "risk"
+                        ? `&product=${product}`
+                        : "";
+                    void fetch(
+                      `/api/weather/risk?source=${source}${productQs}&t=${Date.now()}`,
+                      { cache: "no-store" },
+                    )
+                      .then(async (res) => {
+                        if (!res.ok) throw new Error("Could not load risk outlook");
+                        const json = (await res.json()) as RiskCatalog;
+                        const outlook =
+                          json.outlook ??
+                          ({
+                            status: json.status,
+                            issuedAt: json.issuedAt,
+                            mapView: { center: [-25.5, 134.5], zoom: 4 },
+                            days: (json.days ?? []).map((d) => ({
+                              effectiveDay: d.day,
+                              storedDay: d.day,
+                              validDate: d.dateLabel,
+                              label: d.label,
+                              dateLabel: d.dateLabel,
+                              isToday: d.day === 1,
+                              features: [],
+                              legend: d.legend ?? [],
+                              source: "categorical" as const,
+                            })),
+                            defaultDay: 1,
+                            message: json.message,
+                          } satisfies PublicForecastResponse);
+                        setCatalog(json);
+                        setData(outlook);
+                        setSelectedDay(
+                          outlook.days.find(
+                            (d) => d.effectiveDay === outlook.defaultDay,
+                          )?.effectiveDay ??
+                            outlook.days[0]?.effectiveDay ??
+                            null,
+                        );
+                      })
+                      .catch((err) => {
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : "Could not load risk outlook",
+                        );
+                      })
+                      .finally(() => setLoading(false));
+                  }}
+                >
+                  Try again
+                </button>
               </div>
             ) : (
               <>
