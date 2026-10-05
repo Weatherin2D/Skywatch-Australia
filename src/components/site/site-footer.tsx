@@ -7,6 +7,7 @@ const FOOTER_LINKS = [
   { href: "/satellite", label: "Satellite" },
   { href: "/forecast", label: "Forecast" },
   { href: "/risk", label: "Risk outlook" },
+  { href: "/community", label: "Community" },
 ] as const;
 
 export function SiteFooter() {

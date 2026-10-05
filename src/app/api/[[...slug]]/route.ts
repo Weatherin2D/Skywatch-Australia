@@ -30,6 +30,8 @@ import * as weatherArchiveFrame from "@/server/api/weather-archive-frame";
 import * as weatherArchiveSynoptic from "@/server/api/weather-archive-synoptic";
 import * as weatherArchiveLightning from "@/server/api/weather-archive-lightning";
 import * as weatherArchiveIngest from "@/server/api/weather-archive-ingest";
+import * as community from "@/server/api/community";
+import * as communityImage from "@/server/api/community-image";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -78,6 +80,8 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/archive/synoptic": weatherArchiveSynoptic as RouteHandlers,
   "weather/archive/lightning": weatherArchiveLightning as RouteHandlers,
   "weather/archive/ingest": weatherArchiveIngest as RouteHandlers,
+  community: community as RouteHandlers,
+  "community/image": communityImage as RouteHandlers,
 };
 
 function resolve(
