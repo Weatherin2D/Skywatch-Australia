@@ -836,7 +836,7 @@ function HomeDashboardInner({
         </p>
       </div>
 
-      <div className="animate-fade-up-delay grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_280px] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+      <div className="animate-fade-up-delay grid items-start gap-3 lg:grid-cols-[220px_minmax(0,1fr)_280px] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
         {/* Desktop overlays sidebar */}
         <div className="hidden space-y-3 lg:block">
           <OverlayControls
@@ -1016,9 +1016,10 @@ function HomeDashboardInner({
               "relative z-0 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_12px_40px_rgba(0,0,0,0.35)]",
               // Satellite: let the region crop's mercator aspect drive height so
               // tall states (WA/QLD/NT/…) are not clipped by a fixed 4:3 box.
+              // Map/radar: fixed viewport height — never stretch with the sidebar.
               showSatelliteLoop
                 ? "w-full"
-                : "min-h-[280px] sm:min-h-[360px] lg:min-h-[420px] lg:flex-1",
+                : "h-[min(52vh,560px)] min-h-[280px] sm:min-h-[360px]",
             )}
           >
             <HomeMapDynamic

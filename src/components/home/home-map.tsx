@@ -553,7 +553,7 @@ export function HomeMap({
   return (
     <div
       ref={mapShellRef}
-      className="skywatch-map relative z-0 h-full min-h-[360px] w-full overflow-hidden"
+      className="skywatch-map relative z-0 h-full min-h-[280px] w-full overflow-hidden sm:min-h-[360px]"
     >
       <MapContainer
         center={[-25.5, 134.5]}
