@@ -27,8 +27,8 @@ const WORK_WIDTH = 720;
 const OUT_WIDTH = 2200;
 const OUTLINE_PX = 2;
 
-/** Max triangle edge (km). ~2–3 grid steps; longer spans look fake. */
-const MAX_EDGE_KM = 185;
+/** Max triangle edge (km). Low ranks stretch farther so tropical floors merge. */
+const MAX_EDGE_KM = 210;
 /** Reject skinny triangles (longest/shortest edge). Stops coastline “snakes”. */
 const MAX_EDGE_RATIO = 2.45;
 /** Morphological close after fill — knits triangle joints / seals pinholes. */
@@ -37,6 +37,9 @@ const CLOSE_PX = 5;
 const OPEN_PX = 2;
 /** Guaranteed width (px) of each outer band around the next-higher core. */
 const NEST_GAP_PX = 5;
+/** Drop sample sites with fewer than this many neighbours inside NEIGHBOR_KM. */
+const MIN_SAMPLE_NEIGHBORS = 2;
+const SAMPLE_NEIGHBOR_KM = 165;
 
 const COLOR_BY_RANK: Record<number, [number, number, number, number]> = {};
 for (const c of AUTO_RISK_CATEGORIES) {
@@ -60,6 +63,37 @@ function approxKm(
   const dLon =
     (lon1 - lon2) * 111.0 * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
   return Math.hypot(dLat, dLon);
+}
+
+/**
+ * Drop lone elevated samples before meshing — a 1–2 site cluster can still
+ * form a Delaunay triangle with far neighbours and paint a speck.
+ */
+function consolidateSamplePoints(
+  points: AutoRiskSamplePoint[],
+): AutoRiskSamplePoint[] {
+  if (points.length < 3) return [];
+  const elevated = points.filter((p) => p.rank > 0 || p.hatch > 0);
+  if (elevated.length < 3) return [];
+
+  return elevated
+    .map((p) => {
+      let neighbours = 0;
+      for (const o of elevated) {
+        if (o === p) continue;
+        if (approxKm(p.lat, p.lon, o.lat, o.lon) <= SAMPLE_NEIGHBOR_KM) {
+          neighbours += 1;
+          if (neighbours >= MIN_SAMPLE_NEIGHBORS) break;
+        }
+      }
+      if (neighbours >= MIN_SAMPLE_NEIGHBORS) return p;
+      // Keep hatch-only hints only when a neighbour exists.
+      if (p.hatch > 0 && neighbours >= 1) {
+        return { ...p, rank: Math.min(p.rank, 3) };
+      }
+      return null;
+    })
+    .filter((p): p is AutoRiskSamplePoint => p != null);
 }
 
 function sizeFor(width: number) {
@@ -567,7 +601,8 @@ function buildMeshRankField(
   maxRank = AUTO_RISK_MAX_RANK,
 ): Uint8Array {
   const field = new Uint8Array(width * height);
-  if (!points.length) return field;
+  const consolidated = consolidateSamplePoints(points);
+  if (!consolidated.length) return field;
 
   const bands: (Uint8Array | null)[] = Array.from(
     { length: maxRank + 1 },
@@ -576,7 +611,7 @@ function buildMeshRankField(
 
   for (let rank = 1; rank <= maxRank; rank++) {
     const mesh: MeshPt[] = [];
-    for (const p of points) {
+    for (const p of consolidated) {
       if (pick(p) < rank) continue;
       const { x, y } = latLonToPixel(p.lat, p.lon, width, height);
       mesh.push({ x, y, lat: p.lat, lon: p.lon });
@@ -585,7 +620,9 @@ function buildMeshRankField(
 
     const mask = new Uint8Array(width * height);
     const tris = delaunay(mesh);
-    const maxEdge = MAX_EDGE_KM * (rank <= 2 ? 1.15 : rank <= 4 ? 1.0 : 0.9);
+    const maxEdge =
+      MAX_EDGE_KM *
+      (rank <= 2 ? 1.4 : rank <= 3 ? 1.2 : rank <= 4 ? 1.05 : 0.9);
 
     for (const [ia, ib, ic] of tris) {
       const a = mesh[ia]!;
@@ -643,9 +680,10 @@ function buildMeshRankField(
     fillRankHoles(field, width, height, rank);
   }
 
-  pruneSmallComponents(field, width, height, 120);
-  // Drop tiny high-rank islands (orange “specks”) with little surrounding mass.
-  pruneTinyHighRankSpecks(field, width, height);
+  pruneSmallComponents(field, width, height, 280);
+  // Drop disconnected islands of every rank (not only Severe+) — Pulse Low /
+  // T-Storm floors were leaving salt-and-pepper triangles across the continent.
+  pruneTinyIslands(field, width, height);
   pruneSnakeComponents(field, width, height, 3);
   // Re-seal any holes opened by pruning.
   for (let rank = AUTO_RISK_MAX_RANK; rank >= 1; rank--) {
@@ -654,8 +692,11 @@ function buildMeshRankField(
   return field;
 }
 
-/** Demote/remove bullseye specks: small rank≥4 cores without a real footprint. */
-function pruneTinyHighRankSpecks(
+/**
+ * Remove / demote small same-rank islands. Low ranks need a larger footprint
+ * so tropical pulse floors don't paint a triangle speck at every town.
+ */
+function pruneTinyIslands(
   field: Uint8Array,
   width: number,
   height: number,
@@ -663,13 +704,19 @@ function pruneTinyHighRankSpecks(
   const seen = new Uint8Array(field.length);
   const qx = new Int32Array(field.length);
   const qy = new Int32Array(field.length);
-  const minCore = Math.max(180, Math.round((width * height) / 18_000));
+  const area = width * height;
+
+  const minCoreFor = (rank: number) => {
+    if (rank <= 2) return Math.max(420, Math.round(area / 9_000));
+    if (rank === 3) return Math.max(300, Math.round(area / 12_000));
+    return Math.max(200, Math.round(area / 16_000));
+  };
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const start = y * width + x;
       const rank = field[start]!;
-      if (rank < 4 || seen[start]) continue;
+      if (rank < 1 || seen[start]) continue;
       let qh = 0;
       let qt = 0;
       qx[qt] = x;
@@ -697,9 +744,28 @@ function pruneTinyHighRankSpecks(
           cells.push(ni);
         }
       }
-      if (cells.length >= minCore) continue;
-      // Remove bullseye pinpricks — broad tropical coverage comes from ranks 1–3.
-      for (const i of cells) field[i] = 0;
+      if (cells.length >= minCoreFor(rank)) continue;
+      // Demote to the highest strictly-lower neighbour, else clear.
+      for (const i of cells) {
+        const cx = i % width;
+        const cy = (i / width) | 0;
+        let demote = 0;
+        for (const [nx, ny] of [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+          [cx - 1, cy - 1],
+          [cx + 1, cy - 1],
+          [cx - 1, cy + 1],
+          [cx + 1, cy + 1],
+        ] as const) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const nr = field[ny * width + nx]!;
+          if (nr > 0 && nr < rank && nr > demote) demote = nr;
+        }
+        field[i] = demote;
+      }
     }
   }
 }
@@ -977,8 +1043,7 @@ export function summarizeUsed(
 
 /**
  * Ranks/hatches that survive onto the painted map. Uses the work-resolution
- * mesh (including tiny high-rank speck pruning) so the colour key matches the
- * overlay without paying for a full 2200px PNG bake on every catalog day.
+ * mesh (including island pruning) so the colour key matches the overlay.
  */
 export function summarizeUsedFromRender(
   points: AutoRiskSamplePoint[],
@@ -987,11 +1052,6 @@ export function summarizeUsedFromRender(
   if (!points.length) return { ranks: new Set(), hatches: new Set() };
   const maxRank = options.maxRank ?? AUTO_RISK_MAX_RANK;
   const drawHatch = options.hatch !== false;
-  // No high cores → speck prune is a no-op; raw samples match the map.
-  const needsMesh = points.some(
-    (p) => p.rank >= 4 || (drawHatch && p.hatch > 0),
-  );
-  if (!needsMesh) return summarizeUsed(points);
 
   const work = sizeFor(WORK_WIDTH);
   const field = buildMeshRankField(
@@ -1022,4 +1082,38 @@ export function summarizeUsedFromRender(
     if (h === 2) hatches.add("l2");
   }
   return { ranks, hatches };
+}
+
+/**
+ * Sample the painted risk field at a lat/lon (same pipeline as the PNG).
+ * Used by map-tap inspect so category matches what the user sees.
+ */
+export function samplePaintedRiskAt(
+  points: AutoRiskSamplePoint[],
+  lat: number,
+  lon: number,
+  options: RenderAutoRiskOptions = {},
+): { rank: number; hatch: 0 | 1 | 2; inBounds: boolean } {
+  if (
+    lat < AU.minLat ||
+    lat > AU.maxLat ||
+    lon < AU.minLon ||
+    lon > AU.maxLon
+  ) {
+    return { rank: 0, hatch: 0, inBounds: false };
+  }
+  if (!points.length) return { rank: 0, hatch: 0, inBounds: true };
+
+  const { ranks, hatches, width, height } = buildRenderedRiskFields(
+    points,
+    options,
+  );
+  const { x, y } = latLonToPixel(lat, lon, width, height);
+  const ix = Math.max(0, Math.min(width - 1, Math.round(x)));
+  const iy = Math.max(0, Math.min(height - 1, Math.round(y)));
+  const i = iy * width + ix;
+  const rank = ranks[i] ?? 0;
+  const hatchRaw = hatches[i] ?? 0;
+  const hatch = (hatchRaw === 1 || hatchRaw === 2 ? hatchRaw : 0) as 0 | 1 | 2;
+  return { rank, hatch, inBounds: true };
 }

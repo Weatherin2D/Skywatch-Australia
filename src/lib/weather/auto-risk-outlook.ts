@@ -42,6 +42,7 @@ export { australWetSeasonWeight } from "@/lib/weather/auto-risk-climate";
 import { BOM_RISK_SITES, type BomRiskSite } from "@/lib/weather/bom-risk-sites";
 import {
   renderAutoRiskPng,
+  samplePaintedRiskAt,
   summarizeUsedFromRender,
   type AutoRiskSamplePoint,
 } from "@/lib/weather/auto-risk-smooth";
@@ -1819,13 +1820,13 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v7/${kind}.json`;
+  return `model-risk/v8/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v7",
+    "skywatch-model-risk-v8",
     `${kind}.json`,
   );
 }
@@ -2125,7 +2126,8 @@ export function resolveModelRiskKind(
 }
 
 /**
- * Nearest scored sample for a map tap on a model risk / chance product.
+ * Map-tap inspect: category comes from the painted raster; ingredients from
+ * the nearest sample site. Clear paint → short empty card (no false rating).
  */
 export async function probeModelRisk(
   kind: ModelRiskKind,
@@ -2146,10 +2148,25 @@ export async function probeModelRisk(
     const rebuilt = await ensureCache(kind, { force: true });
     sites = rebuilt.dayProbeSites[opts.day] ?? [];
   }
-  const nearest = nearestProbeSite(sites, opts.lat, opts.lon);
-  if (!nearest) return null;
-  // Ignore absurd offshore clicks far from the sample mesh.
-  if (nearest.distanceKm > 220) {
+  const layer = layerFor(entry, product);
+  const points = layer.dayPoints[opts.day] ?? [];
+
+  const paintOpts =
+    product === "risk"
+      ? {}
+      : {
+          maxRank: chanceBandsFor(product).length,
+          colors: chanceColorMap(chanceBandsFor(product)),
+          hatch: false,
+        };
+  const painted = samplePaintedRiskAt(
+    points,
+    opts.lat,
+    opts.lon,
+    paintOpts,
+  );
+
+  if (!painted.inBounds) {
     return {
       status: "empty",
       source: kind,
@@ -2157,7 +2174,7 @@ export async function probeModelRisk(
       day: opts.day,
       lat: opts.lat,
       lon: opts.lon,
-      distanceKm: nearest.distanceKm,
+      distanceKm: 0,
       category: {
         id: "none",
         label: "Outside guidance area",
@@ -2166,21 +2183,59 @@ export async function probeModelRisk(
         hatch: 0,
         hatchLabel: null,
       },
-      summary:
-        "That point is too far from the Australian sample mesh for a reliable rating.",
-      reasons: [
-        "Tap closer to the mainland or nearby islands covered by the outlook.",
-      ],
+      summary: "That point is outside the national risk frame.",
+      reasons: ["Tap inside the Australian map area shown on Risk."],
       conditions: [],
       guidance:
         "Guidance only — not an official warning. Check BoM for warnings.",
     };
   }
+
+  const nearest = nearestProbeSite(sites, opts.lat, opts.lon);
+  if (!nearest) {
+    return {
+      status: "empty",
+      source: kind,
+      product,
+      day: opts.day,
+      lat: opts.lat,
+      lon: opts.lon,
+      distanceKm: 0,
+      category: {
+        id: "none",
+        label: "No elevated risk",
+        color: "#3A3A3A",
+        rank: 0,
+        hatch: 0,
+        hatchLabel: null,
+      },
+      summary: "No model samples available for this outlook yet.",
+      reasons: ["Try refreshing the risk outlook in a moment."],
+      conditions: [],
+      guidance:
+        "Guidance only — not an official warning. Check BoM for warnings.",
+    };
+  }
+
+  // Clear paint wins — never invent a category from a distant elevated site.
+  if (painted.rank <= 0) {
+    return explainProbeSite(nearest.site, product, {
+      source: kind,
+      day: opts.day,
+      lat: opts.lat,
+      lon: opts.lon,
+      distanceKm: nearest.distanceKm,
+      mapEmpty: true,
+    });
+  }
+
   return explainProbeSite(nearest.site, product, {
     source: kind,
     day: opts.day,
     lat: opts.lat,
     lon: opts.lon,
     distanceKm: nearest.distanceKm,
+    mapRank: painted.rank,
+    mapHatch: product === "risk" ? painted.hatch : 0,
   });
 }

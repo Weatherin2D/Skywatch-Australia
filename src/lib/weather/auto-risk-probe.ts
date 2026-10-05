@@ -322,31 +322,76 @@ export function explainProbeSite(
     lat: number;
     lon: number;
     distanceKm: number;
+    /** Painted map rank at the click — overrides site.rank for category. */
+    mapRank?: number;
+    mapHatch?: 0 | 1 | 2;
+    /** When true, return a short empty card (click landed on clear paint). */
+    mapEmpty?: boolean;
   },
 ): RiskProbeResult {
-  const reasons = buildReasons(site, product);
+  if (opts.mapEmpty) {
+    return {
+      status: "empty",
+      source: opts.source,
+      product,
+      day: opts.day,
+      lat: opts.lat,
+      lon: opts.lon,
+      distanceKm: opts.distanceKm,
+      category: {
+        id: "none",
+        label: "No elevated risk",
+        color: "#3A3A3A",
+        rank: 0,
+        hatch: 0,
+        hatchLabel: null,
+      },
+      summary:
+        "No elevated contour on the map at this point for the selected day.",
+      reasons: [
+        "The painted outlook is clear here — nearby sample sites may still have weak ingredients, but they did not survive onto the risk area.",
+      ],
+      conditions: [],
+      guidance:
+        "Guidance only — not an official warning. Check BoM for warnings.",
+    };
+  }
+
+  const displayRank =
+    opts.mapRank != null ? opts.mapRank : site.rank;
+  const displayHatch =
+    opts.mapHatch != null ? opts.mapHatch : site.hatch;
+  // Use map rank for category copy; site metrics still drive ingredient reasons.
+  const siteForReasons: AutoRiskProbeSite = {
+    ...site,
+    rank: displayRank,
+    hatch: displayHatch,
+  };
+  const reasons = buildReasons(siteForReasons, product);
   let category: RiskProbeResult["category"];
   let summary: string;
 
   if (product === "risk") {
-    const cat = categoryByRank(site.rank);
-    const hLabel = hatchLabel(site.hatch);
+    const cat = categoryByRank(displayRank);
+    const hLabel = hatchLabel(displayHatch);
     category = {
       id: cat?.id ?? "none",
       label: cat?.label ?? "No elevated risk",
       color: cat?.color ?? "#3A3A3A",
-      rank: site.rank,
-      hatch: site.hatch,
+      rank: displayRank,
+      hatch: displayHatch,
       hatchLabel: hLabel,
     };
     summary =
-      site.rank <= 0
+      displayRank <= 0
         ? "No elevated convective risk contour at this point for the selected day."
         : `${cat!.label}${hLabel ? ` · ${hLabel}` : ""} — ${cat!.blurb}`;
   } else {
     const pct = site.chances[product as keyof HazardChances] ?? 0;
     const bands = chanceBandsFor(product);
-    const bandRank = chancePctToRank(pct, bands);
+    // Prefer painted chance band when provided.
+    const bandRank =
+      opts.mapRank != null ? opts.mapRank : chancePctToRank(pct, bands);
     const band = bands.find((b) => b.rank === bandRank);
     category = {
       id: band?.id ?? "none",
@@ -365,8 +410,11 @@ export function explainProbeSite(
         : `No elevated ${PRODUCT_META[product].shortLabel.toLowerCase()} contour here (~${fmt(pct, 0)}%).`;
   }
 
+  const elevated =
+    displayRank > 0 || (product !== "risk" && category.rank > 0);
+
   return {
-    status: site.rank > 0 || (product !== "risk" && category.rank > 0) ? "ok" : "empty",
+    status: elevated ? "ok" : "empty",
     source: opts.source,
     product,
     day: opts.day,
@@ -375,17 +423,19 @@ export function explainProbeSite(
     distanceKm: opts.distanceKm,
     category,
     summary,
-    reasons,
-    conditions: buildConditions(site, product),
-    hazards: [
-      { id: "tstorm", label: "Thunderstorm", pct: site.chances.tstorm },
-      { id: "hail", label: "Large hail", pct: site.chances.hail },
-      { id: "wind", label: "Damaging wind", pct: site.chances.wind },
-      { id: "rain", label: "Heavy rain", pct: site.chances.rain },
-      { id: "tornado", label: "Tornado", pct: site.chances.tornado },
-    ],
+    reasons: elevated ? reasons : reasons.slice(0, 2),
+    conditions: elevated ? buildConditions(site, product) : [],
+    hazards: elevated
+      ? [
+          { id: "tstorm", label: "Thunderstorm", pct: site.chances.tstorm },
+          { id: "hail", label: "Large hail", pct: site.chances.hail },
+          { id: "wind", label: "Damaging wind", pct: site.chances.wind },
+          { id: "rain", label: "Heavy rain", pct: site.chances.rain },
+          { id: "tornado", label: "Tornado", pct: site.chances.tornado },
+        ]
+      : undefined,
     guidance:
-      "Guidance from the nearest model sample (~40 km scale). Not an official warning — check BoM for warnings.",
+      "Guidance from the painted map + nearest model sample (~40 km scale). Not an official warning — check BoM for warnings.",
   };
 }
 
