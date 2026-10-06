@@ -21,12 +21,15 @@ export type LightningPayload = {
   receivedInBounds?: number;
 };
 
-/** Match the national satellite frame, plus Indian Ocean west of WA. */
+/**
+ * Australia + surrounding marine area only (Timor/Arafura/Coral/Tasman /
+ * southern Indian Ocean approaches). Excludes Indonesia / Java / PNG storms.
+ */
 export const LIGHTNING_AU_BOUNDS = {
-  west: 95,
-  east: 170,
-  south: -50,
-  north: -1,
+  west: 105,
+  east: 168,
+  south: -48,
+  north: -9,
 } as const;
 
 /** Retention window for buffered strikes (seconds). */

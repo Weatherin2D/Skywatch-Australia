@@ -23,8 +23,8 @@ const MAX_BACKFILL_STRIKES = 12_000;
  * Official MyBlitzortung templates (includes/templates.inc.php).
  * Projection defaults to Mercator; coord = North, East, South, West.
  *
- * australia_big alone under-samples WA / Timor / Indian Ocean when the east
- * coast is lit — keep oceania + indonesia so western strokes stay in the buffer.
+ * australia_big alone under-samples WA when the east coast is lit — keep
+ * oceania as a second source. Do not ingest the Indonesia map (out of domain).
  */
 const MAPS = [
   {
@@ -44,15 +44,6 @@ const MAPS = [
     east: 180,
     south: -51.6,
     west: 110,
-    priority: 2,
-  },
-  {
-    id: "indonesia",
-    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=indonesia",
-    north: 16,
-    east: 142,
-    south: -19,
-    west: 95,
     priority: 2,
   },
 ] as const;
