@@ -1089,10 +1089,11 @@ function HomeDashboardInner({
               "relative z-0 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_12px_40px_rgba(0,0,0,0.35)]",
               // Satellite: let the region crop's mercator aspect drive height so
               // tall states (WA/QLD/NT/…) are not clipped by a fixed 4:3 box.
-              // Map/radar: square domain — cap by viewport height so it stays 1:1.
+              // Map/radar: fill the centre column edge-to-edge against the side
+              // panels (no centred max-width square leaving empty gutters).
               showSatelliteLoop
                 ? "w-full"
-                : "mx-auto aspect-square w-full max-w-[min(100%,min(85vh,720px))]",
+                : "aspect-square w-full max-h-[min(90vh,960px)]",
             )}
           >
             <HomeMapDynamic
