@@ -215,6 +215,7 @@ export function SatelliteLightningOverlay({
       iconStyleRef.current === "bolt" ? drawBolt : drawCrosshair;
 
     // Oldest first so fresh flashes paint on top.
+    let painted = 0;
     for (let i = visible.length - 1; i >= 0; i--) {
       const strike = visible[i]!;
       const age = strikeAgeSeconds(strike, animTime);
@@ -226,6 +227,7 @@ export function SatelliteLightningOverlay({
         boundsRef.current,
       );
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      // Clip to the active region crop (WA zoom must not count east-coast strikes).
       if (x < -5 || x > 105 || y < -5 || y > 105) continue;
       const { r, g, b } = strikeAgeRgb(age);
       const size = strikeAgeSize(age) * iconScaleRef.current;
@@ -241,8 +243,9 @@ export function SatelliteLightningOverlay({
         b,
         opacity,
       );
+      painted += 1;
     }
-    return visible.length;
+    return painted;
   }).current;
 
   // Scrub / pause: repaint whenever the active frame time changes.
