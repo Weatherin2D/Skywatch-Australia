@@ -68,7 +68,21 @@ import {
   type PlaybackSpeedId,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
+import {
+  BOM_RADAR_RANGE_OPTIONS,
+  BOM_RADAR_SITES,
+  findBomRadarSite,
+  parseRadarProduct,
+  parseRadarRangeKm,
+  parseRadarViewMode,
+  rangeCodeToKm,
+  type BomRadarProduct,
+  type BomRadarRangeKm,
+  type RadarViewMode,
+} from "@/lib/weather/bom-radar-types";
 import { cn } from "@/lib/utils";
+
+const DEFAULT_RADAR_SITE = "71"; // Sydney (Terrey Hills)
 
 export type HomeDashboardFocus = "radar" | "satellite";
 
@@ -294,6 +308,11 @@ function HomeDashboardInner({
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     DEFAULT_SATELLITE_PRODUCT,
   );
+  const [radarMode, setRadarMode] = useState<RadarViewMode>("composite");
+  const [radarSite, setRadarSite] = useState<string>(DEFAULT_RADAR_SITE);
+  const [radarRange, setRadarRange] = useState<BomRadarRangeKm>(64);
+  const [radarProduct, setRadarProduct] =
+    useState<BomRadarProduct>("reflectivity");
   const [chaseEnabled, setChaseEnabled] = useState(false);
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [focusCellId, setFocusCellId] = useState<string | null>(null);
@@ -344,6 +363,20 @@ function HomeDashboardInner({
     ) {
       setSatProduct(product as SatelliteProductId);
     }
+    const rm = searchParams.get("radarMode");
+    if (rm) setRadarMode(parseRadarViewMode(rm));
+    const rs = searchParams.get("radarSite");
+    if (rs && findBomRadarSite(rs)) {
+      setRadarSite(rs);
+      const site = findBomRadarSite(rs);
+      if (site && !searchParams.get("radarRange")) {
+        setRadarRange(rangeCodeToKm(site.defaultRange));
+      }
+    }
+    const rr = parseRadarRangeKm(searchParams.get("radarRange"));
+    if (rr) setRadarRange(rr);
+    const rp = searchParams.get("radarProduct");
+    if (rp) setRadarProduct(parseRadarProduct(rp));
     if (searchParams.get("chase") === "1" || focus === "radar") {
       setChaseEnabled(true);
       setLayers((prev) => ({ ...prev, radar: true, lightning: true }));
@@ -399,6 +432,16 @@ function HomeDashboardInner({
     }
     if (chaseEnabled) params.set("chase", "1");
     if (selectedCellId) params.set("cell", selectedCellId);
+    if (layers.radar && radarMode === "site") {
+      params.set("radarMode", "site");
+      params.set("radarSite", radarSite);
+      if (radarProduct === "reflectivity") {
+        params.set("radarRange", String(radarRange));
+      }
+      if (radarProduct !== "reflectivity") {
+        params.set("radarProduct", radarProduct);
+      }
+    }
     const qs = params.toString();
     const next = qs ? `${path}?${qs}` : path;
     // Query-only replace; aborts if the user already left this route.
@@ -413,6 +456,10 @@ function HomeDashboardInner({
     focus,
     chaseEnabled,
     selectedCellId,
+    radarMode,
+    radarSite,
+    radarRange,
+    radarProduct,
   ]);
 
   async function copyShareLink() {
@@ -430,8 +477,16 @@ function HomeDashboardInner({
 
   const [satMenuOpen, setSatMenuOpen] = useState(false);
   const [regionMenuOpen, setRegionMenuOpen] = useState(false);
+  const [radarMenuOpen, setRadarMenuOpen] = useState(false);
+  const [radarSiteMenuOpen, setRadarSiteMenuOpen] = useState(false);
+  const [radarRangeMenuOpen, setRadarRangeMenuOpen] = useState(false);
+  const [radarProductMenuOpen, setRadarProductMenuOpen] = useState(false);
   const satMenuRef = useRef<HTMLDivElement>(null);
   const regionMenuRef = useRef<HTMLDivElement>(null);
+  const radarMenuRef = useRef<HTMLDivElement>(null);
+  const radarSiteMenuRef = useRef<HTMLDivElement>(null);
+  const radarRangeMenuRef = useRef<HTMLDivElement>(null);
+  const radarProductMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
@@ -481,10 +536,15 @@ function HomeDashboardInner({
   /**
    * Radar drives the timeline on open Map when rain radar is on and satellite
    * imagery is not already owning the loop (same play/scrub UX as Himawari).
+   * Site mode is a single latest IDR frame — no composite scrubber.
    */
   const useRadarLoop =
-    showRadarOverlay && mode === "Map" && !himawariOnMap;
+    showRadarOverlay &&
+    radarMode === "composite" &&
+    mode === "Map" &&
+    !himawariOnMap;
   const useTimeline = useSatelliteFrames || useRadarLoop;
+  const radarSiteMeta = findBomRadarSite(radarSite);
 
   const loopFrames = useMemo(() => {
     if (useSatelliteFrames) {
@@ -750,26 +810,65 @@ function HomeDashboardInner({
   // a second dashboard-wide storm of tile requests burned Fluid Active CPU.
 
   useEffect(() => {
-    if (!satMenuOpen && !regionMenuOpen) return;
+    const anyOpen =
+      satMenuOpen ||
+      regionMenuOpen ||
+      radarMenuOpen ||
+      radarSiteMenuOpen ||
+      radarRangeMenuOpen ||
+      radarProductMenuOpen;
+    if (!anyOpen) return;
+    function closeIfOutside(
+      open: boolean,
+      ref: { current: HTMLDivElement | null },
+      close: () => void,
+      t: Node,
+    ) {
+      if (open && ref.current && !ref.current.contains(t)) close();
+    }
     function onPointerDown(e: MouseEvent) {
       const t = e.target as Node;
-      if (satMenuOpen && satMenuRef.current && !satMenuRef.current.contains(t)) {
-        setSatMenuOpen(false);
-      }
-      if (
-        regionMenuOpen &&
-        regionMenuRef.current &&
-        !regionMenuRef.current.contains(t)
-      ) {
-        setRegionMenuOpen(false);
-      }
+      closeIfOutside(satMenuOpen, satMenuRef, () => setSatMenuOpen(false), t);
+      closeIfOutside(
+        regionMenuOpen,
+        regionMenuRef,
+        () => setRegionMenuOpen(false),
+        t,
+      );
+      closeIfOutside(
+        radarMenuOpen,
+        radarMenuRef,
+        () => setRadarMenuOpen(false),
+        t,
+      );
+      closeIfOutside(
+        radarSiteMenuOpen,
+        radarSiteMenuRef,
+        () => setRadarSiteMenuOpen(false),
+        t,
+      );
+      closeIfOutside(
+        radarRangeMenuOpen,
+        radarRangeMenuRef,
+        () => setRadarRangeMenuOpen(false),
+        t,
+      );
+      closeIfOutside(
+        radarProductMenuOpen,
+        radarProductMenuRef,
+        () => setRadarProductMenuOpen(false),
+        t,
+      );
     }
-    // Use bubble-phase click so button onClick runs first.
     document.addEventListener("click", onPointerDown);
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setSatMenuOpen(false);
         setRegionMenuOpen(false);
+        setRadarMenuOpen(false);
+        setRadarSiteMenuOpen(false);
+        setRadarRangeMenuOpen(false);
+        setRadarProductMenuOpen(false);
       }
     }
     document.addEventListener("keydown", onKey);
@@ -777,7 +876,14 @@ function HomeDashboardInner({
       document.removeEventListener("click", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [satMenuOpen, regionMenuOpen]);
+  }, [
+    satMenuOpen,
+    regionMenuOpen,
+    radarMenuOpen,
+    radarSiteMenuOpen,
+    radarRangeMenuOpen,
+    radarProductMenuOpen,
+  ]);
 
   const scrubLabel = useMemo(() => {
     if (!useTimeline) return "";
@@ -923,6 +1029,10 @@ function HomeDashboardInner({
                       aria-expanded={satMenuOpen}
                       onClick={() => {
                         setRegionMenuOpen(false);
+                        setRadarMenuOpen(false);
+                        setRadarSiteMenuOpen(false);
+                        setRadarRangeMenuOpen(false);
+                        setRadarProductMenuOpen(false);
                         if (mode === "Satellite") {
                           setSatMenuOpen((open) => !open);
                         } else {
@@ -1007,6 +1117,10 @@ function HomeDashboardInner({
                 onClick={(e) => {
                   e.stopPropagation();
                   setSatMenuOpen(false);
+                  setRadarMenuOpen(false);
+                  setRadarSiteMenuOpen(false);
+                  setRadarRangeMenuOpen(false);
+                  setRadarProductMenuOpen(false);
                   setRegionMenuOpen((open) => !open);
                 }}
                 className={cn(
@@ -1059,6 +1173,291 @@ function HomeDashboardInner({
               ) : null}
             </div>
 
+            {showRadarOverlay ? (
+              <>
+                <div className="relative z-[70]" ref={radarMenuRef}>
+                  <button
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={radarMenuOpen}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSatMenuOpen(false);
+                      setRegionMenuOpen(false);
+                      setRadarSiteMenuOpen(false);
+                      setRadarRangeMenuOpen(false);
+                      setRadarProductMenuOpen(false);
+                      setRadarMenuOpen((open) => !open);
+                    }}
+                    className={cn(
+                      "sw-chip inline-flex items-center gap-1",
+                      radarMode === "site" ? "sw-chip-active" : "sw-chip-idle",
+                    )}
+                  >
+                    Radar
+                    <span className="font-normal opacity-80">
+                      · {radarMode === "site" ? "Site" : "Composite"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 opacity-80 transition",
+                        radarMenuOpen && "rotate-180",
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                  {radarMenuOpen ? (
+                    <ul
+                      role="listbox"
+                      aria-label="Radar view"
+                      className="absolute left-0 top-full z-[80] mt-1 min-w-[11rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {(
+                        [
+                          { id: "composite" as const, label: "Composite" },
+                          { id: "site" as const, label: "Site" },
+                        ] as const
+                      ).map((opt) => (
+                        <li
+                          key={opt.id}
+                          role="option"
+                          aria-selected={radarMode === opt.id}
+                        >
+                          <button
+                            type="button"
+                            className={cn(
+                              "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                              radarMode === opt.id
+                                ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                                : "text-white/80 hover:bg-white/5 hover:text-white",
+                            )}
+                            onClick={() => {
+                              setRadarMode(opt.id);
+                              setRadarMenuOpen(false);
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+
+                {radarMode === "site" ? (
+                  <>
+                    <div className="relative z-[70]" ref={radarSiteMenuRef}>
+                      <button
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={radarSiteMenuOpen}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSatMenuOpen(false);
+                          setRegionMenuOpen(false);
+                          setRadarMenuOpen(false);
+                          setRadarRangeMenuOpen(false);
+                          setRadarProductMenuOpen(false);
+                          setRadarSiteMenuOpen((open) => !open);
+                        }}
+                        className="sw-chip sw-chip-active inline-flex items-center gap-1"
+                      >
+                        Site
+                        <span className="max-w-[9rem] truncate font-normal opacity-80">
+                          · {radarSiteMeta?.name ?? radarSite}
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            "h-3.5 w-3.5 opacity-80 transition",
+                            radarSiteMenuOpen && "rotate-180",
+                          )}
+                          aria-hidden
+                        />
+                      </button>
+                      {radarSiteMenuOpen ? (
+                        <ul
+                          role="listbox"
+                          aria-label="Radar site"
+                          className="absolute left-0 top-full z-[80] mt-1 max-h-80 min-w-[16rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          {BOM_RADAR_SITES.map((s) => (
+                            <li
+                              key={s.code}
+                              role="option"
+                              aria-selected={radarSite === s.code}
+                            >
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-semibold transition",
+                                  radarSite === s.code
+                                    ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                                    : "text-white/80 hover:bg-white/5 hover:text-white",
+                                )}
+                                onClick={() => {
+                                  setRadarSite(s.code);
+                                  setRadarRange(rangeCodeToKm(s.defaultRange));
+                                  setRadarSiteMenuOpen(false);
+                                }}
+                              >
+                                <span>{s.name}</span>
+                                <span className="text-[10px] font-bold opacity-70">
+                                  {s.code}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+
+                    {radarProduct === "reflectivity" ? (
+                      <div className="relative z-[70]" ref={radarRangeMenuRef}>
+                        <button
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={radarRangeMenuOpen}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSatMenuOpen(false);
+                            setRegionMenuOpen(false);
+                            setRadarMenuOpen(false);
+                            setRadarSiteMenuOpen(false);
+                            setRadarProductMenuOpen(false);
+                            setRadarRangeMenuOpen((open) => !open);
+                          }}
+                          className="sw-chip sw-chip-idle inline-flex items-center gap-1"
+                        >
+                          Range
+                          <span className="font-normal opacity-80">
+                            · {radarRange} km
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 opacity-80 transition",
+                              radarRangeMenuOpen && "rotate-180",
+                            )}
+                            aria-hidden
+                          />
+                        </button>
+                        {radarRangeMenuOpen ? (
+                          <ul
+                            role="listbox"
+                            aria-label="Radar range"
+                            className="absolute left-0 top-full z-[80] mt-1 min-w-[9rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            {BOM_RADAR_RANGE_OPTIONS.map((opt) => (
+                              <li
+                                key={opt.km}
+                                role="option"
+                                aria-selected={radarRange === opt.km}
+                              >
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                                    radarRange === opt.km
+                                      ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                                      : "text-white/80 hover:bg-white/5 hover:text-white",
+                                  )}
+                                  onClick={() => {
+                                    setRadarRange(opt.km);
+                                    setRadarRangeMenuOpen(false);
+                                  }}
+                                >
+                                  {opt.label}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="relative z-[70]" ref={radarProductMenuRef}>
+                      <button
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={radarProductMenuOpen}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSatMenuOpen(false);
+                          setRegionMenuOpen(false);
+                          setRadarMenuOpen(false);
+                          setRadarSiteMenuOpen(false);
+                          setRadarRangeMenuOpen(false);
+                          setRadarProductMenuOpen((open) => !open);
+                        }}
+                        className="sw-chip sw-chip-idle inline-flex items-center gap-1"
+                      >
+                        Product
+                        <span className="font-normal opacity-80">
+                          ·{" "}
+                          {radarProduct === "doppler"
+                            ? "Doppler"
+                            : "Reflectivity"}
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            "h-3.5 w-3.5 opacity-80 transition",
+                            radarProductMenuOpen && "rotate-180",
+                          )}
+                          aria-hidden
+                        />
+                      </button>
+                      {radarProductMenuOpen ? (
+                        <ul
+                          role="listbox"
+                          aria-label="Radar product"
+                          className="absolute left-0 top-full z-[80] mt-1 min-w-[11rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          {(
+                            [
+                              {
+                                id: "reflectivity" as const,
+                                label: "Reflectivity",
+                              },
+                              { id: "doppler" as const, label: "Doppler" },
+                            ] as const
+                          ).map((opt) => (
+                            <li
+                              key={opt.id}
+                              role="option"
+                              aria-selected={radarProduct === opt.id}
+                            >
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                                  radarProduct === opt.id
+                                    ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                                    : "text-white/80 hover:bg-white/5 hover:text-white",
+                                )}
+                                onClick={() => {
+                                  setRadarProduct(opt.id);
+                                  setRadarProductMenuOpen(false);
+                                }}
+                              >
+                                {opt.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+
             <button
               type="button"
               onClick={() => void copyShareLink()}
@@ -1085,8 +1484,12 @@ function HomeDashboardInner({
               mode={mode}
               regionId={regionId}
               showRadarOverlay={showRadarOverlay}
+              radarMode={radarMode}
+              radarSiteCode={radarSite}
+              radarRangeKm={radarRange}
+              radarProduct={radarProduct}
               frameTileUrl={
-                showRadarOverlay
+                showRadarOverlay && radarMode === "composite"
                   ? (overlayRadarFrame?.tileUrlTemplate ?? null)
                   : null
               }

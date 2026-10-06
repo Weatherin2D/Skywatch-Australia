@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ImageOverlay, useMap, useMapEvents } from "react-leaflet";
+import { useEffect, useMemo, useState } from "react";
+import { ImageOverlay, useMap } from "react-leaflet";
+import type {
+  BomRadarProduct,
+  BomRadarRangeKm,
+  RadarViewMode,
+} from "@/lib/weather/bom-radar-types";
+
+export type { RadarViewMode };
 
 type SiteFrame = {
   code: string;
@@ -11,41 +18,51 @@ type SiteFrame = {
   bounds: [[number, number], [number, number]];
 };
 
-const MIN_ZOOM = 8;
 const POLL_MS = 60_000;
 
 /**
- * Georeferenced BoM IDR site overlays — sharper than national tiles when zoomed in.
+ * Explicit BoM IDR site overlay — only when mode is "site" and a site is chosen.
  */
-export function BomSiteRadarLayer({ enabled }: { enabled: boolean }) {
+export function BomSiteRadarLayer({
+  mode,
+  siteCode,
+  rangeKm,
+  product,
+}: {
+  mode: RadarViewMode;
+  siteCode: string | null;
+  rangeKm: BomRadarRangeKm;
+  product: BomRadarProduct;
+}) {
   const map = useMap();
-  const [sites, setSites] = useState<SiteFrame[]>([]);
-  const [zoom, setZoom] = useState(() => map.getZoom());
+  const [frame, setFrame] = useState<SiteFrame | null>(null);
 
-  useMapEvents({
-    zoomend: () => setZoom(map.getZoom()),
-    moveend: () => setZoom(map.getZoom()),
-  });
+  const query = useMemo(() => {
+    if (mode !== "site" || !siteCode) return null;
+    return `/api/weather/bom-site-radar?code=${encodeURIComponent(siteCode)}&range=${rangeKm}&product=${product}`;
+  }, [mode, siteCode, rangeKm, product]);
 
   useEffect(() => {
-    if (!enabled || zoom < MIN_ZOOM) {
-      setSites([]);
+    if (!query) {
+      setFrame(null);
       return;
     }
 
     let cancelled = false;
     const load = async () => {
       try {
-        const c = map.getCenter();
-        const res = await fetch(
-          `/api/weather/bom-site-radar?lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}&limit=2`,
-          { cache: "no-store" },
-        );
+        const res = await fetch(query, { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as { sites?: SiteFrame[] };
-        if (!cancelled) setSites(data.sites ?? []);
+        const data = (await res.json()) as SiteFrame;
+        if (cancelled) return;
+        setFrame(data);
+        try {
+          map.fitBounds(data.bounds, { animate: true, padding: [24, 24], maxZoom: 10 });
+        } catch {
+          /* map may be tearing down */
+        }
       } catch {
-        if (!cancelled) setSites([]);
+        if (!cancelled) setFrame(null);
       }
     };
 
@@ -55,22 +72,18 @@ export function BomSiteRadarLayer({ enabled }: { enabled: boolean }) {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [enabled, zoom, map]);
+  }, [query, map]);
 
-  if (!enabled || zoom < MIN_ZOOM || sites.length === 0) return null;
+  if (mode !== "site" || !frame) return null;
 
   return (
-    <>
-      {sites.map((s) => (
-        <ImageOverlay
-          key={s.productId}
-          url={s.imageUrl}
-          bounds={s.bounds}
-          opacity={0.92}
-          zIndex={460}
-          className="skywatch-bom-site-radar"
-        />
-      ))}
-    </>
+    <ImageOverlay
+      key={`${frame.productId}-${frame.imageUrl}`}
+      url={frame.imageUrl}
+      bounds={frame.bounds}
+      opacity={0.92}
+      zIndex={460}
+      className="skywatch-bom-site-radar"
+    />
   );
 }

@@ -10,8 +10,6 @@ import {
   getSatelliteProduct,
   isSatelliteProductId,
   parseRealEarthTimeToken,
-  mergeRadarTimelines,
-  rainviewerTileUrl,
   satelliteFrameProxyUrl,
   toIsoZ,
   type SatelliteProductId,
@@ -20,7 +18,6 @@ import {
   type WeatherMapsPayload,
 } from "@/lib/weather/maps";
 import { warmFramesInBackground } from "@/lib/weather/fetch-frame";
-import { warmRadarFramesInBackground } from "@/lib/weather/warm-radar-tiles";
 import {
   BOM_RADAR_ATTRIBUTION,
   bomRadarTileUrl,
@@ -31,24 +28,11 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const RAINVIEWER_URL = "https://api.rainviewer.com/public/weather-maps.json";
 const GIBS_STEP_MS = HIMAWARI_STEP_SEC * 1000;
 const GIBS_PROBE_MAX = 18;
 const GIBS_PROBE_BATCH = 4;
 const GIBS_PROBE_WIDTH = 96;
 const FRAME_COUNT = SATELLITE_FRAME_COUNT;
-
-type RainViewerMaps = {
-  generated?: number;
-  host?: string;
-  radar?: {
-    past?: Array<{ time: number; path: string }>;
-    nowcast?: Array<{ time: number; path: string }>;
-  };
-  satellite?: {
-    infrared?: Array<{ time: number; path: string }>;
-  };
-};
 
 function emptyProductFrames(): WeatherMapsPayload["satellite"]["products"] {
   return Object.fromEntries(
@@ -168,20 +152,6 @@ function buildFramesAtLatest(
   );
 }
 
-function normalizeRainviewerFrames(
-  host: string,
-  frames: Array<{ time: number; path: string }> | undefined,
-  kind: "satellite" | "radar",
-): WeatherFrame[] {
-  if (!frames?.length) return [];
-  return frames.map((f) => ({
-    time: f.time,
-    path: f.path,
-    tileUrlTemplate: rainviewerTileUrl(host, f.path, kind),
-    radarSource: kind === "radar" ? ("rainviewer" as const) : undefined,
-  }));
-}
-
 async function buildBomRadarFrames(): Promise<WeatherFrame[]> {
   try {
     const times = await getBomRadarFrameTimes();
@@ -293,47 +263,9 @@ export async function GET(request: NextRequest) {
       ? rawProduct
       : DEFAULT_SATELLITE_PRODUCT;
 
-    const rvPromise = fetch(RAINVIEWER_URL, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "SkyWatchAustralia/1.0",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    })
-      .then(async (rvRes) => {
-        if (!rvRes.ok) throw new Error(`RainViewer HTTP ${rvRes.status}`);
-        return (await rvRes.json()) as RainViewerMaps;
-      })
-      .catch(() => null);
-
-    const [rv, bomFrames] = await Promise.all([rvPromise, buildBomRadarFrames()]);
-    const host = rv?.host ?? "https://tilecache.rainviewer.com";
-    const radarPast = normalizeRainviewerFrames(host, rv?.radar?.past, "radar");
-    const radarNowcast = normalizeRainviewerFrames(
-      host,
-      rv?.radar?.nowcast,
-      "radar",
-    );
-    const rainviewerAll = [...radarPast, ...radarNowcast].sort(
-      (a, b) => a.time - b.time,
-    );
-    const radarAll = mergeRadarTimelines(bomFrames, rainviewerAll);
-    const bomCount = radarAll.filter((f) => f.radarSource === "bom").length;
-    const radarSource =
-      bomCount === 0
-        ? ("rainviewer" as const)
-        : bomCount >= radarAll.length
-          ? ("bom" as const)
-          : ("mixed" as const);
-    const radarAttribution =
-      bomCount > 0
-        ? `${BOM_RADAR_ATTRIBUTION}${
-            rainviewerAll.length
-              ? " · RainViewer (history/nowcast)"
-              : ""
-          }`
-        : "LightningMaps / RainViewer radar";
+    const bomFrames = await buildBomRadarFrames();
+    const radarAll = bomFrames;
+    const host = "https://api.bom.gov.au";
 
     const satellite = wantAll
       ? await buildAllSatelliteProducts()
@@ -369,18 +301,10 @@ export async function GET(request: NextRequest) {
           };
         })();
 
-    const generated = rv?.generated ?? Math.floor(Date.now() / 1000);
+    const generated = Math.floor(Date.now() / 1000);
     const activeProduct = wantAll ? DEFAULT_SATELLITE_PRODUCT : product;
     const frames = satellite.products[activeProduct].frames;
     const activeMeta = getSatelliteProduct(activeProduct);
-
-    // Prime RainViewer tile cache for newest RV frames (BoM tiles warm on demand).
-    warmRadarFramesInBackground(
-      radarAll
-        .filter((f) => f.radarSource !== "bom")
-        .slice(-2)
-        .flatMap((f) => (f.path ? [{ host, path: f.path }] : [])),
-    );
 
     const payload: WeatherMapsPayload = {
       generated,
@@ -393,8 +317,8 @@ export async function GET(request: NextRequest) {
       },
       radar: {
         past: radarAll,
-        source: radarSource,
-        attribution: radarAttribution,
+        source: "bom",
+        attribution: BOM_RADAR_ATTRIBUTION,
       },
     };
 
@@ -410,8 +334,8 @@ export async function GET(request: NextRequest) {
           ? String(frames[frames.length - 1]!.time)
           : "",
         "X-Satellite-Frame-Count": String(frames.length),
-        "X-Radar-Source": radarSource,
-        "X-Radar-Bom-Frames": String(bomCount),
+        "X-Radar-Source": "bom",
+        "X-Radar-Bom-Frames": String(radarAll.length),
         "X-Radar-Frame-Count": String(radarAll.length),
       },
     });

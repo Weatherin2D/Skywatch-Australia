@@ -1,9 +1,9 @@
-export type RadarFrameSource = "bom" | "rainviewer";
+export type RadarFrameSource = "bom";
 
 export type WeatherFrame = {
   /** Unix time in seconds */
   time: number;
-  /** RainViewer path fragment when available */
+  /** RainViewer path fragment when available (legacy / unused for radar) */
   path?: string;
   /**
    * Leaflet tile URL with {z}/{x}/{y} placeholders already ordered
@@ -126,8 +126,7 @@ export type WeatherMapsPayload = {
   };
   radar: {
     past: WeatherFrame[];
-    /** Dominant / preferred radar provider for the tip. */
-    source: "bom" | "rainviewer" | "mixed";
+    source: "bom";
     attribution?: string;
   };
 };
