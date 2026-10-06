@@ -97,7 +97,7 @@ export function SiteHeader() {
 
           <nav
             aria-label="Primary"
-            className="relative z-10 hidden items-center gap-1 lg:flex"
+            className="relative z-10 hidden min-w-0 flex-1 items-center gap-1 lg:flex"
           >
             {PRIMARY_NAV.map(({ href, label, icon }) => (
               <NavLink
@@ -111,7 +111,7 @@ export function SiteHeader() {
             ))}
           </nav>
 
-          <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1 sm:gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
             <div className="hidden items-center gap-1 lg:flex">
               {PRIMARY_NAV_END.map(({ href, label, icon }) => (
                 <NavLink
@@ -162,7 +162,7 @@ export function SiteHeader() {
             </div>
             <LocationSearch
               compact
-              className="w-full max-w-[min(100%,280px)] sm:max-w-[240px]"
+              className="w-[min(100%,240px)] sm:w-[240px]"
             />
           </div>
         </div>
