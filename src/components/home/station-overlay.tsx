@@ -8,16 +8,22 @@ import {
   drawStationModel,
   stationModelDataUrl,
 } from "@/lib/weather/station-model-draw";
-import type { WeatherStation } from "@/lib/weather/stations";
+import {
+  declutterStations,
+  densityForBounds,
+  densityForLeafletZoom,
+  type WeatherStation,
+} from "@/lib/weather/stations";
 import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
 
-function stationIcon(station: WeatherStation): L.DivIcon {
+function stationIcon(station: WeatherStation, scale: number): L.DivIcon {
   const url = stationModelDataUrl(station);
+  const size = Math.round(STATION_MODEL_SIZE * scale);
   return L.divIcon({
     className: "skywatch-station-model",
-    html: `<img src="${url}" width="${STATION_MODEL_SIZE}" height="${STATION_MODEL_SIZE}" alt="${station.name.replace(/"/g, "")}" draggable="false" />`,
-    iconSize: [STATION_MODEL_SIZE, STATION_MODEL_SIZE],
-    iconAnchor: [STATION_MODEL_SIZE / 2, STATION_MODEL_SIZE / 2],
+    html: `<img src="${url}" width="${size}" height="${size}" alt="${station.name.replace(/"/g, "")}" draggable="false" />`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -31,26 +37,29 @@ function useMapZoom() {
   return zoom;
 }
 
-/** Leaflet map — station-model markers. */
+/** Leaflet map — station-model markers with zoom declutter. */
 export function LeafletStationOverlay({
   stations,
   enabled,
 }: {
   stations: WeatherStation[];
   enabled: boolean;
-  }) {
+}) {
   const zoom = useMapZoom();
-  const visible = enabled && zoom >= 4;
+  const density = useMemo(() => densityForLeafletZoom(zoom), [zoom]);
+  const visibleStations = useMemo(
+    () => (enabled ? declutterStations(stations, density) : []),
+    [stations, density, enabled],
+  );
 
   const icons = useMemo(() => {
-    if (!visible) return [];
-    return stations.map((s) => ({
+    return visibleStations.map((s) => ({
       station: s,
-      icon: stationIcon(s),
+      icon: stationIcon(s, density.scale),
     }));
-  }, [stations, visible]);
+  }, [visibleStations, density.scale]);
 
-  if (!visible) return null;
+  if (!enabled || icons.length === 0) return null;
 
   return (
     <>
@@ -78,32 +87,35 @@ export function SatelliteStationOverlay({
   bounds: LonLatBounds;
 }) {
   const canvasRefs = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const density = useMemo(() => densityForBounds(bounds), [bounds]);
+  const visibleStations = useMemo(() => {
+    if (!enabled) return [];
+    const inFrame = stations.filter((station) => {
+      const pct = lonLatToBoundsPct(station.lon, station.lat, bounds);
+      return pct.x >= -5 && pct.x <= 105 && pct.y >= -5 && pct.y <= 105;
+    });
+    return declutterStations(inFrame, density);
+  }, [stations, enabled, bounds, density]);
 
   useEffect(() => {
     if (!enabled) return;
-    for (const station of stations) {
+    for (const station of visibleStations) {
       const canvas = canvasRefs.current.get(station.id);
       if (!canvas) continue;
       const ctx = canvas.getContext("2d");
       if (!ctx) continue;
       drawStationModel(ctx, station);
     }
-  }, [stations, enabled]);
+  }, [visibleStations, enabled]);
 
-  if (!enabled || stations.length === 0) return null;
+  if (!enabled || visibleStations.length === 0) return null;
+
+  const size = Math.round(STATION_MODEL_SIZE * density.scale);
 
   return (
     <div className="pointer-events-none absolute inset-0 z-[25]">
-      {stations.map((station) => {
+      {visibleStations.map((station) => {
         const pct = lonLatToBoundsPct(station.lon, station.lat, bounds);
-        if (
-          pct.x < -5 ||
-          pct.x > 105 ||
-          pct.y < -5 ||
-          pct.y > 105
-        ) {
-          return null;
-        }
         return (
           <canvas
             key={station.id}
@@ -127,8 +139,8 @@ export function SatelliteStationOverlay({
             style={{
               left: `${pct.x}%`,
               top: `${pct.y}%`,
-              width: STATION_MODEL_SIZE,
-              height: STATION_MODEL_SIZE,
+              width: size,
+              height: size,
             }}
           />
         );
