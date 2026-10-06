@@ -3,7 +3,7 @@ import {
   createCommunityPost,
   deleteCommunityPost,
   getCommunityAdminSecret,
-  getCommunityStorageStatus,
+  getCommunityStorageStatusFresh,
   isCommunityAdminAuthorized,
   listCommunityPosts,
   MAX_IMAGE_BYTES,

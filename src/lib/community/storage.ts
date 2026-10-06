@@ -335,6 +335,24 @@ export function getCommunityStorageStatus(): StorageStatus {
   return storageStatus(!blobDisabled);
 }
 
+/** Probe Blob so status is truthful before the first write fails. */
+export async function getCommunityStorageStatusFresh(): Promise<StorageStatus> {
+  if (redisConfigured()) return storageStatus(true);
+  if (blobConfigured() && !blobDisabled) {
+    try {
+      await list({ prefix: POSTS_PREFIX, limit: 1 });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (isBlobFatalError(msg)) disableBlob(msg);
+      else {
+        // Soft probe failure — still report configured Blob, writes will re-check.
+        console.warn(`[community-storage] Blob probe warning: ${msg}`);
+      }
+    }
+  }
+  return storageStatus(!blobDisabled);
+}
+
 function durableRequiredError(): {
   ok: false;
   error: string;
