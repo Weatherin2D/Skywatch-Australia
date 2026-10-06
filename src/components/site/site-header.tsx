@@ -33,7 +33,7 @@ function NavLink({
       href={href}
       onClick={onNavigate}
       className={cn(
-        "relative flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition",
+        "relative flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-2 text-sm font-semibold transition xl:px-3",
         active
           ? "bg-[var(--cyan)]/12 text-[var(--cyan)]"
           : "text-white/70 hover:bg-white/5 hover:text-white",
@@ -85,19 +85,14 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b16]/80 text-white backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2.5 px-3 py-2.5 sm:px-4 lg:px-5">
-        <div className="flex items-center gap-3 lg:gap-5">
-          <div className="flex min-w-0 shrink-0 items-center gap-3">
-            <Link href="/" className="min-w-0">
-              <SkyWatchLogo size="sm" />
-            </Link>
-            <p className="hidden max-w-[11rem] text-[11px] leading-snug text-white/55 xl:block">
-              Real weather. Deeper insight. A safer Australia.
-            </p>
-          </div>
+        <div className="flex items-center gap-3 lg:gap-4">
+          <Link href="/" className="min-w-0 shrink-0">
+            <SkyWatchLogo size="sm" />
+          </Link>
 
           <nav
             aria-label="Primary"
-            className="relative z-10 hidden min-w-0 flex-1 items-center gap-1 lg:flex"
+            className="relative z-10 hidden min-w-0 flex-1 items-center justify-evenly lg:flex"
           >
             {PRIMARY_NAV.map(({ href, label, icon }) => (
               <NavLink
@@ -109,60 +104,58 @@ export function SiteHeader() {
                 onNavigate={() => setMoreOpen(false)}
               />
             ))}
+            {PRIMARY_NAV_END.map(({ href, label, icon }) => (
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                active={isActive(href)}
+                onNavigate={() => setMoreOpen(false)}
+              />
+            ))}
+            <div className="relative shrink-0" ref={moreRef}>
+              <button
+                type="button"
+                onClick={() => setMoreOpen((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2.5 py-2 text-sm font-semibold transition xl:px-3",
+                  moreOpen
+                    ? "bg-white/10 text-white"
+                    : "text-white/70 hover:bg-white/5 hover:text-white",
+                )}
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+              >
+                More
+                <ChevronDown className="pointer-events-none h-3.5 w-3.5" />
+              </button>
+              {moreOpen ? (
+                <ul
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 shadow-xl backdrop-blur-xl"
+                >
+                  {MORE_NAV.map((item) => (
+                    <li key={item.href} role="none">
+                      <Link
+                        role="menuitem"
+                        href={item.href}
+                        onClick={() => setMoreOpen(false)}
+                        className="block px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/5 hover:text-white"
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </nav>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
-            <div className="hidden items-center gap-1 lg:flex">
-              {PRIMARY_NAV_END.map(({ href, label, icon }) => (
-                <NavLink
-                  key={href}
-                  href={href}
-                  label={label}
-                  icon={icon}
-                  active={isActive(href)}
-                  onNavigate={() => setMoreOpen(false)}
-                />
-              ))}
-              <div className="relative" ref={moreRef}>
-                <button
-                  type="button"
-                  onClick={() => setMoreOpen((v) => !v)}
-                  className={cn(
-                    "flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold transition",
-                    moreOpen
-                      ? "bg-white/10 text-white"
-                      : "text-white/70 hover:bg-white/5 hover:text-white",
-                  )}
-                  aria-expanded={moreOpen}
-                  aria-haspopup="menu"
-                >
-                  More
-                  <ChevronDown className="pointer-events-none h-3.5 w-3.5" />
-                </button>
-                {moreOpen ? (
-                  <ul
-                    role="menu"
-                    className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 shadow-xl backdrop-blur-xl"
-                  >
-                    {MORE_NAV.map((item) => (
-                      <li key={item.href} role="none">
-                        <Link
-                          role="menuitem"
-                          href={item.href}
-                          onClick={() => setMoreOpen(false)}
-                          className="block px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/5 hover:text-white"
-                        >
-                          {item.label}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            </div>
+          <div className="ml-auto flex shrink-0 items-center lg:ml-0">
             <LocationSearch
               compact
-              className="w-[min(100%,240px)] sm:w-[240px]"
+              className="w-[min(100%,220px)] sm:w-[220px]"
             />
           </div>
         </div>
