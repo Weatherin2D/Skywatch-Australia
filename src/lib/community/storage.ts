@@ -335,19 +335,36 @@ export function getCommunityStorageStatus(): StorageStatus {
   return storageStatus(!blobDisabled);
 }
 
-/** Probe Blob so status is truthful before the first write fails. */
+/** Probe Blob with a tiny write so suspended stores are not reported as durable. */
 export async function getCommunityStorageStatusFresh(): Promise<StorageStatus> {
   if (redisConfigured()) return storageStatus(true);
   if (blobConfigured() && !blobDisabled) {
-    try {
-      await list({ prefix: POSTS_PREFIX, limit: 1 });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (isBlobFatalError(msg)) disableBlob(msg);
-      else {
-        // Soft probe failure — still report configured Blob, writes will re-check.
-        console.warn(`[community-storage] Blob probe warning: ${msg}`);
+    const probePath = "community/.health";
+    let wrote = false;
+    for (const access of preferredAccessOrder()) {
+      try {
+        await put(probePath, "ok", {
+          access,
+          contentType: "text/plain",
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          cacheControlMaxAge: 60,
+        });
+        wrote = true;
+        break;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (isBlobFatalError(msg)) {
+          disableBlob(msg);
+          break;
+        }
+        console.warn(
+          `[community-storage] Blob write-probe (${access}) failed: ${msg}`,
+        );
       }
+    }
+    if (!wrote && !blobDisabled) {
+      disableBlob("Blob write probe failed for all access modes.");
     }
   }
   return storageStatus(!blobDisabled);
