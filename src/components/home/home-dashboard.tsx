@@ -65,6 +65,7 @@ import {
   satelliteFrameProxyUrl,
   scrubToFrameIndex,
   timelineEdgeLabels,
+  withRadarSmooth,
   type PlaybackSpeedId,
   type SatelliteProductId,
 } from "@/lib/weather/maps";
@@ -169,7 +170,8 @@ function OverlayControls({
 
       <Panel title="Map settings">
         <p className="mb-2 text-[11px] text-[var(--ink)]/70">
-          Basemap, lightning style, and cartography for the national map.
+          Basemap, radar smoothing, lightning style, and cartography for the
+          national map.
         </p>
         <ul className="space-y-2.5">
           {MAP_SETTINGS.map((setting) => (
@@ -448,7 +450,7 @@ function HomeDashboardInner({
 
   const {
     satelliteFrames,
-    radarFrames,
+    radarFrames: radarFramesRaw,
     loading: mapsLoading,
     error: mapsError,
     lastTipAt,
@@ -469,6 +471,18 @@ function HomeDashboardInner({
   const { stations: weatherStations } = useStations(showStations);
 
   const showRadarOverlay = layers.radar;
+  const radarSmoothing = mapSettings.radarSmoothing;
+  /** Apply smooth=0|1 to every radar tile template from map settings. */
+  const radarFrames = useMemo(() => {
+    const raw = radarFramesRaw;
+    if (!raw.length) return raw;
+    return raw.map((frame) => ({
+      ...frame,
+      tileUrlTemplate:
+        withRadarSmooth(frame.tileUrlTemplate, radarSmoothing) ??
+        frame.tileUrlTemplate,
+    }));
+  }, [radarFramesRaw, radarSmoothing]);
   const region = getMapRegion(regionId);
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);

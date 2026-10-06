@@ -381,18 +381,34 @@ export function rainviewerTileUrl(
 ): string {
   const base = `${host.replace(/\/$/, "")}${path}`;
   if (kind === "radar") {
-    // Same-origin proxy: unsmoothed RainViewer pixels remapped to SkyWatch dBZ.
+    // Same-origin proxy: RainViewer pixels remapped to SkyWatch dBZ.
     // pal/r must stay in the URL so immutable CDN entries from older palettes
-    // (RadarScope experiment, bilinear 512, etc.) cannot mix into playback.
+    // cannot mix into playback. `smooth` is flipped client-side by map settings.
     const q = new URLSearchParams({
       host,
       path,
       pal: RADAR_PALETTE_ID,
       r: RADAR_RENDER_REV,
+      smooth: "0",
     });
     return `/api/weather/radar-tile?${q.toString()}&z={z}&x={x}&y={y}`;
   }
   return `${base}/256/{z}/{x}/{y}/0/0_0.png`;
+}
+
+/** Flip `smooth=0|1` on a radar tile template (map settings toggle). */
+export function withRadarSmooth(
+  template: string | null | undefined,
+  smooth: boolean,
+): string | null {
+  if (!template) return null;
+  if (/[?&]smooth=\d/.test(template)) {
+    return template.replace(/([?&]smooth=)\d/, `$1${smooth ? "1" : "0"}`);
+  }
+  if (template.includes("&z=")) {
+    return template.replace("&z=", `&smooth=${smooth ? "1" : "0"}&z=`);
+  }
+  return `${template}${template.includes("?") ? "&" : "?"}smooth=${smooth ? "1" : "0"}`;
 }
 
 export function toIsoZ(ms: number): string {

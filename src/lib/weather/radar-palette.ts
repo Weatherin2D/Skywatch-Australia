@@ -101,23 +101,40 @@ for (const [hex, dbz] of Object.entries(UB_DBZ)) {
   RECOLOUR_MAP.set(packRgba(r, g, b, a), packRgba(nr, ng, nb, na));
 }
 
+/** Packed palette entries for nearest match (smoothed tiles blend colours). */
+const RECOLOUR_ENTRIES = [...RECOLOUR_MAP.entries()].map(([packed, out]) => ({
+  r: (packed >>> 24) & 255,
+  g: (packed >>> 16) & 255,
+  b: (packed >>> 8) & 255,
+  a: packed & 255,
+  out,
+}));
+
 /**
- * Exact LUT hits cover nearly all RainViewer Universal Blue pixels. Scanning
- * the full palette for every unmatched pixel was the dominant tile CPU cost —
- * treat rare mismatches as transparent instead.
+ * Exact LUT hits cover unsmoothed Universal Blue. Smoothed RainViewer tiles
+ * blend neighbouring colours — fall back to nearest palette entry (163 keys).
  */
-function nearestRecolour(
-  _r: number,
-  _g: number,
-  _b: number,
-  _a: number,
-): number {
-  return 0;
+function nearestRecolour(r: number, g: number, b: number, a: number): number {
+  let best = 0;
+  let bestDist = Infinity;
+  for (const entry of RECOLOUR_ENTRIES) {
+    const dr = r - entry.r;
+    const dg = g - entry.g;
+    const db = b - entry.b;
+    const da = a - entry.a;
+    const dist = dr * dr + dg * dg + db * db + da * da;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = entry.out;
+    }
+  }
+  // Reject wild mismatches (placeholders / chrome).
+  return bestDist > 48 * 48 ? 0 : best;
 }
 
 /**
- * Recolour a RainViewer Universal Blue (unsmoothed) PNG into the SkyWatch
- * dBZ palette. Transparent / unmatched pixels stay transparent.
+ * Recolour a RainViewer Universal Blue PNG into the SkyWatch dBZ palette.
+ * Transparent / unmatched pixels stay transparent.
  */
 export function recolourRadarPng(input: Buffer): Buffer {
   const png = PNG.sync.read(input);
@@ -259,7 +276,10 @@ export function extractOverzoomTile(
   return PNG.sync.write(out);
 }
 
-/** Upstream RainViewer tile URL — Universal Blue, unsmoothed, no snow. */
+/**
+ * Upstream RainViewer tile URL — Universal Blue, no snow.
+ * `smooth` selects RainViewer options `1_0` (smoothed) vs `0_0` (raw).
+ */
 export function rainviewerRawTileUrl(
   host: string,
   path: string,
@@ -267,9 +287,11 @@ export function rainviewerRawTileUrl(
   x: number | string,
   y: number | string,
   size: 256 | 512 = RADAR_TILE_SIZE,
+  smooth = false,
 ): string {
   const base = `${host.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-  return `${base}/${size}/${z}/${x}/${y}/2/0_0.png`;
+  const opts = smooth ? "1_0" : "0_0";
+  return `${base}/${size}/${z}/${x}/${y}/2/${opts}.png`;
 }
 
 const DEG2RAD = Math.PI / 180;

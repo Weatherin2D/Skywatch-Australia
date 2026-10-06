@@ -12,12 +12,13 @@ import type { WeatherFrame } from "@/lib/weather/maps";
 const TRANSPARENT_TILE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-function createBufferLayer(zIndex: number): L.TileLayer {
+function createBufferLayer(zIndex: number, smoothed: boolean): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
-    className: "skywatch-radar-tiles",
-    // Keep the standard 256 CSS tile grid (matches basemap). The proxy serves
-    // 512px PNGs into these slots for 2× supersampling / sharp retina paint.
+    className: smoothed
+      ? "skywatch-radar-tiles skywatch-radar-tiles--smooth"
+      : "skywatch-radar-tiles",
+    // Keep the standard 256 CSS tile grid (matches basemap).
     keepBuffer: 24,
     // Hold painted tiles through the gesture — updating mid-zoom was blanking
     // the radar so it looked like it "vanished" on pinch/scroll.
@@ -44,9 +45,12 @@ function createBufferLayer(zIndex: number): L.TileLayer {
 export function SmoothRadarLayer({
   url,
   opacity = 0.88,
+  smoothed = false,
 }: {
   url: string | null;
   opacity?: number;
+  /** RainViewer spatial smooth — also softens CSS image-rendering. */
+  smoothed?: boolean;
 }) {
   const map = useMap();
   const buffersRef = useRef<[L.TileLayer, L.TileLayer] | null>(null);
@@ -56,8 +60,8 @@ export function SmoothRadarLayer({
   opacityRef.current = opacity;
 
   useEffect(() => {
-    const a = createBufferLayer(450);
-    const b = createBufferLayer(451);
+    const a = createBufferLayer(450, smoothed);
+    const b = createBufferLayer(451, smoothed);
     buffersRef.current = [a, b];
     frontRef.current = 0;
     displayedUrlRef.current = null;
@@ -84,7 +88,7 @@ export function SmoothRadarLayer({
       buffersRef.current = null;
       displayedUrlRef.current = null;
     };
-  }, [map]);
+  }, [map, smoothed]);
 
   useEffect(() => {
     const buffers = buffersRef.current;

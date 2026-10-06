@@ -235,6 +235,12 @@
   image-rendering: crisp-edges;
 }
 
+/* Map settings → Radar smoothing: allow browser interpolation. */
+.skywatch-radar-tiles--smooth img,
+.leaflet-tile-pane .skywatch-radar-tiles--smooth img {
+  image-rendering: auto;
+}
+
 /* BoM risk bands — keep carved edges smooth when Leaflet scales the overlay. */
 .skywatch-risk-chart,
 .leaflet-overlay-pane img.skywatch-risk-chart,

@@ -258,9 +258,11 @@ function MapTools({
 function SatelliteRadarOverlay({
   tileUrl,
   bounds,
+  smoothed = false,
 }: {
   tileUrl: string;
   bounds: RegionBounds;
+  smoothed?: boolean;
 }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-[4]">
@@ -285,7 +287,7 @@ function SatelliteRadarOverlay({
           padding={0}
           isNational={false}
         />
-        <SmoothRadarLayer url={tileUrl} opacity={0.88} />
+        <SmoothRadarLayer url={tileUrl} opacity={0.88} smoothed={smoothed} />
       </MapContainer>
     </div>
   );
@@ -485,6 +487,7 @@ export function HomeMap({
   const isNational = regionId === "national";
   const satelliteLoop = mode === "Satellite";
   const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
+  const radarSmoothed = mapSettings.radarSmoothing;
   const satAspect = isNational
     ? GIBS_AU_ASPECT
     : boundsMercatorAspect(bounds);
@@ -543,7 +546,11 @@ export function HomeMap({
           opacity={frameOpacity}
         />
         {showRadarOverlay && frameTileUrl ? (
-          <SatelliteRadarOverlay tileUrl={frameTileUrl} bounds={bounds} />
+          <SatelliteRadarOverlay
+            tileUrl={frameTileUrl}
+            bounds={bounds}
+            smoothed={radarSmoothed}
+          />
         ) : null}
         <SatelliteSynopticOverlay
           frames={synopticFrames}
@@ -635,7 +642,13 @@ export function HomeMap({
             className="skywatch-risk-chart"
           />
         ) : null}
-        {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.88} /> : null}
+        {radarTiles ? (
+          <SmoothRadarLayer
+            url={radarTiles}
+            opacity={0.88}
+            smoothed={radarSmoothed}
+          />
+        ) : null}
         {showRadarOverlay && radarLoopFrames.length > 0 ? (
           <RadarFramePreloader
             frames={radarLoopFrames}

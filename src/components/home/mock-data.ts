@@ -18,6 +18,7 @@ export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
 /** Cartographic toggles for the national map (below weather overlays). */
 export const MAP_SETTINGS = [
   { id: "satelliteBasemap", label: "Satellite imagery" },
+  { id: "radarSmoothing", label: "Radar smoothing" },
   { id: "lightningBolts", label: "Lightning bolt icons" },
   { id: "stationColorValues", label: "Colour station values" },
   { id: "cityLabels", label: "City labels" },
@@ -56,6 +57,8 @@ export type MapSettingsState = {
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Esri World Imagery under the open Map (pan/zoom) */
   satelliteBasemap: false,
+  /** RainViewer spatial smooth (1_0) vs crisp unsmoothed (0_0) */
+  radarSmoothing: false,
   /** Bolt glyphs instead of crosshair markers */
   lightningBolts: false,
   /** Thermal / pressure colour coding on station-model numbers */

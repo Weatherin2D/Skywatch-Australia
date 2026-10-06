@@ -36,14 +36,12 @@ function pngResponse(
 }
 
 /**
- * Proxy RainViewer radar tiles as unsmoothed pixels, remapped to the locked
- * SkyWatch dBZ colour scale (`RADAR_PALETTE_ID`).
+ * Proxy RainViewer radar tiles remapped to the locked SkyWatch dBZ scale.
  *
- * GET /api/weather/radar-tile?host=&path=&pal=&r=&z=&x=&y=
+ * GET /api/weather/radar-tile?host=&path=&pal=&r=&smooth=&z=&x=&y=
  *
- * RainViewer only has real reflectivity through ~z7. Requests above that are
- * served by cropping + nearest-neighbour upscaling the native parent so
- * zoomed-in views keep paint instead of empty z8–12 placeholders.
+ * `smooth=1` fetches RainViewer spatially-smoothed Universal Blue (`1_0`);
+ * default `smooth=0` is crisp unsmoothed (`0_0`).
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -52,6 +50,7 @@ export async function GET(req: NextRequest) {
   const z = sp.get("z");
   const x = sp.get("x");
   const y = sp.get("y");
+  const smooth = sp.get("smooth") === "1";
   // Reject mismatched palette/rev so stale clients cannot poison the cache
   // with an older colour ladder under a shared process key.
   const pal = sp.get("pal") ?? "";
@@ -93,8 +92,7 @@ export async function GET(req: NextRequest) {
   const fetchX = overzoom ? Math.floor(xi / scale) : xi;
   const fetchY = overzoom ? Math.floor(yi / scale) : yi;
 
-  // Cache key includes requested z/x/y so overzoom crops stay distinct.
-  const cacheKey = radarTileCacheKey(host, path, zi, xi, yi);
+  const cacheKey = radarTileCacheKey(host, path, zi, xi, yi, smooth);
   const cached = getCachedRadarTile(cacheKey);
   if (cached) {
     return pngResponse(cached, {
@@ -102,17 +100,32 @@ export async function GET(req: NextRequest) {
       "X-Radar-Source": "rainviewer-raw",
       "X-Radar-Palette": RADAR_PALETTE_ID,
       "X-Radar-Rev": RADAR_RENDER_REV,
+      "X-Radar-Smooth": smooth ? "1" : "0",
       "X-Radar-Tile-Size": "256",
       "X-Radar-Native-Z": String(fetchZ),
     });
   }
 
-  // Parent native tile may already be cached from a sibling overzoom request.
-  const parentKey = radarTileCacheKey(host, path, fetchZ, fetchX, fetchY);
+  const parentKey = radarTileCacheKey(
+    host,
+    path,
+    fetchZ,
+    fetchX,
+    fetchY,
+    smooth,
+  );
   let parentRecoloured = getCachedRadarTile(parentKey);
 
   if (!parentRecoloured) {
-    const upstream = rainviewerRawTileUrl(host, path, fetchZ, fetchX, fetchY);
+    const upstream = rainviewerRawTileUrl(
+      host,
+      path,
+      fetchZ,
+      fetchX,
+      fetchY,
+      undefined,
+      smooth,
+    );
     try {
       const res = await fetch(upstream, {
         headers: { Accept: "image/png" },
@@ -135,6 +148,7 @@ export async function GET(req: NextRequest) {
           "X-Radar-Source": "rainviewer-placeholder",
           "X-Radar-Palette": RADAR_PALETTE_ID,
           "X-Radar-Rev": RADAR_RENDER_REV,
+          "X-Radar-Smooth": smooth ? "1" : "0",
           "X-Radar-Tile-Size": "256",
           "X-Radar-Native-Z": String(fetchZ),
         });
@@ -159,6 +173,7 @@ export async function GET(req: NextRequest) {
     "X-Radar-Source": "rainviewer-raw",
     "X-Radar-Palette": RADAR_PALETTE_ID,
     "X-Radar-Rev": RADAR_RENDER_REV,
+    "X-Radar-Smooth": smooth ? "1" : "0",
     "X-Radar-Tile-Size": "256",
     "X-Radar-Native-Z": String(fetchZ),
     "X-Radar-Overzoom": overzoom ? String(scale) : "1",
