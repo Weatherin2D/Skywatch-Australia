@@ -97,7 +97,7 @@ export function SiteHeader() {
 
           <nav
             aria-label="Primary"
-            className="relative z-10 hidden min-w-0 flex-1 items-center gap-1 lg:flex"
+            className="relative z-10 hidden items-center gap-1 lg:flex"
           >
             {PRIMARY_NAV.map(({ href, label, icon }) => (
               <NavLink
@@ -109,8 +109,10 @@ export function SiteHeader() {
                 onNavigate={() => setMoreOpen(false)}
               />
             ))}
+          </nav>
 
-            <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1 sm:gap-2">
+            <div className="hidden items-center gap-1 lg:flex">
               {PRIMARY_NAV_END.map(({ href, label, icon }) => (
                 <NavLink
                   key={href}
@@ -158,9 +160,6 @@ export function SiteHeader() {
                 ) : null}
               </div>
             </div>
-          </nav>
-
-          <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2 lg:ml-0 lg:max-w-md">
             <LocationSearch
               compact
               className="w-full max-w-[min(100%,280px)] sm:max-w-[240px]"
