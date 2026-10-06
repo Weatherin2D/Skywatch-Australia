@@ -24,8 +24,8 @@ export function radarTileCacheKey(
   x: number,
   y: number,
 ): string {
-  // v8: swdbz2 indigo→red ladder
-  return `${host}|${path}|${z}/${x}/${y}|v8`;
+  // v9: canonical user-specified SkyWatch dBZ ladder (swdbz3)
+  return `${host}|${path}|${z}/${x}/${y}|v9`;
 }
 
 export function getCachedRadarTile(key: string): Buffer | null {
