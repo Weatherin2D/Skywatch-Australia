@@ -234,8 +234,22 @@ export function shouldAlignStrikesToTimeline(
 }
 
 /**
- * Spatial sample — prefer newest so the flash edge stays dense.
- * Finer cells so adjacent frames don't collapse to the same markers.
+ * Coarse longitude bands across the AU domain.
+ * Keeps WA / central Australia from being starved when the east coast is busy.
+ */
+export function lightningLonBand(lon: number): number {
+  if (lon < 120) return 0; // WA west / Indian Ocean
+  if (lon < 129) return 1; // WA east / western NT
+  if (lon < 138) return 2; // central
+  if (lon < 147) return 3; // inland east
+  return 4; // east coast / Tasman
+}
+
+export const LIGHTNING_LON_BAND_COUNT = 5;
+
+/**
+ * Spatial sample — prefer newest so the flash edge stays dense, but reserve
+ * quota per longitude band so eastern storms cannot wipe WA from capped views.
  */
 export function sampleStrikesForDisplay(
   strikes: LightningStrike[],
@@ -250,12 +264,36 @@ export function sampleStrikesForDisplay(
     const prev = byCell.get(key);
     if (!prev || s.time > prev.time) byCell.set(key, s);
   }
-  if (byCell.size <= maxVisible) {
-    return [...byCell.values()].sort((a, b) => b.time - a.time);
+  const cells = [...byCell.values()].sort((a, b) => b.time - a.time);
+  if (cells.length <= maxVisible) return cells;
+
+  const bands: LightningStrike[][] = Array.from(
+    { length: LIGHTNING_LON_BAND_COUNT },
+    () => [],
+  );
+  for (const s of cells) {
+    bands[lightningLonBand(s.lon)]!.push(s);
   }
-  return [...byCell.values()]
-    .sort((a, b) => b.time - a.time)
-    .slice(0, maxVisible);
+
+  const perBand = Math.max(12, Math.floor(maxVisible / LIGHTNING_LON_BAND_COUNT));
+  const picked: LightningStrike[] = [];
+  const seen = new Set<string>();
+  for (const band of bands) {
+    let n = 0;
+    for (const s of band) {
+      if (n >= perBand) break;
+      picked.push(s);
+      seen.add(s.id);
+      n += 1;
+    }
+  }
+  for (const s of cells) {
+    if (picked.length >= maxVisible) break;
+    if (seen.has(s.id)) continue;
+    picked.push(s);
+    seen.add(s.id);
+  }
+  return picked.sort((a, b) => b.time - a.time);
 }
 
 /**

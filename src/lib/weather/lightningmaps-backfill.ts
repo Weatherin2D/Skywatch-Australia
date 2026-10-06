@@ -13,13 +13,19 @@
 
 import { PNG } from "pngjs";
 import type { LightningStrike } from "@/lib/weather/lightning";
+import { sampleStrikesForDisplay } from "@/lib/weather/lightning";
 import { inLightningBounds } from "@/lib/weather/blitzortung-parse";
+
+/** Cap LM inject so one busy east-coast map cannot fill the live buffer alone. */
+const MAX_BACKFILL_STRIKES = 12_000;
 
 /**
  * Official MyBlitzortung templates (includes/templates.inc.php).
  * Projection defaults to Mercator; coord = North, East, South, West.
+ *
+ * australia_big alone under-samples WA / Timor / Indian Ocean when the east
+ * coast is lit — keep oceania + indonesia so western strokes stay in the buffer.
  */
-/** One regional map is enough — 3 maps × 3 periods was 9 PNG decode jobs. */
 const MAPS = [
   {
     id: "australia_big",
@@ -30,6 +36,24 @@ const MAPS = [
     west: 109,
     /** Prefer this map when deduping overlapping strokes. */
     priority: 3,
+  },
+  {
+    id: "oceania",
+    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=oceania",
+    north: 10,
+    east: 180,
+    south: -51.6,
+    west: 110,
+    priority: 2,
+  },
+  {
+    id: "indonesia",
+    url: "https://images.lightningmaps.org/blitzortung/oceania/index.php?map=indonesia",
+    north: 16,
+    east: 142,
+    south: -19,
+    west: 95,
+    priority: 2,
   },
 ] as const;
 
@@ -292,9 +316,11 @@ export async function fetchLightningMapsBackfill(): Promise<MapBackfillResult> {
         if (!byCell.has(key)) byCell.set(key, s);
       }
 
-      const strikes = [...byCell.values()].filter(
+      const fresh = [...byCell.values()].filter(
         (s) => now - s.time <= KEEP_SEC,
       );
+      // Band-aware sample keeps WA / Indonesia coverage when the east is dense.
+      const strikes = sampleStrikesForDisplay(fresh, MAX_BACKFILL_STRIKES);
       cache = { strikes, fetchedAt: now };
       return cache;
     } catch (err) {

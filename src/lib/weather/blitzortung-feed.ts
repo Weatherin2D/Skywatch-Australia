@@ -18,6 +18,10 @@ import path from "path";
 import mqtt, { type MqttClient } from "mqtt";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
+  LIGHTNING_LON_BAND_COUNT,
+  lightningLonBand,
+} from "@/lib/weather/lightning";
+import {
   parseStrikeMessage,
   toStrike,
 } from "@/lib/weather/blitzortung-parse";
@@ -42,7 +46,7 @@ const WINDOW_SEC = 24 * 60 * 60;
 const MAX_BUFFER = 40_000;
 const PERSIST_PATH = path.join(
   process.env.TMPDIR || "/tmp",
-  "skywatch-lightning-strikes.json",
+  "skywatch-lightning-strikes-v12.json",
 );
 const PERSIST_EVERY_MS = 12_000;
 
@@ -77,12 +81,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV11?: GlobalFeed;
+  __skywatchBlitzFeedV12?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV11) {
-    g.__skywatchBlitzFeedV11 = {
+  if (!g.__skywatchBlitzFeedV12) {
+    g.__skywatchBlitzFeedV12 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -98,7 +102,7 @@ function getState(): GlobalFeed {
       persistDirty: false,
     };
   }
-  return g.__skywatchBlitzFeedV11;
+  return g.__skywatchBlitzFeedV12;
 }
 
 function isAcceptedStrikeId(id: string) {
@@ -125,14 +129,38 @@ function prune(state: GlobalFeed) {
       state.persistDirty = true;
     }
   }
-  if (state.strikes.size > MAX_BUFFER) {
-    const sorted = [...state.strikes.values()].sort((a, b) => a.time - b.time);
-    const drop = sorted.length - MAX_BUFFER;
-    for (let i = 0; i < drop; i++) {
-      state.strikes.delete(sorted[i]!.id);
-    }
-    state.persistDirty = true;
+  if (state.strikes.size <= MAX_BUFFER) return;
+
+  // Keep newest strikes per longitude band so a busy east coast cannot
+  // evict every Western Australia / Timor Sea stroke from the buffer.
+  const bands: LightningStrike[][] = Array.from(
+    { length: LIGHTNING_LON_BAND_COUNT },
+    () => [],
+  );
+  for (const strike of state.strikes.values()) {
+    bands[lightningLonBand(strike.lon)]!.push(strike);
   }
+  for (const band of bands) {
+    band.sort((a, b) => b.time - a.time);
+  }
+  const perBand = Math.floor(MAX_BUFFER / LIGHTNING_LON_BAND_COUNT);
+  const keep = new Set<string>();
+  for (const band of bands) {
+    for (let i = 0; i < Math.min(perBand, band.length); i++) {
+      keep.add(band[i]!.id);
+    }
+  }
+  const newest = [...state.strikes.values()].sort((a, b) => b.time - a.time);
+  for (const strike of newest) {
+    if (keep.size >= MAX_BUFFER) break;
+    keep.add(strike.id);
+  }
+  for (const id of state.strikes.keys()) {
+    if (!keep.has(id)) {
+      state.strikes.delete(id);
+    }
+  }
+  state.persistDirty = true;
 }
 
 async function loadPersisted(state: GlobalFeed) {

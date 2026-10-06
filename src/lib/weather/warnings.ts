@@ -154,12 +154,37 @@ export function isVeryDangerousText(text: string): boolean {
 }
 
 /**
- * BoM "Detailed Severe Thunderstorm Warning for …" products (cell-tracked).
- * Requires "for" so district STWs that only mention a detailed product elsewhere
+ * BoM cell-tracked "Detailed Severe Thunderstorm Warning" products.
+ * Matches product identity in short_title / title / body lead-in.
+ * District STWs that only cross-reference a detailed product
  * ("a more Detailed Severe Thunderstorm Warning has been issued") stay Severe.
  */
 export function isDetailedSevereThunderstormText(text: string): boolean {
-  return /\bdetailed\s+severe\s+thunderstorm\s+warning\s+for\b/i.test(text);
+  if (!text) return false;
+
+  // Drop district cross-references before testing product identity.
+  const cleaned = text
+    .replace(
+      /\b(?:a\s+more|the\s+more|more)\s+detailed\s+severe\s+thunderstorm\s+warning\b[^.\n]{0,160}/gi,
+      " ",
+    )
+    .replace(
+      /\b(?:refer\s+to|see(?:\s+also)?)\s+(?:the\s+)?detailed\s+severe\s+thunderstorm\s+warning\b[^.\n]{0,160}/gi,
+      " ",
+    );
+
+  // short_title / title line (classificationText joins with newlines).
+  if (/^\s*detailed\s+severe\s+thunderstorm\s+warning\b/im.test(cleaned)) {
+    return true;
+  }
+
+  // Canonical body lead-in, including cancellations of detailed products.
+  return (
+    /\bdetailed\s+severe\s+thunderstorm\s+warning\s+for\b/i.test(cleaned) ||
+    /\bcancellation\s+of\s+detailed\s+severe\s+thunderstorm\s+warning\b/i.test(
+      cleaned,
+    )
+  );
 }
 
 /**
