@@ -36,6 +36,8 @@ type LightningAnimProps = {
   /** Image georeference; defaults to national AU Himawari crop. */
   bounds?: LonLatBounds;
   iconStyle?: LightningIconStyle;
+  /** Multiplier for crosshair / bolt size (default 1). */
+  iconScale?: number;
 };
 
 function useNowTick(enabled: boolean) {
@@ -153,6 +155,7 @@ export function SatelliteLightningOverlay({
   nextFrameTime = null,
   bounds,
   iconStyle = "crosshair",
+  iconScale = 1,
 }: LightningAnimProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -163,11 +166,13 @@ export function SatelliteLightningOverlay({
   const timelineEndRef = useRef(timelineEnd);
   const boundsRef = useRef(bounds);
   const iconStyleRef = useRef(iconStyle);
+  const iconScaleRef = useRef(iconScale);
   strikesRef.current = strikes;
   timelineStartRef.current = timelineStart;
   timelineEndRef.current = timelineEnd;
   boundsRef.current = bounds;
   iconStyleRef.current = iconStyle;
+  iconScaleRef.current = iconScale;
 
   const paint = useRef((animTime: number) => {
     const canvas = canvasRef.current;
@@ -218,7 +223,7 @@ export function SatelliteLightningOverlay({
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       if (x < -5 || x > 105 || y < -5 || y > 105) continue;
       const { r, g, b } = strikeAgeRgb(age);
-      const size = strikeAgeSize(age);
+      const size = strikeAgeSize(age) * iconScaleRef.current;
       const fresh = strikeIsFresh(age);
       const pulse = fresh ? 1 + 0.12 * Math.sin(animTime * 8 + i) : 1;
       draw(
@@ -262,6 +267,7 @@ export function SatelliteLightningOverlay({
     paint,
     bounds,
     iconStyle,
+    iconScale,
   ]);
 
   // Play: interpolate clock in rAF and paint — zero React commits per tick.
@@ -377,6 +383,7 @@ export function LeafletLightningOverlay({
   timelineStart = null,
   timelineEnd = null,
   iconStyle = "crosshair",
+  iconScale = 1,
 }: LightningAnimProps) {
   const animTime = useFrameAnimTime(enabled, referenceTime);
   const visible = useMemo(() => {
@@ -400,7 +407,7 @@ export function LeafletLightningOverlay({
         if (opacity <= 0.05) return null;
         const color = strikeAgeColor(age);
         // Leaflet markers need a bit more size than the canvas trail.
-        const size = Math.max(16, strikeAgeSize(age));
+        const size = Math.max(16, strikeAgeSize(age) * iconScale);
         return (
           <Marker
             key={strike.id}

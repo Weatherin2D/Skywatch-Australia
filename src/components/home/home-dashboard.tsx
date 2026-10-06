@@ -27,9 +27,13 @@ import {
   HomeUpperAirPanel,
 } from "@/components/home/home-insight-panels";
 import {
+  clampLightningIconScale,
   DEFAULT_MAP_REGION,
   DEFAULT_MAP_SETTINGS,
   DEFAULT_WEATHER_LAYERS,
+  LIGHTNING_ICON_SCALE_MAX,
+  LIGHTNING_ICON_SCALE_MIN,
+  LIGHTNING_ICON_SCALE_STEP,
   MAP_MODES,
   MAP_REGIONS,
   MAP_SETTINGS,
@@ -123,6 +127,7 @@ function OverlayControls({
   regionLabel,
   setLayer,
   setMapSetting,
+  setLightningIconScale,
 }: {
   layers: Record<LayerId, boolean>;
   mapSettings: MapSettingsState;
@@ -130,7 +135,9 @@ function OverlayControls({
   regionLabel: string;
   setLayer: (id: LayerId, on: boolean) => void;
   setMapSetting: (id: MapSettingId, on: boolean) => void;
+  setLightningIconScale: (scale: number) => void;
 }) {
+  const iconScale = clampLightningIconScale(mapSettings.lightningIconScale);
   return (
     <>
       <Panel title="Map overlays">
@@ -184,6 +191,37 @@ function OverlayControls({
               />
             </li>
           ))}
+          <li className="space-y-1.5 text-sm text-[var(--ink)]/80">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="lightning-icon-scale"
+                className="font-semibold text-[var(--ink)]"
+              >
+                Lightning icon size
+              </label>
+              <span className="tabular-nums text-xs text-[var(--ink)]/65">
+                {Math.round(iconScale * 100)}%
+              </span>
+            </div>
+            <input
+              id="lightning-icon-scale"
+              type="range"
+              min={LIGHTNING_ICON_SCALE_MIN}
+              max={LIGHTNING_ICON_SCALE_MAX}
+              step={LIGHTNING_ICON_SCALE_STEP}
+              value={iconScale}
+              onChange={(e) =>
+                setLightningIconScale(Number(e.target.value))
+              }
+              className="w-full accent-[var(--cyan)]"
+              aria-label="Lightning crosshair or bolt icon size"
+            />
+            <div className="flex justify-between text-[10px] font-semibold text-[var(--ink)]/45">
+              <span>Small</span>
+              <span>Default</span>
+              <span>Large</span>
+            </div>
+          </li>
         </ul>
       </Panel>
 
@@ -818,6 +856,13 @@ function HomeDashboardInner({
     setMapSettings((prev) => ({ ...prev, [id]: on }));
   }
 
+  function setLightningIconScale(scale: number) {
+    setMapSettings((prev) => ({
+      ...prev,
+      lightningIconScale: clampLightningIconScale(scale),
+    }));
+  }
+
   const pageTitle =
     focus === "radar"
       ? "Radar"
@@ -859,6 +904,7 @@ function HomeDashboardInner({
             regionLabel={region.label}
             setLayer={setLayer}
             setMapSetting={setMapSetting}
+            setLightningIconScale={setLightningIconScale}
           />
         </div>
 
@@ -1292,6 +1338,7 @@ function HomeDashboardInner({
                 regionLabel={region.label}
                 setLayer={setLayer}
                 setMapSetting={setMapSetting}
+                setLightningIconScale={setLightningIconScale}
               />
             </div>
           </details>

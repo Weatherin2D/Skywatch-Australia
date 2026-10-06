@@ -5,8 +5,12 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
+  clampLightningIconScale,
   DEFAULT_MAP_REGION,
   DEFAULT_MAP_SETTINGS,
+  LIGHTNING_ICON_SCALE_MAX,
+  LIGHTNING_ICON_SCALE_MIN,
+  LIGHTNING_ICON_SCALE_STEP,
   MAP_REGIONS,
   getMapRegion,
   type MapRegionId,
@@ -874,6 +878,35 @@ function ArchiveDashboardInner() {
                 Icons
               </button>
             </div>
+          </div>
+          <div className="space-y-1.5 text-sm text-white">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="archive-lightning-icon-scale">Icon size</label>
+              <span className="tabular-nums text-xs text-white/55">
+                {Math.round(
+                  clampLightningIconScale(mapSettings.lightningIconScale) * 100,
+                )}
+                %
+              </span>
+            </div>
+            <input
+              id="archive-lightning-icon-scale"
+              type="range"
+              min={LIGHTNING_ICON_SCALE_MIN}
+              max={LIGHTNING_ICON_SCALE_MAX}
+              step={LIGHTNING_ICON_SCALE_STEP}
+              value={clampLightningIconScale(mapSettings.lightningIconScale)}
+              onChange={(e) =>
+                setMapSettings((s) => ({
+                  ...s,
+                  lightningIconScale: clampLightningIconScale(
+                    Number(e.target.value),
+                  ),
+                }))
+              }
+              className="w-full accent-[var(--cyan)]"
+              aria-label="Lightning crosshair or bolt icon size"
+            />
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
             <span>Synoptic</span>

@@ -492,6 +492,7 @@ export function HomeMap({
   const lightningIconStyle = mapSettings.lightningBolts
     ? ("bolt" as const)
     : ("crosshair" as const);
+  const lightningIconScale = mapSettings.lightningIconScale ?? 1;
   const mapShellRef = useRef<HTMLDivElement>(null);
   const [fullscreenTarget, setFullscreenTarget] = useState<HTMLElement | null>(
     null,
@@ -568,6 +569,7 @@ export function HomeMap({
           nextFrameTime={lightningNextFrameTime}
           bounds={bounds}
           iconStyle={lightningIconStyle}
+          iconScale={lightningIconScale}
         />
         <SatelliteStationOverlay
           stations={stations}
@@ -662,6 +664,7 @@ export function HomeMap({
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
           iconStyle={lightningIconStyle}
+          iconScale={lightningIconScale}
         />
         <LeafletStationOverlay
           stations={stations}

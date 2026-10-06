@@ -30,7 +30,28 @@ export const MAP_SETTINGS = [
 
 export type MapSettingId = (typeof MAP_SETTINGS)[number]["id"];
 
-export type MapSettingsState = Record<MapSettingId, boolean>;
+/** Multiplier for lightning crosshair / bolt marker size. */
+export const DEFAULT_LIGHTNING_ICON_SCALE = 1;
+export const LIGHTNING_ICON_SCALE_MIN = 0.5;
+export const LIGHTNING_ICON_SCALE_MAX = 2;
+export const LIGHTNING_ICON_SCALE_STEP = 0.1;
+
+export function clampLightningIconScale(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_LIGHTNING_ICON_SCALE;
+  const stepped =
+    Math.round(value / LIGHTNING_ICON_SCALE_STEP) * LIGHTNING_ICON_SCALE_STEP;
+  return Math.min(
+    LIGHTNING_ICON_SCALE_MAX,
+    Math.max(LIGHTNING_ICON_SCALE_MIN, Number(stepped.toFixed(1))),
+  );
+}
+
+export type MapSettingsState = {
+  [K in MapSettingId]: boolean;
+} & {
+  /** Crosshair / bolt size multiplier (0.5–2). */
+  lightningIconScale: number;
+};
 
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Esri World Imagery under the open Map (pan/zoom) */
@@ -47,6 +68,7 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Australia coastline is on by default */
   outlines: true,
   oceanNames: false,
+  lightningIconScale: DEFAULT_LIGHTNING_ICON_SCALE,
 };
 
 /** Primary map view — not the same as overlay layers. */
