@@ -14,10 +14,10 @@ import {
 } from "@/lib/weather/blitzortung-parse";
 import type { LightningStrike } from "@/lib/weather/lightning";
 
+/** Prefer hosts that reliably accept the public subscribe handshake. */
 const WS_HOSTS = [
   "wss://ws1.blitzortung.org",
-  "wss://ws3.blitzortung.org",
-  "wss://ws6.blitzortung.org",
+  "wss://ws2.blitzortung.org",
   "wss://ws7.blitzortung.org",
   "wss://ws8.blitzortung.org",
 ] as const;

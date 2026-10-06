@@ -6,8 +6,10 @@
  * real strike timestamps so the IR loop shows accurate storm motion.
  *
  * Sources:
- *  1. Blitzortung public WebSockets (all hosts in parallel)
+ *  1. Blitzortung public WebSockets (cert-reliable hosts)
  *  2. Community MQTT proxy (blitzortung.ha.sed.pl) geohash topics for Oceania
+ *  3. LightningMaps Mercator PNG backfill (dense east-coast trail)
+ *  4. map.blitzortung.org GEOjson slots (sparse WA / Perth the PNGs miss)
  *
  * No LightningMaps PNG “age inventing” — that polluted the buffer with fake
  * times and made every satellite frame look the same.
@@ -26,14 +28,12 @@ import {
   toStrike,
 } from "@/lib/weather/blitzortung-parse";
 import { fetchLightningMapsBackfill } from "@/lib/weather/lightningmaps-backfill";
+import { fetchBlitzortungGeoJsonBackfill } from "@/lib/weather/blitzortung-geojson-backfill";
 
+/** Prefer hosts that reliably accept the public subscribe handshake. */
 const WS_HOSTS = [
   "wss://ws1.blitzortung.org",
   "wss://ws2.blitzortung.org",
-  "wss://ws3.blitzortung.org",
-  "wss://ws4.blitzortung.org",
-  "wss://ws5.blitzortung.org",
-  "wss://ws6.blitzortung.org",
   "wss://ws7.blitzortung.org",
   "wss://ws8.blitzortung.org",
 ] as const;
@@ -46,7 +46,7 @@ const WINDOW_SEC = 24 * 60 * 60;
 const MAX_BUFFER = 40_000;
 const PERSIST_PATH = path.join(
   process.env.TMPDIR || "/tmp",
-  "skywatch-lightning-strikes-v13.json",
+  "skywatch-lightning-strikes-v14.json",
 );
 const PERSIST_EVERY_MS = 12_000;
 
@@ -76,17 +76,18 @@ type GlobalFeed = {
   pruneTimer: ReturnType<typeof setInterval> | null;
   persistTimer: ReturnType<typeof setInterval> | null;
   backfillTimer: ReturnType<typeof setInterval> | null;
+  mapsBackfillTimer: ReturnType<typeof setInterval> | null;
   started: boolean;
   persistDirty: boolean;
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV13?: GlobalFeed;
+  __skywatchBlitzFeedV14?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV13) {
-    g.__skywatchBlitzFeedV13 = {
+  if (!g.__skywatchBlitzFeedV14) {
+    g.__skywatchBlitzFeedV14 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -98,11 +99,12 @@ function getState(): GlobalFeed {
       pruneTimer: null,
       persistTimer: null,
       backfillTimer: null,
+      mapsBackfillTimer: null,
       started: false,
       persistDirty: false,
     };
   }
-  return g.__skywatchBlitzFeedV13;
+  return g.__skywatchBlitzFeedV14;
 }
 
 function isAcceptedStrikeId(id: string) {
@@ -346,12 +348,24 @@ export function ensureLightningFeed() {
   state.persistTimer = setInterval(() => {
     void savePersisted(state);
   }, PERSIST_EVERY_MS);
-  // Fire-and-forget; do not block boot. Refresh infrequently — PNG decode is
-  // expensive on Fluid Active CPU.
-  void runMapsBackfill(state);
+  // Fire-and-forget; do not block boot. GEOjson is cheap (WA/Perth live);
+  // PNG decode stays on a slower cadence for Fluid Active CPU.
+  void runAllBackfills(state);
   state.backfillTimer = setInterval(() => {
+    void runGeoJsonBackfill(state);
+  }, 45_000);
+  state.mapsBackfillTimer = setInterval(() => {
     void runMapsBackfill(state);
   }, 180_000);
+}
+
+function mergeStrike(state: GlobalFeed, strike: LightningStrike) {
+  const prev = state.strikes.get(strike.id);
+  if (!prev || strike.time >= prev.time) {
+    state.strikes.set(strike.id, strike);
+    if (!prev) state.receivedInBounds += 1;
+    state.persistDirty = true;
+  }
 }
 
 /**
@@ -373,12 +387,7 @@ async function runMapsBackfill(state: GlobalFeed) {
         break;
       }
       if (dominated) continue;
-      const prev = state.strikes.get(strike.id);
-      if (!prev || strike.time >= prev.time) {
-        state.strikes.set(strike.id, strike);
-        if (!prev) state.receivedInBounds += 1;
-        state.persistDirty = true;
-      }
+      mergeStrike(state, strike);
     }
   } catch (err) {
     console.error("lightning maps backfill error", err);
@@ -386,21 +395,50 @@ async function runMapsBackfill(state: GlobalFeed) {
 }
 
 /**
+ * GEOjson slots carry real Blitzortung timestamps — critical for WA/Perth when
+ * LightningMaps PNGs paint nothing west of ~129°E.
+ */
+async function runGeoJsonBackfill(state: GlobalFeed) {
+  try {
+    const { strikes } = await fetchBlitzortungGeoJsonBackfill();
+    for (const strike of strikes) {
+      mergeStrike(state, strike);
+    }
+    if (strikes.length > 0) state.status = "live";
+  } catch (err) {
+    console.error("lightning GEOjson backfill error", err);
+  }
+}
+
+async function runAllBackfills(state: GlobalFeed) {
+  await Promise.all([runGeoJsonBackfill(state), runMapsBackfill(state)]);
+}
+
+function westernStrikeCount(state: GlobalFeed) {
+  let n = 0;
+  for (const s of state.strikes.values()) {
+    if (s.lon < 129) n += 1;
+  }
+  return n;
+}
+
+/**
  * Snapshot for API responses. Uses absolute strike times so each satellite
  * frame filters the true trail (Windy-style). Blitzortung live + LightningMaps
- * 2h/12h Mercator backfill (same open network family Windy used before LINET).
+ * 2h/12h Mercator backfill + GEOjson (WA/Perth).
  *
- * On serverless, WebSockets/MQTT often never populate the buffer. When empty,
- * await the LightningMaps PNG backfill so the first HTTP response is useful
- * (previously fire-and-forget left prod stuck on zero strikes).
+ * On serverless, WebSockets/MQTT often never populate the buffer. When empty
+ * (or WA is starved), await HTTP backfills so the first response is useful.
  */
 export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();
   const state = getState();
-  if (state.strikes.size < 25) {
+  const needsAwait =
+    state.strikes.size < 25 || westernStrikeCount(state) < 3;
+  if (needsAwait) {
     try {
       await Promise.race([
-        runMapsBackfill(state),
+        runAllBackfills(state),
         new Promise<void>((resolve) => {
           setTimeout(resolve, 14_000);
         }),
@@ -410,7 +448,7 @@ export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot>
     }
   } else {
     // Keep warm in the background when we already have a trail.
-    void runMapsBackfill(state);
+    void runAllBackfills(state);
   }
   prune(state);
   const strikes = [...state.strikes.values()]
@@ -441,6 +479,6 @@ export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot>
     windowMinutes: Math.round(WINDOW_SEC / 60),
     source: "blitzortung",
     attribution:
-      "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — open network (Windy uses commercial Nowcast LINET)",
+      "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — open network + GEOjson (Windy uses commercial Nowcast LINET)",
   };
 }
