@@ -12,6 +12,7 @@ import type { WeatherFrame } from "@/lib/weather/maps";
 import type { StormCell } from "@/lib/weather/storm-cell-types";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
+import type { WeatherStation } from "@/lib/weather/stations";
 
 const HomeMap = dynamic(
   () => import("@/components/home/home-map").then((m) => m.HomeMap),
@@ -50,6 +51,8 @@ export function HomeMapDynamic({
   synopticGeoJson,
   synopticValidTime,
   synopticReferenceTime,
+  showStations,
+  stations,
   mapSatelliteImageUrl,
   mapSatelliteImageBounds,
   radarLoopFrames,
@@ -93,6 +96,8 @@ export function HomeMapDynamic({
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
   synopticReferenceTime?: number | null;
+  showStations?: boolean;
+  stations?: WeatherStation[];
   mapSatelliteImageUrl?: string | null;
   mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
   radarLoopFrames?: WeatherFrame[];
@@ -146,6 +151,8 @@ export function HomeMapDynamic({
       synopticGeoJson={synopticGeoJson}
       synopticValidTime={synopticValidTime}
       synopticReferenceTime={synopticReferenceTime}
+      showStations={showStations}
+      stations={stations}
       mapSatelliteImageUrl={mapSatelliteImageUrl}
       mapSatelliteImageBounds={mapSatelliteImageBounds}
       radarLoopFrames={radarLoopFrames}

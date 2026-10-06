@@ -13,6 +13,7 @@ import {
   type MapSettingsState,
 } from "@/components/home/mock-data";
 import { useLightning } from "@/hooks/use-lightning";
+import { useStations } from "@/hooks/use-stations";
 import {
   ARCHIVE_STEP_SEC,
   aestPartsToUnix,
@@ -151,6 +152,8 @@ function ArchiveDashboardInner() {
   const [parts, setParts] = useState<AestParts | null>(null);
   const [showLightning, setShowLightning] = useState(true);
   const [showSynoptic, setShowSynoptic] = useState(true);
+  const [showStations, setShowStations] = useState(false);
+  const { stations: weatherStations } = useStations(showStations);
   const [loopHours, setLoopHours] = useState(DEFAULT_ARCHIVE_LOOP_HOURS);
   const [playing, setPlaying] = useState(false);
   const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
@@ -784,6 +787,14 @@ function ArchiveDashboardInner() {
               label="Synoptic"
             />
           </div>
+          <div className="flex items-center justify-between gap-2 text-sm text-white">
+            <span>Weather stations</span>
+            <Toggle
+              on={showStations}
+              onChange={setShowStations}
+              label="Weather stations"
+            />
+          </div>
           <p className="text-[11px] leading-relaxed text-white/45">
             {showLightning
               ? lightningLoading && lightning.length === 0
@@ -963,6 +974,8 @@ function ArchiveDashboardInner() {
               synopticGeoJson={synopticGeoJson}
               synopticValidTime={synopticValidTime}
               synopticReferenceTime={activeTime}
+              showStations={showStations}
+              stations={weatherStations}
             />
             {!frameArchived && activeTime != null ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-12 z-[40] flex justify-center px-3">

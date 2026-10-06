@@ -49,6 +49,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/sounding` | Sounding profile (`mode=observed|model|box`) — UWYO BUFR or Open-Meteo levels / 3×3 box |
 | `/api/weather/sounding?archive=1` | Observed UWYO inventory slots for a station (`station`, optional `year`) |
 | `/api/weather/synoptic` | Georeferenced MSLP isobars + H/L (GFS) and fronts from BoM IDY00030 |
+| `/api/weather/stations` | Live AU weather-station observations for station-model map overlays |
 | `/api/weather/synoptic/frame` | GeoJSON MSLP + BoM fronts for a valid time |
 | `/api/weather/warnings` | Live BoM warning list (category-ranked); `/api/weather/warnings/:id` for detail |
 | `/api/weather/locations` | BoM location search (`?q=`) |

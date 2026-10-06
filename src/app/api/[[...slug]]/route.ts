@@ -34,6 +34,7 @@ import * as community from "@/server/api/community";
 import * as communityImage from "@/server/api/community-image";
 import * as communityLike from "@/server/api/community-like";
 import * as communityComment from "@/server/api/community-comment";
+import * as weatherStations from "@/server/api/weather-stations";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -86,6 +87,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "community/image": communityImage as RouteHandlers,
   "community/like": communityLike as RouteHandlers,
   "community/comment": communityComment as RouteHandlers,
+  "weather/stations": weatherStations as RouteHandlers,
 };
 
 function resolve(

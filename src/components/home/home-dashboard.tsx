@@ -44,6 +44,7 @@ import {
 import { useWeatherMaps } from "@/hooks/use-weather-maps";
 import { useFramePreloader } from "@/hooks/use-frame-preloader";
 import { useLightning } from "@/hooks/use-lightning";
+import { useStations } from "@/hooks/use-stations";
 import { useSynoptic } from "@/hooks/use-synoptic";
 import { pickSynopticFrame } from "@/lib/weather/synoptic";
 import { prefetchSynopticGeoJson } from "@/lib/weather/synoptic-geojson-cache";
@@ -283,12 +284,19 @@ function HomeDashboardInner({
     const radar = parseBoolParam(searchParams.get("radar"));
     const lightning = parseBoolParam(searchParams.get("lightning"));
     const synoptic = parseBoolParam(searchParams.get("synoptic"));
-    if (radar != null || lightning != null || synoptic != null) {
+    const stations = parseBoolParam(searchParams.get("stations"));
+    if (
+      radar != null ||
+      lightning != null ||
+      synoptic != null ||
+      stations != null
+    ) {
       setLayers((prev) => ({
         ...prev,
         ...(radar != null ? { radar } : {}),
         ...(lightning != null ? { lightning } : {}),
         ...(synoptic != null ? { synoptic } : {}),
+        ...(stations != null ? { stations } : {}),
       }));
     }
     const product = searchParams.get("product");
@@ -345,6 +353,7 @@ function HomeDashboardInner({
     }
     if (!layers.lightning) params.set("lightning", "0");
     if (layers.synoptic) params.set("synoptic", "1");
+    if (layers.stations) params.set("stations", "1");
     // Always publish product on Satellite so region deep-links stay stable and
     // we never re-hydrate into a different product after a replace.
     if (mode === "Satellite" || satProduct !== DEFAULT_SATELLITE_PRODUCT) {
@@ -417,6 +426,9 @@ function HomeDashboardInner({
     geojson: synopticGeoJson,
     validTime: synopticValidTime,
   } = useSynoptic(showSynoptic);
+
+  const showStations = layers.stations;
+  const { stations: weatherStations } = useStations(showStations);
 
   const showRadarOverlay = layers.radar;
   const region = getMapRegion(regionId);
@@ -1110,6 +1122,8 @@ function HomeDashboardInner({
               synopticReferenceTime={
                 useTimeline ? (activeFrame?.time ?? null) : null
               }
+              showStations={showStations}
+              stations={weatherStations}
             />
           </div>
 

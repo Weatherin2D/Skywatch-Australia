@@ -314,6 +314,11 @@
   border: 1px solid #fff;
 }
 
+.leaflet-div-icon.skywatch-station-model {
+  background: transparent !important;
+  border: none !important;
+}
+
 .leaflet-tooltip.skywatch-city-tooltip {
   background: transparent;
   border: none;

@@ -30,7 +30,12 @@ import {
   LeafletSynopticOverlay,
   SatelliteSynopticOverlay,
 } from "@/components/home/synoptic-overlay";
+import {
+  LeafletStationOverlay,
+  SatelliteStationOverlay,
+} from "@/components/home/station-overlay";
 import { SatelliteMapAnnotations } from "@/components/home/satellite-map-annotations";
+import type { WeatherStation } from "@/lib/weather/stations";
 import { MapFullscreenButton } from "@/components/home/map-fullscreen";
 import { MapChromeFix } from "@/components/home/map-chrome-fix";
 import {
@@ -80,6 +85,8 @@ type Props = {
   synopticGeoJson?: SynopticGeoJson | null;
   synopticValidTime?: number | null;
   synopticReferenceTime?: number | null;
+  showStations?: boolean;
+  stations?: WeatherStation[];
   /** Latest Himawari frame for Map-mode satellite overlay (optional). */
   mapSatelliteImageUrl?: string | null;
   mapSatelliteImageBounds?: [[number, number], [number, number]] | null;
@@ -438,6 +445,8 @@ export function HomeMap({
   synopticGeoJson = null,
   synopticValidTime = null,
   synopticReferenceTime = null,
+  showStations = false,
+  stations = [],
   mapSatelliteImageUrl = null,
   mapSatelliteImageBounds = null,
   radarLoopFrames = [],
@@ -546,6 +555,11 @@ export function HomeMap({
           bounds={bounds}
           iconStyle={lightningIconStyle}
         />
+        <SatelliteStationOverlay
+          stations={stations}
+          enabled={showStations}
+          bounds={bounds}
+        />
       </div>
     );
   }
@@ -633,6 +647,10 @@ export function HomeMap({
           msPerFrame={lightningMsPerFrame}
           nextFrameTime={lightningNextFrameTime}
           iconStyle={lightningIconStyle}
+        />
+        <LeafletStationOverlay
+          stations={stations}
+          enabled={showStations}
         />
         {probePoint ? (
           <CircleMarker
