@@ -5,6 +5,15 @@ import {
   getCommunityAdminSecret,
   isCommunityAdminAuthorized,
 } from "@/lib/community/storage";
+import {
+  assertSameOrigin,
+  COMMUNITY_PUBLISH_COOLDOWN_SEC,
+  cooldownHeaders,
+  enforcePublishCooldown,
+  getClientIdentity,
+  honeypotTripped,
+  releasePublishCooldown,
+} from "@/lib/community/security";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,28 +22,60 @@ export const maxDuration = 30;
 
 /**
  * POST /api/community/comment
- * Body JSON: { id, author, text }
+ * Body JSON: { id, author, text, website? }
  */
 export async function POST(request: NextRequest) {
+  const identity = getClientIdentity(request);
   try {
+    const origin = assertSameOrigin(request);
+    if (!origin.ok) {
+      return NextResponse.json({ error: origin.error }, { status: 403 });
+    }
+
     const body = (await request.json()) as {
       id?: unknown;
       author?: unknown;
       text?: unknown;
+      website?: unknown;
+      company?: unknown;
     };
+
+    if (honeypotTripped(body.website) || honeypotTripped(body.company)) {
+      return NextResponse.json(
+        { ok: true },
+        { status: 201, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const id = typeof body.id === "string" ? body.id : "";
     if (!id) {
       return NextResponse.json({ error: "Missing post id." }, { status: 400 });
     }
+
+    const cooldown = await enforcePublishCooldown(identity, "comment");
+    if (cooldown.blocked) {
+      return NextResponse.json(
+        {
+          error: cooldown.error,
+          retryAfterSec: cooldown.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: cooldownHeaders(cooldown.retryAfterSec),
+        },
+      );
+    }
+
     const result = await addCommunityComment(id, body.author, body.text);
     if (!result.ok) {
+      await releasePublishCooldown(identity, "comment");
       return NextResponse.json(
         { error: result.error },
         { status: result.status },
       );
     }
     return NextResponse.json(
-      { post: result.post },
+      { post: result.post, cooldownSec: COMMUNITY_PUBLISH_COOLDOWN_SEC },
       {
         status: 201,
         headers: { "Cache-Control": "no-store" },
@@ -42,6 +83,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     console.error("[community/comment]", err);
+    await releasePublishCooldown(identity, "comment").catch(() => undefined);
     return NextResponse.json(
       { error: "Could not add comment." },
       { status: 500 },
@@ -60,6 +102,11 @@ export async function DELETE(request: NextRequest) {
         { error: "Admin delete is not configured on this server." },
         { status: 503 },
       );
+    }
+
+    const origin = assertSameOrigin(request);
+    if (!origin.ok) {
+      return NextResponse.json({ error: origin.error }, { status: 403 });
     }
 
     const headerSecret = request.headers.get("x-community-admin-secret");

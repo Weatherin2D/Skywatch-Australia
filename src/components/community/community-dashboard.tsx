@@ -6,6 +6,11 @@ import { CommunityLibrary } from "@/components/community/community-library";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  formatCooldownClock,
+  getClientCooldownRemainingSec,
+  markClientCooldown,
+} from "@/lib/community/client-cooldown";
 import type { CommunityPost, StorageStatus } from "@/lib/community/types";
 
 const MAX_PHOTOS = 8;
@@ -37,6 +42,15 @@ export function CommunityDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formOk, setFormOk] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState("");
+  const [cooldownSec, setCooldownSec] = useState(0);
+
+  useEffect(() => {
+    const tick = () => setCooldownSec(getClientCooldownRemainingSec("post"));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const loadPosts = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -110,6 +124,14 @@ export function CommunityDashboard() {
     e.preventDefault();
     setFormError(null);
     setFormOk(null);
+    const remaining = getClientCooldownRemainingSec("post");
+    if (remaining > 0) {
+      setFormError(
+        `Please wait ${formatCooldownClock(remaining)} before publishing again.`,
+      );
+      setCooldownSec(remaining);
+      return;
+    }
     if (files.length === 0) {
       setFormError("Choose at least one weather photo to upload.");
       return;
@@ -121,6 +143,8 @@ export function CommunityDashboard() {
       body.set("author", author.trim());
       body.set("caption", caption.trim());
       body.set("eventDate", eventDate);
+      // Honeypot — leave empty; bots that fill it are rejected server-side.
+      body.set("website", honeypot);
       for (const file of files) {
         body.append("images", file);
       }
@@ -131,8 +155,14 @@ export function CommunityDashboard() {
       const json = (await res.json()) as {
         post?: CommunityPost;
         error?: string;
+        retryAfterSec?: number;
+        cooldownSec?: number;
       };
       if (!res.ok) {
+        if (res.status === 429 && typeof json.retryAfterSec === "number") {
+          markClientCooldown("post", json.retryAfterSec);
+          setCooldownSec(json.retryAfterSec);
+        }
         throw new Error(json.error || `Upload failed (${res.status})`);
       }
       if (json.post) {
@@ -140,6 +170,8 @@ export function CommunityDashboard() {
       } else {
         await loadPosts();
       }
+      markClientCooldown("post", json.cooldownSec ?? 20 * 60);
+      setCooldownSec(json.cooldownSec ?? 20 * 60);
       setTitle("");
       setAuthor("");
       setCaption("");
@@ -147,8 +179,8 @@ export function CommunityDashboard() {
       setFiles([]);
       setFormOk(
         files.length > 1
-          ? `Posted ${files.length} photos — thanks for sharing.`
-          : "Posted — thanks for sharing.",
+          ? `Posted ${files.length} photos — thanks for sharing. Next post from this network in 20 minutes.`
+          : "Posted — thanks for sharing. Next post from this network in 20 minutes.",
       );
     } catch (err) {
       setFormError(
@@ -202,12 +234,29 @@ export function CommunityDashboard() {
             </h2>
             <p className="mt-0.5 text-xs text-white/55">
               Title, one or more photos, optional caption, your name, and when
-              it happened.
+              it happened. One post per network every 20 minutes.
             </p>
           </div>
         </div>
 
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+          {/* Honeypot — visually hidden; do not tab into */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden opacity-0"
+          >
+            <label htmlFor={`${formId}-website`}>Website</label>
+            <input
+              id={`${formId}-website`}
+              name="website"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
+
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor={`${formId}-title`} className="text-white/80">
               Title
@@ -330,11 +379,17 @@ export function CommunityDashboard() {
               {formOk}
             </p>
           ) : null}
+          {cooldownSec > 0 ? (
+            <p className="sm:col-span-2 text-xs text-amber-200/90" role="status">
+              Post cooldown active — you can publish again in{" "}
+              {formatCooldownClock(cooldownSec)}.
+            </p>
+          ) : null}
 
           <div className="sm:col-span-2">
             <Button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || cooldownSec > 0}
               className="bg-[var(--cyan)] text-[#041018] hover:bg-[var(--cyan-soft)]"
             >
               {submitting ? (
@@ -342,6 +397,8 @@ export function CommunityDashboard() {
                   <Loader2 className="animate-spin" data-icon="inline-start" />
                   Publishing…
                 </>
+              ) : cooldownSec > 0 ? (
+                <>Cooldown {formatCooldownClock(cooldownSec)}</>
               ) : (
                 <>
                   <Upload data-icon="inline-start" />

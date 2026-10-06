@@ -20,6 +20,13 @@ import {
   storageStatus,
   type StorageStatus,
 } from "@/lib/community/backends";
+import {
+  detectImageContentType,
+  looksLikeLinkSpam,
+  MAX_COMMENTS_PER_POST,
+  sanitizeCommunityText,
+  timingSafeSecretEqual,
+} from "@/lib/community/security";
 import type {
   CommunityComment,
   CommunityImageAsset,
@@ -262,7 +269,7 @@ function isValidEventDate(value: string): boolean {
 
 function normalizeText(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
-  const trimmed = value.trim().replace(/\s+/g, " ");
+  const trimmed = sanitizeCommunityText(value);
   if (!trimmed || trimmed.length > max) return null;
   return trimmed;
 }
@@ -270,7 +277,7 @@ function normalizeText(value: unknown, max: number): string | null {
 function normalizeOptionalText(value: unknown, max: number): string | null {
   if (value == null || value === "") return "";
   if (typeof value !== "string") return null;
-  const trimmed = value.trim().replace(/\s+/g, " ");
+  const trimmed = sanitizeCommunityText(value);
   if (trimmed.length > max) return null;
   return trimmed;
 }
@@ -387,8 +394,7 @@ export function isCommunityAdminAuthorized(
   requestSecret: string | null,
 ): boolean {
   const expected = getCommunityAdminSecret();
-  if (!expected || !requestSecret) return false;
-  return requestSecret === expected;
+  return timingSafeSecretEqual(requestSecret, expected);
 }
 
 export function getCommunityStorageStatus(): StorageStatus {
@@ -729,6 +735,9 @@ export async function createCommunityPost(
       status: 400,
     };
   }
+  if (looksLikeLinkSpam(title)) {
+    return { ok: false, error: "Title looks like spam.", status: 400 };
+  }
   const author = normalizeText(input.author, MAX_AUTHOR_LEN);
   if (!author) {
     return {
@@ -736,6 +745,9 @@ export async function createCommunityPost(
       error: `Author is required (max ${MAX_AUTHOR_LEN} characters).`,
       status: 400,
     };
+  }
+  if (looksLikeLinkSpam(author)) {
+    return { ok: false, error: "Author looks like spam.", status: 400 };
   }
   const caption = normalizeOptionalText(input.caption, MAX_CAPTION_LEN);
   if (caption == null) {
@@ -745,6 +757,9 @@ export async function createCommunityPost(
       status: 400,
     };
   }
+  if (caption && looksLikeLinkSpam(caption)) {
+    return { ok: false, error: "Caption looks like spam.", status: 400 };
+  }
   const eventDateRaw =
     typeof input.eventDate === "string" ? input.eventDate.trim() : "";
   if (!isValidEventDate(eventDateRaw)) {
@@ -753,6 +768,20 @@ export async function createCommunityPost(
       error: "Event date must be YYYY-MM-DD.",
       status: 400,
     };
+  }
+  // Reasonable weather-photo window: not before 1990; allow a small TZ buffer ahead.
+  {
+    const minKey = "1990-01-01";
+    const maxDate = new Date();
+    maxDate.setUTCDate(maxDate.getUTCDate() + 2);
+    const maxKey = maxDate.toISOString().slice(0, 10);
+    if (eventDateRaw < minKey || eventDateRaw > maxKey) {
+      return {
+        ok: false,
+        error: "Event date is out of the accepted range.",
+        status: 400,
+      };
+    }
   }
 
   if (!Array.isArray(input.images) || input.images.length === 0) {
@@ -769,15 +798,7 @@ export async function createCommunityPost(
   const prepared: ImagePayload[] = [];
   for (let i = 0; i < input.images.length; i++) {
     const img = input.images[i]!;
-    const contentType = img.contentType.toLowerCase().split(";")[0]!.trim();
-    const ext = ALLOWED_TYPES[contentType];
-    if (!ext) {
-      return {
-        ok: false,
-        error: `Photo ${i + 1}: must be JPEG, PNG, or WebP.`,
-        status: 400,
-      };
-    }
+    const declared = img.contentType.toLowerCase().split(";")[0]!.trim();
     if (!img.buffer.length) {
       return {
         ok: false,
@@ -789,6 +810,14 @@ export async function createCommunityPost(
       return {
         ok: false,
         error: `Photo ${i + 1} must be 5 MB or smaller.`,
+        status: 400,
+      };
+    }
+    const contentType = detectImageContentType(img.buffer, declared);
+    if (!contentType || !ALLOWED_TYPES[contentType]) {
+      return {
+        ok: false,
+        error: `Photo ${i + 1}: must be a real JPEG, PNG, or WebP image.`,
         status: 400,
       };
     }
@@ -887,6 +916,13 @@ export async function addCommunityComment(
 ): Promise<MutateResult> {
   const post = await getCommunityPost(id);
   if (!post) return { ok: false, error: "Post not found.", status: 404 };
+  if (post.comments.length >= MAX_COMMENTS_PER_POST) {
+    return {
+      ok: false,
+      error: "This post has reached the comment limit.",
+      status: 429,
+    };
+  }
   const author = normalizeText(authorRaw, MAX_AUTHOR_LEN);
   if (!author) {
     return {
@@ -895,6 +931,9 @@ export async function addCommunityComment(
       status: 400,
     };
   }
+  if (looksLikeLinkSpam(author)) {
+    return { ok: false, error: "Author looks like spam.", status: 400 };
+  }
   const text = normalizeText(textRaw, MAX_COMMENT_LEN);
   if (!text) {
     return {
@@ -902,6 +941,9 @@ export async function addCommunityComment(
       error: `Comment is required (max ${MAX_COMMENT_LEN} characters).`,
       status: 400,
     };
+  }
+  if (looksLikeLinkSpam(text)) {
+    return { ok: false, error: "Comment looks like spam.", status: 400 };
   }
   post.comments = [
     ...post.comments,

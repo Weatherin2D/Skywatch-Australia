@@ -66,6 +66,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Community:** posts (images, captions, likes, comments, dates) use durable storage so they survive deploys. Preference order: Upstash Redis (`KV_REST_API_URL` + `KV_REST_API_TOKEN`) → healthy Vercel Blob → local `/tmp` (dev only). On Vercel, mutations refuse ephemeral `/tmp` and return 503 if no durable backend is available. Likes also keep a per-browser toggle in `localStorage`. Admin delete: sign in with `COMMUNITY_ADMIN_SECRET` to show a red X on each post and comment, then enter the secret again to confirm each delete.
 
+**Community abuse controls:** each IP has a **20-minute cooldown** for publishing a post and a separate **20-minute cooldown** for comments (stored in Redis so it cannot be bypassed by refreshing or switching browsers). Likes are rate-limited per IP. Extra checks: same-origin enforcement, honeypot fields, JPEG/PNG/WebP magic-byte validation, link-spam heuristics, comment cap per post, and timing-safe admin secret comparison.
+
 **Archive:** satellite JPEGs, synoptic GeoJSON, and lightning hours use the same Upstash Redis credentials when present (then Blob, then local `/tmp` for dev). Meta epoch is created once and kept, so the date picker can move through stored history instead of resetting to “today” on every cold start. Frame responses race a live encode against archive capture so scrub/play is not blocked on a cold persist.
 
 **PWA:** web manifest + light service worker caches the shell and last successful radar/satellite frame responses for an offline “last view”.

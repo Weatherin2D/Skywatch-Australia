@@ -9,6 +9,15 @@ import {
   MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_POST,
 } from "@/lib/community/storage";
+import {
+  assertSameOrigin,
+  COMMUNITY_PUBLISH_COOLDOWN_SEC,
+  cooldownHeaders,
+  enforcePublishCooldown,
+  getClientIdentity,
+  honeypotTripped,
+  releasePublishCooldown,
+} from "@/lib/community/security";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,6 +40,9 @@ export async function GET() {
         posts,
         adminDeleteConfigured: Boolean(getCommunityAdminSecret()),
         storage,
+        security: {
+          publishCooldownSec: COMMUNITY_PUBLISH_COOLDOWN_SEC,
+        },
       },
       {
         headers: { "Cache-Control": "no-store" },
@@ -61,7 +73,13 @@ function collectImageFiles(form: FormData): File[] {
 }
 
 export async function POST(request: NextRequest) {
+  const identity = getClientIdentity(request);
   try {
+    const origin = assertSameOrigin(request);
+    if (!origin.ok) {
+      return NextResponse.json({ error: origin.error }, { status: 403 });
+    }
+
     const contentType = request.headers.get("content-type") ?? "";
     if (!contentType.includes("multipart/form-data")) {
       return NextResponse.json(
@@ -71,6 +89,32 @@ export async function POST(request: NextRequest) {
     }
 
     const form = await request.formData();
+    // Honeypot — real users never fill this (hidden in the form).
+    if (
+      honeypotTripped(form.get("website")) ||
+      honeypotTripped(form.get("company"))
+    ) {
+      // Fake success so bots do not retry-adapt.
+      return NextResponse.json(
+        { ok: true },
+        { status: 201, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const cooldown = await enforcePublishCooldown(identity, "post");
+    if (cooldown.blocked) {
+      return NextResponse.json(
+        {
+          error: cooldown.error,
+          retryAfterSec: cooldown.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: cooldownHeaders(cooldown.retryAfterSec),
+        },
+      );
+    }
+
     const title = form.get("title");
     const author = form.get("author");
     const caption = form.get("caption");
@@ -78,12 +122,14 @@ export async function POST(request: NextRequest) {
     const files = collectImageFiles(form);
 
     if (files.length === 0) {
+      await releasePublishCooldown(identity, "post");
       return NextResponse.json(
         { error: "At least one photo is required." },
         { status: 400 },
       );
     }
     if (files.length > MAX_IMAGES_PER_POST) {
+      await releasePublishCooldown(identity, "post");
       return NextResponse.json(
         {
           error: `You can upload up to ${MAX_IMAGES_PER_POST} photos per post.`,
@@ -94,6 +140,7 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < files.length; i++) {
       if (files[i]!.size > MAX_IMAGE_BYTES) {
+        await releasePublishCooldown(identity, "post");
         return NextResponse.json(
           { error: `Photo ${i + 1} must be 5 MB or smaller.` },
           { status: 400 },
@@ -117,6 +164,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      // Do not punish validation / storage failures with a full cooldown.
+      await releasePublishCooldown(identity, "post");
       return NextResponse.json(
         { error: result.error },
         { status: result.status },
@@ -124,7 +173,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { post: result.post },
+      {
+        post: result.post,
+        cooldownSec: COMMUNITY_PUBLISH_COOLDOWN_SEC,
+      },
       {
         status: 201,
         headers: { "Cache-Control": "no-store" },
@@ -132,6 +184,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     console.error("[community] POST", err);
+    await releasePublishCooldown(identity, "post").catch(() => undefined);
     return NextResponse.json(
       { error: "Could not publish community post." },
       { status: 500 },
@@ -146,6 +199,11 @@ export async function DELETE(request: NextRequest) {
         { error: "Admin delete is not configured on this server." },
         { status: 503 },
       );
+    }
+
+    const origin = assertSameOrigin(request);
+    if (!origin.ok) {
+      return NextResponse.json({ error: origin.error }, { status: 403 });
     }
 
     const headerSecret = request.headers.get("x-community-admin-secret");

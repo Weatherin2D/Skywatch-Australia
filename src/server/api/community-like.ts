@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { likeCommunityPost } from "@/lib/community/storage";
+import {
+  assertSameOrigin,
+  cooldownHeaders,
+  enforceLikeRateLimit,
+  getClientIdentity,
+} from "@/lib/community/security";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +18,26 @@ export const maxDuration = 30;
  */
 export async function POST(request: NextRequest) {
   try {
+    const origin = assertSameOrigin(request);
+    if (!origin.ok) {
+      return NextResponse.json({ error: origin.error }, { status: 403 });
+    }
+
+    const identity = getClientIdentity(request);
+    const limit = await enforceLikeRateLimit(identity);
+    if (limit.blocked) {
+      return NextResponse.json(
+        {
+          error: limit.error,
+          retryAfterSec: limit.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: cooldownHeaders(limit.retryAfterSec),
+        },
+      );
+    }
+
     const body = (await request.json()) as {
       id?: unknown;
       action?: unknown;

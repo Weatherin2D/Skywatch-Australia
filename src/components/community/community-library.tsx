@@ -12,6 +12,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  formatCooldownClock,
+  getClientCooldownRemainingSec,
+  markClientCooldown,
+} from "@/lib/community/client-cooldown";
 import { formatEventDate } from "@/lib/community/format";
 import {
   readLikedPostIds,
@@ -117,6 +122,16 @@ export function CommunityLibrary({
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [commentHoneypot, setCommentHoneypot] = useState("");
+  const [commentCooldownSec, setCommentCooldownSec] = useState(0);
+
+  useEffect(() => {
+    const tick = () =>
+      setCommentCooldownSec(getClientCooldownRemainingSec("comment"));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [adminSignedIn, setAdminSignedIn] = useState(false);
   const [adminSignInSecret, setAdminSignInSecret] = useState("");
@@ -226,6 +241,14 @@ export function CommunityLibrary({
   }
 
   async function submitComment(post: CommunityPost) {
+    const remaining = getClientCooldownRemainingSec("comment");
+    if (remaining > 0) {
+      setCommentError(
+        `Please wait ${formatCooldownClock(remaining)} before commenting again.`,
+      );
+      setCommentCooldownSec(remaining);
+      return;
+    }
     setCommentBusy(true);
     setCommentError(null);
     try {
@@ -236,11 +259,25 @@ export function CommunityLibrary({
           id: post.id,
           author: commentAuthor.trim(),
           text: commentText.trim(),
+          website: commentHoneypot,
         }),
       });
-      const json = (await res.json()) as { post?: CommunityPost; error?: string };
-      if (!res.ok) throw new Error(json.error || `Comment failed (${res.status})`);
+      const json = (await res.json()) as {
+        post?: CommunityPost;
+        error?: string;
+        retryAfterSec?: number;
+        cooldownSec?: number;
+      };
+      if (!res.ok) {
+        if (res.status === 429 && typeof json.retryAfterSec === "number") {
+          markClientCooldown("comment", json.retryAfterSec);
+          setCommentCooldownSec(json.retryAfterSec);
+        }
+        throw new Error(json.error || `Comment failed (${res.status})`);
+      }
       if (json.post) replacePost(json.post);
+      markClientCooldown("comment", json.cooldownSec ?? 20 * 60);
+      setCommentCooldownSec(json.cooldownSec ?? 20 * 60);
       setCommentText("");
     } catch (err) {
       setCommentError(
@@ -966,6 +1003,19 @@ export function CommunityLibrary({
                       void submitComment(active);
                     }}
                   >
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden opacity-0"
+                    >
+                      <input
+                        name="website"
+                        type="text"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={commentHoneypot}
+                        onChange={(e) => setCommentHoneypot(e.target.value)}
+                      />
+                    </div>
                     <Input
                       value={commentAuthor}
                       onChange={(e) => setCommentAuthor(e.target.value)}
@@ -984,12 +1034,22 @@ export function CommunityLibrary({
                     />
                     <Button
                       type="submit"
-                      disabled={commentBusy}
+                      disabled={commentBusy || commentCooldownSec > 0}
                       className="h-8 bg-[var(--cyan)] text-[#041018] hover:bg-[var(--cyan-soft)]"
                     >
-                      {commentBusy ? "…" : "Post"}
+                      {commentBusy
+                        ? "…"
+                        : commentCooldownSec > 0
+                          ? formatCooldownClock(commentCooldownSec)
+                          : "Post"}
                     </Button>
                   </form>
+                  {commentCooldownSec > 0 ? (
+                    <p className="text-xs text-amber-200/90" role="status">
+                      Comment cooldown — try again in{" "}
+                      {formatCooldownClock(commentCooldownSec)}.
+                    </p>
+                  ) : null}
                   {commentError ? (
                     <p className="text-xs text-red-300" role="alert">
                       {commentError}
