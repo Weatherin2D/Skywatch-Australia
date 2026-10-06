@@ -21,12 +21,15 @@ export const maxDuration = 60;
  */
 export async function GET() {
   try {
-    const posts = await listCommunityPosts();
+    const [posts, storage] = await Promise.all([
+      listCommunityPosts(),
+      getCommunityStorageStatusFresh(),
+    ]);
     return NextResponse.json(
       {
         posts,
         adminDeleteConfigured: Boolean(getCommunityAdminSecret()),
-        storage: getCommunityStorageStatus(),
+        storage,
       },
       {
         headers: { "Cache-Control": "no-store" },
