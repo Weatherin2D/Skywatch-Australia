@@ -7,10 +7,13 @@
 import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { get, list, put } from "@vercel/blob";
-import type { CommunityPost } from "@/lib/community/types";
+import { del, get, list, put } from "@vercel/blob";
+import type {
+  CommunityComment,
+  CommunityPost,
+} from "@/lib/community/types";
 
-export type { CommunityPost } from "@/lib/community/types";
+export type { CommunityPost, CommunityComment } from "@/lib/community/types";
 
 const LOCAL_ROOT = path.join(
   process.env.TMPDIR || "/tmp",
@@ -23,6 +26,8 @@ const IMAGES_PREFIX = "community/images/";
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_TITLE_LEN = 80;
 export const MAX_AUTHOR_LEN = 60;
+export const MAX_CAPTION_LEN = 280;
+export const MAX_COMMENT_LEN = 400;
 
 const ALLOWED_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -102,6 +107,16 @@ async function getLocal(pathname: string): Promise<Buffer | null> {
   }
 }
 
+async function deleteLocal(pathname: string): Promise<void> {
+  try {
+    await fs.unlink(localPath(pathname));
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") return;
+    throw error;
+  }
+}
+
 async function putBytes(
   pathname: string,
   body: Buffer | string,
@@ -154,6 +169,21 @@ async function getBytes(pathname: string): Promise<Buffer | null> {
     }
   }
   return getLocal(pathname);
+}
+
+async function deleteBytes(pathname: string): Promise<void> {
+  if (useBlobStorage()) {
+    try {
+      await del(pathname);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (isBlobFatalError(msg)) disableBlob(msg);
+      console.warn(
+        `[community-storage] Blob delete failed for ${pathname}; trying local. ${msg}`,
+      );
+    }
+  }
+  await deleteLocal(pathname);
 }
 
 async function listLocalPrefix(
@@ -222,23 +252,83 @@ function normalizeText(value: unknown, max: number): string | null {
   return trimmed;
 }
 
-function isCommunityPost(value: unknown): value is CommunityPost {
+function normalizeOptionalText(value: unknown, max: number): string | null {
+  if (value == null || value === "") return "";
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length > max) return null;
+  return trimmed;
+}
+
+function isComment(value: unknown): value is CommunityComment {
   if (!value || typeof value !== "object") return false;
-  const p = value as Record<string, unknown>;
+  const c = value as Record<string, unknown>;
   return (
-    typeof p.id === "string" &&
-    typeof p.title === "string" &&
-    typeof p.author === "string" &&
-    typeof p.eventDate === "string" &&
-    typeof p.imageUrl === "string" &&
-    typeof p.contentType === "string" &&
-    typeof p.imagePath === "string" &&
-    typeof p.createdAt === "string"
+    typeof c.id === "string" &&
+    typeof c.author === "string" &&
+    typeof c.text === "string" &&
+    typeof c.createdAt === "string"
+  );
+}
+
+function normalizePost(value: unknown): CommunityPost | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (
+    typeof p.id !== "string" ||
+    typeof p.title !== "string" ||
+    typeof p.author !== "string" ||
+    typeof p.eventDate !== "string" ||
+    typeof p.imageUrl !== "string" ||
+    typeof p.contentType !== "string" ||
+    typeof p.imagePath !== "string" ||
+    typeof p.createdAt !== "string"
+  ) {
+    return null;
+  }
+  const commentsRaw = Array.isArray(p.comments) ? p.comments : [];
+  const comments = commentsRaw.filter(isComment);
+  const likes =
+    typeof p.likes === "number" && Number.isFinite(p.likes) && p.likes >= 0
+      ? Math.floor(p.likes)
+      : 0;
+  const caption = typeof p.caption === "string" ? p.caption : "";
+  return {
+    id: p.id,
+    title: p.title,
+    author: p.author,
+    caption,
+    eventDate: p.eventDate,
+    imageUrl: p.imageUrl,
+    contentType: p.contentType,
+    imagePath: p.imagePath,
+    createdAt: p.createdAt,
+    likes,
+    comments,
+  };
+}
+
+async function writePost(post: CommunityPost): Promise<void> {
+  await putBytes(
+    `${POSTS_PREFIX}${post.id}.json`,
+    JSON.stringify(post),
+    "application/json",
   );
 }
 
 export function imageUrlForId(id: string): string {
   return `/api/community/image?id=${encodeURIComponent(id)}`;
+}
+
+export function getCommunityAdminSecret(): string | null {
+  const secret = process.env.COMMUNITY_ADMIN_SECRET?.trim();
+  return secret ? secret : null;
+}
+
+export function isCommunityAdminAuthorized(requestSecret: string | null): boolean {
+  const expected = getCommunityAdminSecret();
+  if (!expected || !requestSecret) return false;
+  return requestSecret === expected;
 }
 
 export async function listCommunityPosts(): Promise<CommunityPost[]> {
@@ -250,7 +340,8 @@ export async function listCommunityPosts(): Promise<CommunityPost[]> {
     if (!buf) continue;
     try {
       const parsed = JSON.parse(buf.toString("utf8")) as unknown;
-      if (isCommunityPost(parsed)) posts.push(parsed);
+      const post = normalizePost(parsed);
+      if (post) posts.push(post);
     } catch {
       // skip corrupt records
     }
@@ -267,7 +358,7 @@ export async function getCommunityPost(
   if (!buf) return null;
   try {
     const parsed = JSON.parse(buf.toString("utf8")) as unknown;
-    return isCommunityPost(parsed) ? parsed : null;
+    return normalizePost(parsed);
   } catch {
     return null;
   }
@@ -286,6 +377,7 @@ export async function getCommunityImage(
 export type CreateCommunityPostInput = {
   title: unknown;
   author: unknown;
+  caption?: unknown;
   eventDate: unknown;
   image: {
     buffer: Buffer;
@@ -313,6 +405,14 @@ export async function createCommunityPost(
     return {
       ok: false,
       error: `Author is required (max ${MAX_AUTHOR_LEN} characters).`,
+      status: 400,
+    };
+  }
+  const caption = normalizeOptionalText(input.caption, MAX_CAPTION_LEN);
+  if (caption == null) {
+    return {
+      ok: false,
+      error: `Caption must be ${MAX_CAPTION_LEN} characters or fewer.`,
       status: 400,
     };
   }
@@ -353,21 +453,83 @@ export async function createCommunityPost(
     id,
     title,
     author,
+    caption,
     eventDate: eventDateRaw,
     imageUrl: imageUrlForId(id),
     contentType,
     imagePath,
     createdAt,
+    likes: 0,
+    comments: [],
   };
 
   await putBytes(imagePath, input.image.buffer, contentType);
-  await putBytes(
-    `${POSTS_PREFIX}${id}.json`,
-    JSON.stringify(post),
-    "application/json",
-  );
+  await writePost(post);
 
   return { ok: true, post };
+}
+
+export type MutateResult =
+  | { ok: true; post: CommunityPost }
+  | { ok: false; error: string; status: number };
+
+export async function likeCommunityPost(
+  id: string,
+  direction: "like" | "unlike",
+): Promise<MutateResult> {
+  const post = await getCommunityPost(id);
+  if (!post) return { ok: false, error: "Post not found.", status: 404 };
+  if (direction === "like") {
+    post.likes += 1;
+  } else {
+    post.likes = Math.max(0, post.likes - 1);
+  }
+  await writePost(post);
+  return { ok: true, post };
+}
+
+export async function addCommunityComment(
+  id: string,
+  authorRaw: unknown,
+  textRaw: unknown,
+): Promise<MutateResult> {
+  const post = await getCommunityPost(id);
+  if (!post) return { ok: false, error: "Post not found.", status: 404 };
+  const author = normalizeText(authorRaw, MAX_AUTHOR_LEN);
+  if (!author) {
+    return {
+      ok: false,
+      error: `Comment author is required (max ${MAX_AUTHOR_LEN} characters).`,
+      status: 400,
+    };
+  }
+  const text = normalizeText(textRaw, MAX_COMMENT_LEN);
+  if (!text) {
+    return {
+      ok: false,
+      error: `Comment is required (max ${MAX_COMMENT_LEN} characters).`,
+      status: 400,
+    };
+  }
+  const comment: CommunityComment = {
+    id: newId(),
+    author,
+    text,
+    createdAt: new Date().toISOString(),
+  };
+  post.comments = [...post.comments, comment];
+  await writePost(post);
+  return { ok: true, post };
+}
+
+export async function deleteCommunityPost(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const post = await getCommunityPost(id);
+  if (!post) return { ok: false, error: "Post not found.", status: 404 };
+  await deleteBytes(post.imagePath);
+  await deleteBytes(`${POSTS_PREFIX}${post.id}.json`);
+  return { ok: true };
 }
 
 /** Kept for debugging / tests. */

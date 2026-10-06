@@ -32,6 +32,8 @@ import * as weatherArchiveLightning from "@/server/api/weather-archive-lightning
 import * as weatherArchiveIngest from "@/server/api/weather-archive-ingest";
 import * as community from "@/server/api/community";
 import * as communityImage from "@/server/api/community-image";
+import * as communityLike from "@/server/api/community-like";
+import * as communityComment from "@/server/api/community-comment";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -82,6 +84,8 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/archive/ingest": weatherArchiveIngest as RouteHandlers,
   community: community as RouteHandlers,
   "community/image": communityImage as RouteHandlers,
+  "community/like": communityLike as RouteHandlers,
+  "community/comment": communityComment as RouteHandlers,
 };
 
 function resolve(

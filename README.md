@@ -25,6 +25,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/forecast/[geohash]` | Direct forecast for a BoM location (incl. 24–48h rain timeline) |
 | `/archive` | Forward-growing archive from midnight AEST today — satellite, synoptic, lightning with date/time picker |
 | `/risk` | MetEye thunderstorm risk map for the full MetEye horizon |
+| `/community` | Shared weather photo posts — upload, filter library, likes, comments; admin-only delete |
 | `/more` | Secondary tools + mobile install hint (PWA) |
 | `/api/weather/archive` | Archive catalog (epoch, products, day index) |
 | `/api/weather/archive/frame` | Archived national satellite JPEG |
@@ -61,6 +62,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 **Warning categories:** Critical (detailed severe thunderstorm; very dangerous severe thunderstorm / severe weather) · Severe (severe thunderstorm / severe weather; major flood warnings) · Moderate (flood warnings (moderate, minor); flood watches (major, moderate)) · Minor (flood watches (minor); marine wind warnings).
 
 **Local preferences (no auth/DB):** saved place and warning-alert settings live in `localStorage`. Map view is shareable via query params (`region`, `mode`, `radar`, `lightning`, `synoptic`, `product`).
+
+**Community:** posts persist in Vercel Blob (or `/tmp` locally). Likes are counted server-side with per-browser toggle state in `localStorage`. Public delete requires `COMMUNITY_ADMIN_SECRET` (header `x-community-admin-secret` or JSON body `secret`) — only the secret holder can remove posts.
 
 **PWA:** web manifest + light service worker caches the shell and last successful radar/satellite frame responses for an offline “last view”.
 

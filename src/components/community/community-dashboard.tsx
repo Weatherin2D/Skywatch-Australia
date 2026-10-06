@@ -19,11 +19,13 @@ function todayLocalISO(): string {
 export function CommunityDashboard() {
   const formId = useId();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [adminDeleteConfigured, setAdminDeleteConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [caption, setCaption] = useState("");
   const [eventDate, setEventDate] = useState(todayLocalISO);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -40,9 +42,13 @@ export function CommunityDashboard() {
         signal,
       });
       if (!res.ok) throw new Error(`Could not load posts (${res.status})`);
-      const json = (await res.json()) as { posts?: CommunityPost[] };
+      const json = (await res.json()) as {
+        posts?: CommunityPost[];
+        adminDeleteConfigured?: boolean;
+      };
       if (signal?.aborted) return;
       setPosts(Array.isArray(json.posts) ? json.posts : []);
+      setAdminDeleteConfigured(Boolean(json.adminDeleteConfigured));
       setLoading(false);
     } catch (err) {
       if (signal?.aborted) return;
@@ -83,6 +89,7 @@ export function CommunityDashboard() {
       const body = new FormData();
       body.set("title", title.trim());
       body.set("author", author.trim());
+      body.set("caption", caption.trim());
       body.set("eventDate", eventDate);
       body.set("image", file);
       const res = await fetch("/api/community", {
@@ -103,6 +110,7 @@ export function CommunityDashboard() {
       }
       setTitle("");
       setAuthor("");
+      setCaption("");
       setEventDate(todayLocalISO());
       setFile(null);
       setFormOk("Posted — thanks for sharing.");
@@ -123,7 +131,7 @@ export function CommunityDashboard() {
         </h1>
         <p className="max-w-2xl text-sm text-white/70 sm:text-base">
           Share photos of weather that has happened across Australia — storms,
-          fog, rainbows, and more.
+          fog, rainbows, and more. Filter, like, and comment in the library.
         </p>
       </div>
 
@@ -143,7 +151,7 @@ export function CommunityDashboard() {
               New weather post
             </h2>
             <p className="mt-0.5 text-xs text-white/55">
-              Title, photo, your name, and when it happened.
+              Title, photo, optional caption, your name, and when it happened.
             </p>
           </div>
         </div>
@@ -160,6 +168,21 @@ export function CommunityDashboard() {
               maxLength={80}
               required
               placeholder="Shelf cloud over Ballarat"
+              className="border-white/15 bg-white/5 text-white placeholder:text-white/35"
+            />
+          </div>
+
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor={`${formId}-caption`} className="text-white/80">
+              Caption{" "}
+              <span className="font-normal text-white/45">(optional)</span>
+            </Label>
+            <Input
+              id={`${formId}-caption`}
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              maxLength={280}
+              placeholder="What were the conditions like?"
               className="border-white/15 bg-white/5 text-white placeholder:text-white/35"
             />
           </div>
@@ -223,10 +246,7 @@ export function CommunityDashboard() {
           </div>
 
           {formError ? (
-            <p
-              className="sm:col-span-2 text-sm text-red-300"
-              role="alert"
-            >
+            <p className="sm:col-span-2 text-sm text-red-300" role="alert">
               {formError}
             </p>
           ) : null}
@@ -281,7 +301,13 @@ export function CommunityDashboard() {
           </div>
         ) : null}
 
-        {!loading && !listError ? <CommunityLibrary posts={posts} /> : null}
+        {!loading && !listError ? (
+          <CommunityLibrary
+            posts={posts}
+            adminDeleteConfigured={adminDeleteConfigured}
+            onPostsChange={setPosts}
+          />
+        ) : null}
       </section>
     </div>
   );
