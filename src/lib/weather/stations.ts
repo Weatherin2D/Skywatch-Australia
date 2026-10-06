@@ -306,18 +306,21 @@ export function densityForBounds(bounds: [[number, number], [number, number]]): 
   const spanLat = Math.abs(north - south);
   const span = Math.max(spanLon, spanLat);
   if (span >= 40) {
+    // Full continent — capitals + hubs only
     return { maxCount: 14, minSeparationKm: 400, maxTier: 1, scale: 0.78 };
   }
-  if (span >= 22) {
-    return { maxCount: 18, minSeparationKm: 260, maxTier: 2, scale: 0.88 };
+  if (span >= 20) {
+    // Large state crops (QLD / WA) — regional fill, still airy
+    return { maxCount: 18, minSeparationKm: 220, maxTier: 2, scale: 0.88 };
   }
-  if (span >= 12) {
-    return { maxCount: 28, minSeparationKm: 140, maxTier: 2, scale: 0.94 };
+  if (span >= 10) {
+    // Typical state crop (NSW / SA / NT) — include local towns
+    return { maxCount: 26, minSeparationKm: 95, maxTier: 3, scale: 0.94 };
   }
-  if (span >= 6) {
-    return { maxCount: 40, minSeparationKm: 75, maxTier: 3, scale: 1 };
+  if (span >= 5) {
+    return { maxCount: 36, minSeparationKm: 55, maxTier: 3, scale: 1 };
   }
-  return { maxCount: 58, minSeparationKm: 36, maxTier: 3, scale: 1 };
+  return { maxCount: 50, minSeparationKm: 28, maxTier: 3, scale: 1 };
 }
 
 /**
