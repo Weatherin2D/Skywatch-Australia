@@ -72,11 +72,9 @@ import {
   BOM_RADAR_RANGE_OPTIONS,
   BOM_RADAR_SITES,
   findBomRadarSite,
-  parseRadarProduct,
   parseRadarRangeKm,
   parseRadarViewMode,
   rangeCodeToKm,
-  type BomRadarProduct,
   type BomRadarRangeKm,
   type RadarViewMode,
 } from "@/lib/weather/bom-radar-types";
@@ -311,8 +309,6 @@ function HomeDashboardInner({
   const [radarMode, setRadarMode] = useState<RadarViewMode>("composite");
   const [radarSite, setRadarSite] = useState<string>(DEFAULT_RADAR_SITE);
   const [radarRange, setRadarRange] = useState<BomRadarRangeKm>(64);
-  const [radarProduct, setRadarProduct] =
-    useState<BomRadarProduct>("reflectivity");
   const [chaseEnabled, setChaseEnabled] = useState(false);
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [focusCellId, setFocusCellId] = useState<string | null>(null);
@@ -375,8 +371,6 @@ function HomeDashboardInner({
     }
     const rr = parseRadarRangeKm(searchParams.get("radarRange"));
     if (rr) setRadarRange(rr);
-    const rp = searchParams.get("radarProduct");
-    if (rp) setRadarProduct(parseRadarProduct(rp));
     if (searchParams.get("chase") === "1" || focus === "radar") {
       setChaseEnabled(true);
       setLayers((prev) => ({ ...prev, radar: true, lightning: true }));
@@ -435,12 +429,7 @@ function HomeDashboardInner({
     if (layers.radar && radarMode === "site") {
       params.set("radarMode", "site");
       params.set("radarSite", radarSite);
-      if (radarProduct === "reflectivity") {
-        params.set("radarRange", String(radarRange));
-      }
-      if (radarProduct !== "reflectivity") {
-        params.set("radarProduct", radarProduct);
-      }
+      params.set("radarRange", String(radarRange));
     }
     const qs = params.toString();
     const next = qs ? `${path}?${qs}` : path;
@@ -459,7 +448,6 @@ function HomeDashboardInner({
     radarMode,
     radarSite,
     radarRange,
-    radarProduct,
   ]);
 
   async function copyShareLink() {
@@ -480,13 +468,11 @@ function HomeDashboardInner({
   const [radarMenuOpen, setRadarMenuOpen] = useState(false);
   const [radarSiteMenuOpen, setRadarSiteMenuOpen] = useState(false);
   const [radarRangeMenuOpen, setRadarRangeMenuOpen] = useState(false);
-  const [radarProductMenuOpen, setRadarProductMenuOpen] = useState(false);
   const satMenuRef = useRef<HTMLDivElement>(null);
   const regionMenuRef = useRef<HTMLDivElement>(null);
   const radarMenuRef = useRef<HTMLDivElement>(null);
   const radarSiteMenuRef = useRef<HTMLDivElement>(null);
   const radarRangeMenuRef = useRef<HTMLDivElement>(null);
-  const radarProductMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
@@ -536,13 +522,10 @@ function HomeDashboardInner({
   /**
    * Radar drives the timeline on open Map when rain radar is on and satellite
    * imagery is not already owning the loop (same play/scrub UX as Himawari).
-   * Site mode is a single latest IDR frame — no composite scrubber.
+   * Site mode still uses the national WMTS loop — it only changes map framing.
    */
   const useRadarLoop =
-    showRadarOverlay &&
-    radarMode === "composite" &&
-    mode === "Map" &&
-    !himawariOnMap;
+    showRadarOverlay && mode === "Map" && !himawariOnMap;
   const useTimeline = useSatelliteFrames || useRadarLoop;
   const radarSiteMeta = findBomRadarSite(radarSite);
 
@@ -815,8 +798,7 @@ function HomeDashboardInner({
       regionMenuOpen ||
       radarMenuOpen ||
       radarSiteMenuOpen ||
-      radarRangeMenuOpen ||
-      radarProductMenuOpen;
+      radarRangeMenuOpen;
     if (!anyOpen) return;
     function closeIfOutside(
       open: boolean,
@@ -853,12 +835,6 @@ function HomeDashboardInner({
         () => setRadarRangeMenuOpen(false),
         t,
       );
-      closeIfOutside(
-        radarProductMenuOpen,
-        radarProductMenuRef,
-        () => setRadarProductMenuOpen(false),
-        t,
-      );
     }
     document.addEventListener("click", onPointerDown);
     function onKey(e: KeyboardEvent) {
@@ -868,7 +844,6 @@ function HomeDashboardInner({
         setRadarMenuOpen(false);
         setRadarSiteMenuOpen(false);
         setRadarRangeMenuOpen(false);
-        setRadarProductMenuOpen(false);
       }
     }
     document.addEventListener("keydown", onKey);
@@ -882,7 +857,6 @@ function HomeDashboardInner({
     radarMenuOpen,
     radarSiteMenuOpen,
     radarRangeMenuOpen,
-    radarProductMenuOpen,
   ]);
 
   const scrubLabel = useMemo(() => {
@@ -1032,7 +1006,6 @@ function HomeDashboardInner({
                         setRadarMenuOpen(false);
                         setRadarSiteMenuOpen(false);
                         setRadarRangeMenuOpen(false);
-                        setRadarProductMenuOpen(false);
                         if (mode === "Satellite") {
                           setSatMenuOpen((open) => !open);
                         } else {
@@ -1120,7 +1093,6 @@ function HomeDashboardInner({
                   setRadarMenuOpen(false);
                   setRadarSiteMenuOpen(false);
                   setRadarRangeMenuOpen(false);
-                  setRadarProductMenuOpen(false);
                   setRegionMenuOpen((open) => !open);
                 }}
                 className={cn(
@@ -1187,8 +1159,7 @@ function HomeDashboardInner({
                       setRegionMenuOpen(false);
                       setRadarSiteMenuOpen(false);
                       setRadarRangeMenuOpen(false);
-                      setRadarProductMenuOpen(false);
-                      setRadarMenuOpen((open) => !open);
+                          setRadarMenuOpen((open) => !open);
                     }}
                     className={cn(
                       "sw-chip inline-flex items-center gap-1",
@@ -1260,8 +1231,7 @@ function HomeDashboardInner({
                           setRegionMenuOpen(false);
                           setRadarMenuOpen(false);
                           setRadarRangeMenuOpen(false);
-                          setRadarProductMenuOpen(false);
-                          setRadarSiteMenuOpen((open) => !open);
+                            setRadarSiteMenuOpen((open) => !open);
                         }}
                         className="sw-chip sw-chip-active inline-flex items-center gap-1"
                       >
@@ -1315,76 +1285,11 @@ function HomeDashboardInner({
                       ) : null}
                     </div>
 
-                    {radarProduct === "reflectivity" ? (
-                      <div className="relative z-[70]" ref={radarRangeMenuRef}>
-                        <button
-                          type="button"
-                          aria-haspopup="listbox"
-                          aria-expanded={radarRangeMenuOpen}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSatMenuOpen(false);
-                            setRegionMenuOpen(false);
-                            setRadarMenuOpen(false);
-                            setRadarSiteMenuOpen(false);
-                            setRadarProductMenuOpen(false);
-                            setRadarRangeMenuOpen((open) => !open);
-                          }}
-                          className="sw-chip sw-chip-idle inline-flex items-center gap-1"
-                        >
-                          Range
-                          <span className="font-normal opacity-80">
-                            · {radarRange} km
-                          </span>
-                          <ChevronDown
-                            className={cn(
-                              "h-3.5 w-3.5 opacity-80 transition",
-                              radarRangeMenuOpen && "rotate-180",
-                            )}
-                            aria-hidden
-                          />
-                        </button>
-                        {radarRangeMenuOpen ? (
-                          <ul
-                            role="listbox"
-                            aria-label="Radar range"
-                            className="absolute left-0 top-full z-[80] mt-1 min-w-[9rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
-                            onMouseDown={(e) => e.stopPropagation()}
-                          >
-                            {BOM_RADAR_RANGE_OPTIONS.map((opt) => (
-                              <li
-                                key={opt.km}
-                                role="option"
-                                aria-selected={radarRange === opt.km}
-                              >
-                                <button
-                                  type="button"
-                                  className={cn(
-                                    "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
-                                    radarRange === opt.km
-                                      ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
-                                      : "text-white/80 hover:bg-white/5 hover:text-white",
-                                  )}
-                                  onClick={() => {
-                                    setRadarRange(opt.km);
-                                    setRadarRangeMenuOpen(false);
-                                  }}
-                                >
-                                  {opt.label}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    <div className="relative z-[70]" ref={radarProductMenuRef}>
+                    <div className="relative z-[70]" ref={radarRangeMenuRef}>
                       <button
                         type="button"
                         aria-haspopup="listbox"
-                        aria-expanded={radarProductMenuOpen}
+                        aria-expanded={radarRangeMenuOpen}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1392,58 +1297,46 @@ function HomeDashboardInner({
                           setRegionMenuOpen(false);
                           setRadarMenuOpen(false);
                           setRadarSiteMenuOpen(false);
-                          setRadarRangeMenuOpen(false);
-                          setRadarProductMenuOpen((open) => !open);
+                          setRadarRangeMenuOpen((open) => !open);
                         }}
                         className="sw-chip sw-chip-idle inline-flex items-center gap-1"
                       >
-                        Product
+                        Range
                         <span className="font-normal opacity-80">
-                          ·{" "}
-                          {radarProduct === "doppler"
-                            ? "Doppler"
-                            : "Reflectivity"}
+                          · {radarRange} km
                         </span>
                         <ChevronDown
                           className={cn(
                             "h-3.5 w-3.5 opacity-80 transition",
-                            radarProductMenuOpen && "rotate-180",
+                            radarRangeMenuOpen && "rotate-180",
                           )}
                           aria-hidden
                         />
                       </button>
-                      {radarProductMenuOpen ? (
+                      {radarRangeMenuOpen ? (
                         <ul
                           role="listbox"
-                          aria-label="Radar product"
-                          className="absolute left-0 top-full z-[80] mt-1 min-w-[11rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                          aria-label="Radar range"
+                          className="absolute left-0 top-full z-[80] mt-1 min-w-[9rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
                           onMouseDown={(e) => e.stopPropagation()}
                         >
-                          {(
-                            [
-                              {
-                                id: "reflectivity" as const,
-                                label: "Reflectivity",
-                              },
-                              { id: "doppler" as const, label: "Doppler" },
-                            ] as const
-                          ).map((opt) => (
+                          {BOM_RADAR_RANGE_OPTIONS.map((opt) => (
                             <li
-                              key={opt.id}
+                              key={opt.km}
                               role="option"
-                              aria-selected={radarProduct === opt.id}
+                              aria-selected={radarRange === opt.km}
                             >
                               <button
                                 type="button"
                                 className={cn(
                                   "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
-                                  radarProduct === opt.id
+                                  radarRange === opt.km
                                     ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
                                     : "text-white/80 hover:bg-white/5 hover:text-white",
                                 )}
                                 onClick={() => {
-                                  setRadarProduct(opt.id);
-                                  setRadarProductMenuOpen(false);
+                                  setRadarRange(opt.km);
+                                  setRadarRangeMenuOpen(false);
                                 }}
                               >
                                 {opt.label}
@@ -1487,9 +1380,8 @@ function HomeDashboardInner({
               radarMode={radarMode}
               radarSiteCode={radarSite}
               radarRangeKm={radarRange}
-              radarProduct={radarProduct}
               frameTileUrl={
-                showRadarOverlay && radarMode === "composite"
+                showRadarOverlay
                   ? (overlayRadarFrame?.tileUrlTemplate ?? null)
                   : null
               }

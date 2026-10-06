@@ -9,7 +9,6 @@ import type {
 import type { LightningStrike } from "@/lib/weather/lightning";
 import type { DisplayFeature } from "@/lib/forecast/types";
 import type {
-  BomRadarProduct,
   BomRadarRangeKm,
   RadarViewMode,
 } from "@/lib/weather/bom-radar-types";
@@ -38,7 +37,6 @@ export function HomeMapDynamic({
   radarMode,
   radarSiteCode,
   radarRangeKm,
-  radarProduct,
   frameTileUrl,
   frameImageUrl,
   frameImageFallbackUrl,
@@ -87,7 +85,6 @@ export function HomeMapDynamic({
   radarMode?: RadarViewMode;
   radarSiteCode?: string | null;
   radarRangeKm?: BomRadarRangeKm;
-  radarProduct?: BomRadarProduct;
   frameTileUrl?: string | null;
   frameImageUrl?: string | null;
   frameImageFallbackUrl?: string | null;
@@ -146,7 +143,6 @@ export function HomeMapDynamic({
       radarMode={radarMode}
       radarSiteCode={radarSiteCode}
       radarRangeKm={radarRangeKm}
-      radarProduct={radarProduct}
       frameTileUrl={frameTileUrl}
       frameImageUrl={frameImageUrl}
       frameImageFallbackUrl={frameImageFallbackUrl}

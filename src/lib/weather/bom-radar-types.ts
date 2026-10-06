@@ -4,7 +4,6 @@
 
 export type BomRadarRangeKm = 64 | 128 | 256;
 export type BomRadarRangeCode = "2" | "3" | "4";
-export type BomRadarProduct = "reflectivity" | "doppler";
 export type RadarViewMode = "composite" | "site";
 
 export type BomRadarSite = {
@@ -89,6 +88,15 @@ export function parseRadarViewMode(raw: string | null | undefined): RadarViewMod
   return raw === "site" ? "site" : "composite";
 }
 
-export function parseRadarProduct(raw: string | null | undefined): BomRadarProduct {
-  return raw === "doppler" ? "doppler" : "reflectivity";
+/** Lat/lon box for a site's range — used to frame the map (WMTS tiles still cover AU). */
+export function siteRadarBounds(
+  site: BomRadarSite,
+  rangeKm: BomRadarRangeKm = rangeCodeToKm(site.defaultRange),
+): [[number, number], [number, number]] {
+  const dLat = rangeKm / 111.32;
+  const dLon = rangeKm / (111.32 * Math.cos((site.lat * Math.PI) / 180));
+  return [
+    [site.lat - dLat, site.lon - dLon],
+    [site.lat + dLat, site.lon + dLon],
+  ];
 }

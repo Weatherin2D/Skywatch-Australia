@@ -242,6 +242,7 @@
   image-rendering: smooth;
 }
 
+/* Legacy site GIF overlay class — unused (WMTS tiles only). */
 .skywatch-bom-site-radar,
 .leaflet-image-layer.skywatch-bom-site-radar {
   image-rendering: auto !important;
