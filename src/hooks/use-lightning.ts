@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { startClientLightningFeed } from "@/lib/weather/blitzortung-client";
-import type { LightningPayload, LightningStrike } from "@/lib/weather/lightning";
+import {
+  LIGHTNING_CLIENT_MAX_STRIKES,
+  sampleStrikesAcrossTime,
+  type LightningPayload,
+  type LightningStrike,
+} from "@/lib/weather/lightning";
 
 type State = {
   strikes: LightningStrike[];
@@ -44,35 +49,59 @@ function pruneMap(map: Map<string, LightningStrike>, nowSec: number) {
   }
 }
 
+/** Keep the client map small, time-diverse, and spatially fair. */
+function capMap(map: Map<string, LightningStrike>) {
+  if (map.size <= LIGHTNING_CLIENT_MAX_STRIKES) return;
+  const kept = sampleStrikesAcrossTime(
+    [...map.values()],
+    LIGHTNING_CLIENT_MAX_STRIKES,
+  );
+  map.clear();
+  for (const strike of kept) map.set(strike.id, strike);
+}
+
 export function useLightning(enabled: boolean) {
   const [state, setState] = useState<State>(EMPTY);
   const seenRef = useRef(new Map<string, LightningStrike>());
   const liveRef = useRef(false);
+  const publishRafRef = useRef(0);
+  const pendingPatchRef = useRef<Partial<State> | null>(null);
 
+  const flushPublish = useCallback(() => {
+    publishRafRef.current = 0;
+    const patch = pendingPatchRef.current ?? {};
+    pendingPatchRef.current = null;
+
+    const now = Math.floor(Date.now() / 1000);
+    pruneMap(seenRef.current, now);
+    capMap(seenRef.current);
+    const merged = [...seenRef.current.values()].sort(
+      (a, b) => b.time - a.time,
+    );
+    const live = patch.live ?? liveRef.current;
+    liveRef.current = Boolean(live);
+    setState((s) => ({
+      strikes: merged,
+      loading: false,
+      error: patch.error ?? null,
+      generated: patch.generated ?? s.generated ?? now,
+      attribution: patch.attribution ?? s.attribution,
+      status: patch.status ?? s.status,
+      live,
+    }));
+  }, []);
+
+  /** Coalesce rapid socket hits into one rAF publish — avoids main-thread lockups. */
   const publish = useCallback(
-    (
-      patch: Partial<State> & {
-        keepStrikes?: boolean;
-      } = {},
-    ) => {
-      const now = Math.floor(Date.now() / 1000);
-      pruneMap(seenRef.current, now);
-      const merged = [...seenRef.current.values()].sort(
-        (a, b) => b.time - a.time,
-      );
-      const live = patch.live ?? liveRef.current;
-      liveRef.current = Boolean(live);
-      setState((s) => ({
-        strikes: merged,
-        loading: false,
-        error: patch.error ?? null,
-        generated: patch.generated ?? s.generated ?? now,
-        attribution: patch.attribution ?? s.attribution,
-        status: patch.status ?? s.status,
-        live,
-      }));
+    (patch: Partial<State> = {}) => {
+      pendingPatchRef.current = {
+        ...(pendingPatchRef.current ?? {}),
+        ...patch,
+      };
+      if (publishRafRef.current) return;
+      publishRafRef.current = requestAnimationFrame(flushPublish);
     },
-    [],
+    [flushPublish],
   );
 
   const load = useCallback(
@@ -100,12 +129,18 @@ export function useLightning(enabled: boolean) {
         for (const strike of data.strikes) {
           mergeStrike(seenRef.current, strike);
         }
-        publish({
+        // Immediate flush after HTTP so the first paint isn't waiting on rAF alone.
+        pendingPatchRef.current = {
           generated: data.generated,
           attribution: data.attribution,
           status: data.status,
           live: data.status === "live" || data.status === "reconnecting",
-        });
+        };
+        if (publishRafRef.current) {
+          cancelAnimationFrame(publishRafRef.current);
+          publishRafRef.current = 0;
+        }
+        flushPublish();
       } catch (err) {
         if (signal?.aborted) return;
         setState((s) => ({
@@ -116,13 +151,18 @@ export function useLightning(enabled: boolean) {
         }));
       }
     },
-    [publish],
+    [flushPublish],
   );
 
   useEffect(() => {
     if (!enabled) {
       seenRef.current.clear();
       liveRef.current = false;
+      pendingPatchRef.current = null;
+      if (publishRafRef.current) {
+        cancelAnimationFrame(publishRafRef.current);
+        publishRafRef.current = 0;
+      }
       setState(EMPTY);
       return;
     }
@@ -163,6 +203,10 @@ export function useLightning(enabled: boolean) {
       window.clearInterval(retune);
       document.removeEventListener("visibilitychange", onVis);
       client.stop();
+      if (publishRafRef.current) {
+        cancelAnimationFrame(publishRafRef.current);
+        publishRafRef.current = 0;
+      }
     };
   }, [enabled, load, publish]);
 

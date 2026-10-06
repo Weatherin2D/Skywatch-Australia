@@ -350,6 +350,7 @@
   position: relative;
   display: inline-block;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
 }
 
 .skywatch-lightning-crosshair::before,

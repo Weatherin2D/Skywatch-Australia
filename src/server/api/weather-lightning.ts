@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
-import type { LightningPayload } from "@/lib/weather/lightning";
+import {
+  LIGHTNING_API_MAX_STRIKES,
+  sampleStrikesAcrossTime,
+  type LightningPayload,
+} from "@/lib/weather/lightning";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,12 +14,18 @@ export const maxDuration = 30;
 
 export async function GET() {
   const snap = await getLiveLightningSnapshot();
+  // Never ship the raw 40k buffer — sample across time buckets (and lon bands
+  // inside each) so the IR loop keeps a trail without freezing phones.
+  const strikes = sampleStrikesAcrossTime(
+    snap.strikes,
+    LIGHTNING_API_MAX_STRIKES,
+  );
   const payload: LightningPayload = {
     generated: snap.generated,
     source: snap.source,
     status: snap.status,
     windowMinutes: snap.windowMinutes,
-    strikes: snap.strikes,
+    strikes,
     attribution: snap.attribution,
     receivedTotal: snap.receivedTotal,
     receivedInBounds: snap.receivedInBounds,
@@ -23,7 +33,7 @@ export async function GET() {
 
   // Never CDN-cache an empty buffer — that stranded clients on "connecting".
   const cacheControl =
-    snap.strikes.length === 0
+    strikes.length === 0
       ? "no-store"
       : "public, s-maxage=15, stale-while-revalidate=30, max-age=8";
 
@@ -32,6 +42,7 @@ export async function GET() {
       "Cache-Control": cacheControl,
       "X-Lightning-In-Bounds": String(snap.receivedInBounds),
       "X-Lightning-Buffered": String(snap.strikes.length),
+      "X-Lightning-Returned": String(strikes.length),
       "X-Lightning-Status": snap.status,
     },
   });

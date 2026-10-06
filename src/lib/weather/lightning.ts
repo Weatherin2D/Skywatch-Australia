@@ -47,6 +47,13 @@ export const LIGHTNING_MAX_VISIBLE = 1600;
 export const LIGHTNING_MAX_VISIBLE_DOM = 220;
 /** Cap for archive API payloads (keeps the client responsive). */
 export const LIGHTNING_ARCHIVE_MAX_STRIKES = 2400;
+/**
+ * Cap for live `/api/weather/lightning` JSON. Larger payloads (40k+) freeze
+ * phones and starve the overlay paint loop — keep a band-aware subset.
+ */
+export const LIGHTNING_API_MAX_STRIKES = 8000;
+/** Cap for the in-browser strike buffer (HTTP + live sockets). */
+export const LIGHTNING_CLIENT_MAX_STRIKES = 8000;
 
 const GRADIENT_STOPS = [
   { t: 0, r: 255, g: 255, b: 255 }, // white — newest flash

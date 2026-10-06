@@ -46,7 +46,7 @@ const WINDOW_SEC = 24 * 60 * 60;
 const MAX_BUFFER = 40_000;
 const PERSIST_PATH = path.join(
   process.env.TMPDIR || "/tmp",
-  "skywatch-lightning-strikes-v12.json",
+  "skywatch-lightning-strikes-v13.json",
 );
 const PERSIST_EVERY_MS = 12_000;
 
@@ -81,12 +81,12 @@ type GlobalFeed = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __skywatchBlitzFeedV12?: GlobalFeed;
+  __skywatchBlitzFeedV13?: GlobalFeed;
 };
 
 function getState(): GlobalFeed {
-  if (!g.__skywatchBlitzFeedV12) {
-    g.__skywatchBlitzFeedV12 = {
+  if (!g.__skywatchBlitzFeedV13) {
+    g.__skywatchBlitzFeedV13 = {
       strikes: new Map(),
       status: "connecting",
       host: null,
@@ -102,7 +102,7 @@ function getState(): GlobalFeed {
       persistDirty: false,
     };
   }
-  return g.__skywatchBlitzFeedV12;
+  return g.__skywatchBlitzFeedV13;
 }
 
 function isAcceptedStrikeId(id: string) {

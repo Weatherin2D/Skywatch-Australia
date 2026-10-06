@@ -79,26 +79,31 @@ function drawCrosshair(
   if (arm <= 0.25) return;
 
   ctx.globalAlpha = opacity;
-  ctx.strokeStyle = `rgb(${r},${g},${b})`;
-  ctx.lineWidth = thick;
   ctx.lineCap = "butt";
 
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - half);
-  ctx.lineTo(cx, cy - gap);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(cx, cy + gap);
-  ctx.lineTo(cx, cy + half);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(cx - half, cy);
-  ctx.lineTo(cx - gap, cy);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(cx + gap, cy);
-  ctx.lineTo(cx + half, cy);
-  ctx.stroke();
+  // Dark under-stroke so white/yellow arms stay visible on bright IR tops.
+  const strokeArms = (color: string, width: number) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - half);
+    ctx.lineTo(cx, cy - gap);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + gap);
+    ctx.lineTo(cx, cy + half);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - half, cy);
+    ctx.lineTo(cx - gap, cy);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + gap, cy);
+    ctx.lineTo(cx + half, cy);
+    ctx.stroke();
+  };
+  strokeArms("rgba(0,0,0,0.75)", thick + 1.6);
+  strokeArms(`rgb(${r},${g},${b})`, thick);
 }
 
 /** Classic filled lightning bolt glyph, centred on (cx, cy). */

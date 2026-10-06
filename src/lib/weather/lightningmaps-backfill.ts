@@ -13,7 +13,7 @@
 
 import { PNG } from "pngjs";
 import type { LightningStrike } from "@/lib/weather/lightning";
-import { sampleStrikesForDisplay } from "@/lib/weather/lightning";
+import { sampleStrikesAcrossTime } from "@/lib/weather/lightning";
 import { inLightningBounds } from "@/lib/weather/blitzortung-parse";
 
 /** Cap LM inject so one busy east-coast map cannot fill the live buffer alone. */
@@ -125,7 +125,8 @@ function ageFromRgb(
   periodSec: number,
 ): number | null {
   // Saturated strike dots: high R, low B, G encodes age along the ramp.
-  if (r < 200 || b > 100 || r < g - 20) return null;
+  // Slightly looser R floor catches dimmer western/oceania palette steps.
+  if (r < 185 || b > 110 || r < g - 25) return null;
   // Ignore near-white land labels / chrome bleed.
   if (g > 245 && b > 180) return null;
   const t = 1 - Math.min(1, Math.max(0, g / 220));
@@ -190,10 +191,11 @@ function extractStrikes(
     const [baseLon, baseLat] = pxToLonLat(cx, cy, W, H, map);
     if (!inLightningBounds(baseLat, baseLon)) continue;
 
-    // One strike per cell; dense blobs get a couple of nearby copies with
-    // sub-band time jitter so IR frames (~10 min) each pick up new flashes
-    // instead of only stepping on coarse colour boundaries.
-    const copies = Math.min(3, Math.max(1, Math.ceil(bin.n / 2)));
+    // Western / central Australia is sparse on national maps — keep more
+    // samples per cell so WA zooms are not empty when the east is lit.
+    const western = baseLon < 129;
+    const copyCap = western ? 5 : 3;
+    const copies = Math.min(copyCap, Math.max(1, Math.ceil(bin.n / (western ? 1 : 2))));
     for (let k = 0; k < copies; k++) {
       const frac = hash01(cx, cy, k);
       const jitterSec = Math.round((frac - 0.5) * bandSec);
@@ -237,7 +239,8 @@ async function fetchOneMap(
     `${map.url}&period=${periodH}&bo_t=${Math.floor(now / 20)}`,
     {
       headers: { "User-Agent": USER_AGENT, Accept: "image/png,*/*" },
-      signal: AbortSignal.timeout(18_000),
+      // Connect + body; LM can be slow from some regions.
+      signal: AbortSignal.timeout(28_000),
       cache: "no-store",
     },
   );
@@ -319,8 +322,8 @@ export async function fetchLightningMapsBackfill(): Promise<MapBackfillResult> {
       const fresh = [...byCell.values()].filter(
         (s) => now - s.time <= KEEP_SEC,
       );
-      // Band-aware sample keeps WA / Indonesia coverage when the east is dense.
-      const strikes = sampleStrikesForDisplay(fresh, MAX_BACKFILL_STRIKES);
+      // Time + lon-band sample keeps WA coverage and the IR trail intact.
+      const strikes = sampleStrikesAcrossTime(fresh, MAX_BACKFILL_STRIKES);
       cache = { strikes, fetchedAt: now };
       return cache;
     } catch (err) {
