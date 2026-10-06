@@ -150,6 +150,9 @@ export const stripRealEarthWatermark = stripCornerBadge;
 /**
  * Detect RealEarth's burned-in "Size limit exceeded" / attribution banner.
  * SSEC responses are intermittent — same URL can flip between clean and marked.
+ *
+ * On dark IR, the watermark is often mid-gray (not white), tiled across the
+ * lower half. Detect both bright banners and gray text-like horizontal bands.
  */
 export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
   let png: PNG;
@@ -165,12 +168,18 @@ export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
   let brightSum = 0;
   let maxWhite = 0;
   let whiteRows = 0;
-  const y0 = Math.floor(height * 0.45);
-  const stepX = Math.max(1, Math.floor(width / 250));
+  let textLikeRows = 0;
+  let textBandRuns = 0;
+  let inTextBand = false;
+  const y0 = Math.floor(height * 0.4);
+  const stepX = Math.max(1, Math.floor(width / 280));
   for (let y = y0; y < height; y++) {
     let bright = 0;
     let white = 0;
+    let midGray = 0;
+    let edges = 0;
     let n = 0;
+    let prevGray = -1;
     for (let x = 0; x < width; x += stepX) {
       const i = (y * width + x) * 4;
       const r = data[i]!;
@@ -179,21 +188,51 @@ export function hasRealEarthSizeLimitOverlay(pngBuffer: Buffer): boolean {
       const gray = (r + g + b) / 3;
       if (gray > 175) bright += 1;
       if (r > 200 && g > 200 && b > 200) white += 1;
+      // Desaturated mid-gray — the usual "Size limit exceeded" glyph colour on IR.
+      if (
+        gray > 85 &&
+        gray < 195 &&
+        Math.abs(r - g) < 28 &&
+        Math.abs(g - b) < 28 &&
+        Math.abs(r - b) < 28
+      ) {
+        midGray += 1;
+      }
+      if (prevGray >= 0 && Math.abs(gray - prevGray) > 38) edges += 1;
+      prevGray = gray;
       n += 1;
     }
     const brightRatio = bright / n;
     const whiteRatio = white / n;
+    const midRatio = midGray / n;
+    const edgeRatio = edges / Math.max(1, n - 1);
     maxRow = Math.max(maxRow, brightRatio);
     brightSum += brightRatio;
     maxWhite = Math.max(maxWhite, whiteRatio);
     if (whiteRatio > 0.05) whiteRows += 1;
+
+    // Text rows: lots of mid-gray + high horizontal edge density.
+    const textLike =
+      (midRatio >= 0.1 && edgeRatio >= 0.14) ||
+      (midRatio >= 0.18 && edgeRatio >= 0.1);
+    if (textLike) {
+      textLikeRows += 1;
+      if (!inTextBand) {
+        textBandRuns += 1;
+        inTextBand = true;
+      }
+    } else if (inTextBand) {
+      inTextBand = false;
+    }
   }
 
   return (
     maxRow >= 0.08 ||
     brightSum >= 2.5 ||
     maxWhite >= 0.04 ||
-    whiteRows >= 8
+    whiteRows >= 8 ||
+    textLikeRows >= 6 ||
+    textBandRuns >= 2
   );
 }
 
@@ -292,26 +331,37 @@ function planPanelGrid(bounds: LonLatBounds): PanelPlan {
     aspect >= 1 ? Math.max(1, Math.round(longEdge / aspect)) : longEdge;
 
   // Prefer fewer panels so RealEarth is less likely to rate-limit / watermark.
-  // Tall states: vertical bands. Wide states: 2x2.
+  // Very tall states (QLD): more vertical bands keep each panel under SSEC's
+  // size-limit threshold. Wide states: 2x2 / 3x2.
+  const [[south, west], [north, east]] = bounds;
+  const latSpan = Math.abs(north - south);
   const candidates: Array<[number, number]> =
-    aspect < 0.9
+    aspect < 0.85 || latSpan >= 16
       ? [
-          [1, 3],
           [1, 4],
+          [1, 5],
           [2, 3],
           [2, 4],
+          [1, 3],
         ]
-      : aspect > 1.15
+      : aspect < 0.95
         ? [
-            [2, 2],
-            [3, 2],
-            [2, 3],
-          ]
-        : [
-            [2, 2],
-            [2, 3],
             [1, 3],
-          ];
+            [1, 4],
+            [2, 3],
+            [2, 4],
+          ]
+        : aspect > 1.15
+          ? [
+              [2, 2],
+              [3, 2],
+              [2, 3],
+            ]
+          : [
+              [2, 2],
+              [2, 3],
+              [1, 3],
+            ];
 
   for (const [cols, rows] of candidates) {
     const pw = Math.ceil(outWidth / cols);
@@ -590,6 +640,11 @@ async function fetchRealEarthStitched(
     return null;
   }
   body = stripCornerBadge(body);
+  // Final gate — individual panels can slip a gray IR watermark past a soft
+  // check; never cache a mosaic that still carries "Size limit exceeded".
+  if (hasRealEarthSizeLimitOverlay(body)) {
+    return null;
+  }
   return { body, contentType: "image/png" };
 }
 
