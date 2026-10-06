@@ -125,13 +125,50 @@ export const HAIL_CHANCE_BANDS: ChanceBand[] = [
   band(5, 60, "#6C3483", [108, 52, 131, 195], "60%+ chance of large hail."),
 ];
 
-/** Damaging wind chance. */
+/**
+ * Damaging wind chance — brown → beige → rose → pink → magenta scale.
+ */
 export const WIND_CHANCE_BANDS: ChanceBand[] = [
-  band(1, 5, "#5D8A8A", [93, 138, 138, 165], "5% chance of damaging winds."),
-  band(2, 15, "#4A9B8C", [74, 155, 140, 170], "15% chance of damaging winds."),
-  band(3, 30, "#E0A106", [224, 161, 6, 180], "30% chance of damaging winds."),
-  band(4, 45, "#E07A00", [224, 122, 0, 185], "45% chance of damaging winds."),
-  band(5, 60, "#C0392B", [192, 57, 43, 195], "60%+ chance of damaging winds."),
+  band(
+    1,
+    5,
+    "#846C5E",
+    [132, 108, 94, 190],
+    "5% chance of damaging winds.",
+    "#6E584C",
+  ),
+  band(
+    2,
+    15,
+    "#C6B476",
+    [198, 180, 118, 195],
+    "15% chance of damaging winds.",
+    "#A8945E",
+  ),
+  band(
+    3,
+    30,
+    "#BD6568",
+    [189, 101, 104, 200],
+    "30% chance of damaging winds.",
+    "#9A4F52",
+  ),
+  band(
+    4,
+    45,
+    "#C75B81",
+    [199, 91, 129, 205],
+    "45% chance of damaging winds.",
+    "#A34868",
+  ),
+  band(
+    5,
+    60,
+    "#C44596",
+    [196, 69, 150, 210],
+    "60%+ chance of damaging winds.",
+    "#9E3578",
+  ),
 ];
 
 /** Heavy rainfall / flash-flooding rain chance. */
