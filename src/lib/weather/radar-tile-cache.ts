@@ -24,8 +24,8 @@ export function radarTileCacheKey(
   x: number,
   y: number,
 ): string {
-  // v7: 256px + locked swdbz1 palette + URL-busted CDN entries
-  return `${host}|${path}|${z}/${x}/${y}|v7`;
+  // v8: swdbz2 indigo→red ladder
+  return `${host}|${path}|${z}/${x}/${y}|v8`;
 }
 
 export function getCachedRadarTile(key: string): Buffer | null {

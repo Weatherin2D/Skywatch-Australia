@@ -10,37 +10,30 @@ export type Rgba = readonly [number, number, number, number];
 export { RADAR_PALETTE_ID, RADAR_RENDER_REV };
 
 /**
- * Locked SkyWatch dBZ colour stops (since 94e5deb) — do not swap for
- * RadarScope-style or other ladders. RainViewer Universal Blue remaps here.
+ * SkyWatch dBZ ladder matched to the reference radar look (deep indigo →
+ * cyan → green → yellow → orange → red). Monotonic — no muddy dark dips
+ * between light blues and greens. Transparent below scale.
  *
- * Palette/rev ids live in radar-version.ts and are embedded in every tile URL
- * so CDNs/browsers cannot keep serving older recolours.
+ * Palette/rev ids live in radar-version.ts and are embedded in every tile URL.
  */
 
 export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
-  { dbz: 0, rgba: [0, 0, 0, 255] },
-  { dbz: 10, rgba: [75, 62, 217, 255] },
-  { dbz: 15, rgba: [99, 208, 255, 255] },
-  { dbz: 22, rgba: [50, 60, 128, 255] },
-  { dbz: 25, rgba: [29, 32, 94, 255] },
-  { dbz: 30, rgba: [140, 227, 100, 255] },
-  { dbz: 33, rgba: [42, 94, 50, 255] },
-  { dbz: 35, rgba: [11, 56, 41, 255] },
-  { dbz: 40, rgba: [215, 224, 90, 255] },
-  { dbz: 44, rgba: [212, 168, 59, 255] },
-  { dbz: 46, rgba: [255, 112, 60, 255] },
-  { dbz: 48, rgba: [240, 22, 22, 255] },
-  { dbz: 50, rgba: [143, 2, 2, 255] },
-  { dbz: 52, rgba: [247, 47, 215, 255] },
-  { dbz: 56, rgba: [128, 35, 126, 255] },
-  { dbz: 60, rgba: [65, 27, 69, 255] },
-  { dbz: 65, rgba: [115, 230, 151, 255] },
-  { dbz: 68, rgba: [21, 66, 30, 255] },
-  { dbz: 70, rgba: [117, 230, 220, 255] },
-  { dbz: 75, rgba: [0, 236, 252, 255] },
-  { dbz: 80, rgba: [130, 88, 48, 255] },
-  { dbz: 85, rgba: [92, 60, 32, 255] },
-  { dbz: 90, rgba: [0, 0, 0, 255] },
+  { dbz: 0, rgba: [0, 0, 0, 0] },
+  { dbz: 5, rgba: [40, 32, 120, 220] },
+  { dbz: 10, rgba: [52, 44, 140, 240] },
+  { dbz: 15, rgba: [72, 56, 196, 255] },
+  { dbz: 20, rgba: [80, 128, 208, 255] },
+  { dbz: 25, rgba: [88, 184, 224, 255] },
+  { dbz: 30, rgba: [104, 168, 88, 255] },
+  { dbz: 35, rgba: [124, 200, 92, 255] },
+  { dbz: 40, rgba: [192, 200, 80, 255] },
+  { dbz: 45, rgba: [208, 164, 56, 255] },
+  { dbz: 50, rgba: [208, 124, 56, 255] },
+  { dbz: 55, rgba: [220, 60, 40, 255] },
+  { dbz: 60, rgba: [200, 20, 60, 255] },
+  { dbz: 65, rgba: [220, 40, 160, 255] },
+  { dbz: 70, rgba: [255, 160, 220, 255] },
+  { dbz: 80, rgba: [255, 255, 255, 255] },
   { dbz: 255, rgba: [255, 255, 255, 255] },
 ] as const;
 
@@ -56,9 +49,8 @@ function lerp(a: number, b: number, t: number): number {
 
 export function colourForDbz(dbz: number): Rgba {
   const stops = RADAR_DBZ_STOPS;
-  if (dbz < 0) return [0, 0, 0, 0];
-  const first = stops[0]!;
-  if (dbz <= first.dbz) return first.rgba;
+  // Below-scale / no echo → fully clear (never paint black slabs).
+  if (dbz < 5) return [0, 0, 0, 0];
   const last = stops[stops.length - 1]!;
   if (dbz >= last.dbz) return last.rgba;
 
