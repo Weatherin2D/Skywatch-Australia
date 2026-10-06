@@ -2482,17 +2482,21 @@ export type TownDensity = {
   minSeparationKm: number;
 };
 
-/** Leaflet zoom breakpoints where town density steps up. */
-export const LEAFLET_TOWN_ZOOM_BREAKS = [4, 4.7, 5.5, 6.3, 7.2, 8.2] as const;
+/**
+ * Leaflet zoom breakpoints where town density steps up.
+ * Starts below typical national fitBounds zoom (~3.5–4) so Map view
+ * still shows the continental label set.
+ */
+export const LEAFLET_TOWN_ZOOM_BREAKS = [3.2, 4.2, 5.0, 5.8, 6.8, 7.8] as const;
 
 /** Leaflet zoom → how many town labels to keep readable. */
 export function townDensityForLeafletZoom(zoom: number): TownDensity {
-  if (zoom < 4) return { maxCount: 0, minSeparationKm: 999 };
-  if (zoom < 4.7) return { maxCount: 28, minSeparationKm: 280 };
-  if (zoom < 5.5) return { maxCount: 55, minSeparationKm: 160 };
-  if (zoom < 6.3) return { maxCount: 100, minSeparationKm: 90 };
-  if (zoom < 7.2) return { maxCount: 160, minSeparationKm: 50 };
-  if (zoom < 8.2) return { maxCount: 240, minSeparationKm: 28 };
+  if (zoom < 3.2) return { maxCount: 0, minSeparationKm: 999 };
+  if (zoom < 4.2) return { maxCount: 28, minSeparationKm: 280 };
+  if (zoom < 5.0) return { maxCount: 55, minSeparationKm: 160 };
+  if (zoom < 5.8) return { maxCount: 100, minSeparationKm: 90 };
+  if (zoom < 6.8) return { maxCount: 160, minSeparationKm: 50 };
+  if (zoom < 7.8) return { maxCount: 240, minSeparationKm: 28 };
   return { maxCount: 320, minSeparationKm: 14 };
 }
 
