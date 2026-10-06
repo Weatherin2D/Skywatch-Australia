@@ -1,12 +1,22 @@
 import { PNG } from "pngjs";
 import universalBlueDbz from "../../../data/rainviewer-universal-blue.json";
+import {
+  RADAR_PALETTE_ID,
+  RADAR_RENDER_REV,
+} from "@/lib/weather/radar-version";
 
 export type Rgba = readonly [number, number, number, number];
+
+export { RADAR_PALETTE_ID, RADAR_RENDER_REV };
 
 /**
  * Locked SkyWatch dBZ colour stops (since 94e5deb) — do not swap for
  * RadarScope-style or other ladders. RainViewer Universal Blue remaps here.
+ *
+ * Palette/rev ids live in radar-version.ts and are embedded in every tile URL
+ * so CDNs/browsers cannot keep serving older recolours.
  */
+
 export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
   { dbz: 0, rgba: [0, 0, 0, 255] },
   { dbz: 10, rgba: [75, 62, 217, 255] },
@@ -203,10 +213,10 @@ export function transparentRadarTilePng(): Buffer {
 export const RADAR_NATIVE_MAX_ZOOM = 7;
 
 /**
- * Upstream + served tile edge length. 512×512 doubles native pixel density
- * vs RainViewer’s default 256 tiles at the same mercator zoom.
+ * Upstream + served tile edge length. 256 keeps animation frame loads fast;
+ * palette fidelity comes from the locked LUT + nearest-neighbour overzoom.
  */
-export const RADAR_TILE_SIZE: 512 = 512;
+export const RADAR_TILE_SIZE: 256 = 256;
 
 /**
  * Crop a child tile out of a recoloured native parent and nearest-neighbour

@@ -94,18 +94,34 @@ export function useWeatherMaps(
         tipSeenAtMs: tipAdvanced || s.tipSeenAtMs == null ? Date.now() : s.tipSeenAtMs,
       }));
 
-      // Eager-warm national radar tiles for the tip frames in the browser
-      // HTTP cache so the Leaflet layer paints without waiting on cold proxy.
-      const radarTip = (data.radar?.past ?? []).slice(-2);
+      // Eager-warm national radar tiles for recent frames so the first play
+      // through the loop hits the browser HTTP cache.
+      const radarTip = (data.radar?.past ?? []).slice(-6);
+      let warmActive = 0;
+      const warmQueue: string[] = [];
       for (const frame of radarTip) {
         const tpl = frame.tileUrlTemplate;
         if (!tpl) continue;
-        for (const url of radarWarmupTileUrls(tpl, [4, 5, 6], undefined, 40)) {
+        for (const url of radarWarmupTileUrls(tpl, [4, 5, 6, 7], undefined, 48)) {
+          warmQueue.push(url);
+        }
+      }
+      const pumpWarm = () => {
+        while (warmActive < 20 && warmQueue.length > 0) {
+          const url = warmQueue.shift()!;
+          warmActive += 1;
           const img = new window.Image();
+          const done = () => {
+            warmActive -= 1;
+            pumpWarm();
+          };
+          img.onload = done;
+          img.onerror = done;
           img.decoding = "async";
           img.src = url;
         }
-      }
+      };
+      pumpWarm();
     } catch (err) {
       if (signal?.aborted) return;
       const message =

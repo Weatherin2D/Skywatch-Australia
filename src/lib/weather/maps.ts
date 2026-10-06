@@ -1,3 +1,8 @@
+import {
+  RADAR_PALETTE_ID,
+  RADAR_RENDER_REV,
+} from "@/lib/weather/radar-version";
+
 export type WeatherFrame = {
   /** Unix time in seconds */
   time: number;
@@ -377,7 +382,14 @@ export function rainviewerTileUrl(
   const base = `${host.replace(/\/$/, "")}${path}`;
   if (kind === "radar") {
     // Same-origin proxy: unsmoothed RainViewer pixels remapped to SkyWatch dBZ.
-    const q = new URLSearchParams({ host, path });
+    // pal/r must stay in the URL so immutable CDN entries from older palettes
+    // (RadarScope experiment, bilinear 512, etc.) cannot mix into playback.
+    const q = new URLSearchParams({
+      host,
+      path,
+      pal: RADAR_PALETTE_ID,
+      r: RADAR_RENDER_REV,
+    });
     return `/api/weather/radar-tile?${q.toString()}&z={z}&x={x}&y={y}`;
   }
   return `${base}/256/{z}/{x}/{y}/0/0_0.png`;

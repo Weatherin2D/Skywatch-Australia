@@ -205,20 +205,22 @@ export function useRadarFramePreloader(
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 48 : 32;
+      // Viewport-sized warm — enough tiles for the playhead without flooding.
+      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 64 : 48;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }
     };
 
     const n = templates.length;
-    // Warm current + neighbours so playback never stalls on cold tiles.
-    for (const step of [0, 1, 2, 3, 4, n - 1]) {
-      pushFrame((activeIndex + step) % n, step === 0);
+    // Warm the whole loop (current first) so instant cuts never wait on net.
+    pushFrame(activeIndex % n, true);
+    for (let step = 1; step < n; step++) {
+      pushFrame((activeIndex + step) % n);
     }
 
     let active = 0;
-    const CONCURRENCY = 14;
+    const CONCURRENCY = 28;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -241,10 +243,12 @@ export function useRadarFramePreloader(
       if (moveTimer != null) window.clearTimeout(moveTimer);
       moveTimer = window.setTimeout(() => {
         if (cancelled) return;
-        pushFrame(activeIndex % n, true);
-        pushFrame((activeIndex + 1) % n, true);
+        // Re-warm the next few frames for the new viewport immediately.
+        for (const step of [0, 1, 2, 3]) {
+          pushFrame((activeIndex + step) % n, true);
+        }
         pump();
-      }, 100);
+      }, 60);
     };
     map.on("moveend", onViewChange);
     map.on("zoomend", onViewChange);

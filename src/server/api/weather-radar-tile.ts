@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   RADAR_NATIVE_MAX_ZOOM,
+  RADAR_PALETTE_ID,
+  RADAR_RENDER_REV,
   extractOverzoomTile,
   isRainviewerPlaceholderPng,
   rainviewerRawTileUrl,
@@ -34,15 +36,14 @@ function pngResponse(
 }
 
 /**
- * Proxy RainViewer radar tiles as unsmoothed 512px pixels, remapped to the
- * SkyWatch dBZ colour scale.
+ * Proxy RainViewer radar tiles as unsmoothed pixels, remapped to the locked
+ * SkyWatch dBZ colour scale (`RADAR_PALETTE_ID`).
  *
- * GET /api/weather/radar-tile?host=&path=&z=&x=&y=
+ * GET /api/weather/radar-tile?host=&path=&pal=&r=&z=&x=&y=
  *
  * RainViewer only has real reflectivity through ~z7. Requests above that are
- * served by cropping + nearest-neighbour upscaling the native 512 parent so
- * zoomed-in views keep paint (and the locked SkyWatch dBZ colours) instead of
- * empty z8–12 placeholders.
+ * served by cropping + nearest-neighbour upscaling the native parent so
+ * zoomed-in views keep paint instead of empty z8–12 placeholders.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -51,6 +52,19 @@ export async function GET(req: NextRequest) {
   const z = sp.get("z");
   const x = sp.get("x");
   const y = sp.get("y");
+  // Reject mismatched palette/rev so stale clients cannot poison the cache
+  // with an older colour ladder under a shared process key.
+  const pal = sp.get("pal") ?? "";
+  const rev = sp.get("r") ?? "";
+  if (
+    (pal && pal !== RADAR_PALETTE_ID) ||
+    (rev && rev !== RADAR_RENDER_REV)
+  ) {
+    return NextResponse.json(
+      { error: "Stale radar palette — refresh the page" },
+      { status: 409 },
+    );
+  }
 
   if (!HOST_RE.test(host) || !PATH_RE.test(path)) {
     return NextResponse.json({ error: "Invalid host or path" }, { status: 400 });
@@ -86,8 +100,9 @@ export async function GET(req: NextRequest) {
     return pngResponse(cached, {
       "X-Radar-Cache": "HIT",
       "X-Radar-Source": "rainviewer-raw",
-      "X-Radar-Palette": "skywatch-dbz",
-      "X-Radar-Tile-Size": "512",
+      "X-Radar-Palette": RADAR_PALETTE_ID,
+      "X-Radar-Rev": RADAR_RENDER_REV,
+      "X-Radar-Tile-Size": "256",
       "X-Radar-Native-Z": String(fetchZ),
     });
   }
@@ -118,8 +133,9 @@ export async function GET(req: NextRequest) {
         return pngResponse(empty, {
           "X-Radar-Cache": "MISS",
           "X-Radar-Source": "rainviewer-placeholder",
-          "X-Radar-Palette": "skywatch-dbz",
-          "X-Radar-Tile-Size": "512",
+          "X-Radar-Palette": RADAR_PALETTE_ID,
+          "X-Radar-Rev": RADAR_RENDER_REV,
+          "X-Radar-Tile-Size": "256",
           "X-Radar-Native-Z": String(fetchZ),
         });
       }
@@ -141,8 +157,9 @@ export async function GET(req: NextRequest) {
   return pngResponse(out, {
     "X-Radar-Cache": "MISS",
     "X-Radar-Source": "rainviewer-raw",
-    "X-Radar-Palette": "skywatch-dbz",
-    "X-Radar-Tile-Size": "512",
+    "X-Radar-Palette": RADAR_PALETTE_ID,
+    "X-Radar-Rev": RADAR_RENDER_REV,
+    "X-Radar-Tile-Size": "256",
     "X-Radar-Native-Z": String(fetchZ),
     "X-Radar-Overzoom": overzoom ? String(scale) : "1",
   });
