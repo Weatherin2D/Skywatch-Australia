@@ -42,6 +42,17 @@ export default function MorePage() {
         ) : null}
 
         <ul className="grid gap-3 sm:grid-cols-2">
+          {PRIMARY_NAV_END.map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-sm font-semibold text-white transition hover:border-[var(--cyan)]/40 hover:bg-[var(--cyan)]/10"
+              >
+                {item.label}
+                <span className="text-[var(--cyan)]">Open</span>
+              </Link>
+            </li>
+          ))}
           {MORE_NAV.map((item) => (
             <li key={item.href}>
               <Link
