@@ -7,7 +7,6 @@ import {
   Heart,
   MessageCircle,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -113,9 +112,16 @@ export function CommunityLibrary({
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [adminSecret, setAdminSecret] = useState("");
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [adminSignedIn, setAdminSignedIn] = useState(false);
+  const [adminSignInSecret, setAdminSignInSecret] = useState("");
+  const [adminSignInError, setAdminSignInError] = useState<string | null>(null);
+  const [pendingDeletePost, setPendingDeletePost] = useState<CommunityPost | null>(
+    null,
+  );
+  const [deleteConfirmSecret, setDeleteConfirmSecret] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -242,29 +248,67 @@ export function CommunityLibrary({
     }
   }
 
-  async function deletePost(post: CommunityPost) {
-    if (!adminSecret.trim()) {
-      setActionError("Enter your admin secret to delete.");
+  function signInAdmin() {
+    if (!adminSignInSecret.trim()) {
+      setAdminSignInError("Enter the admin secret to continue.");
       return;
     }
-    if (!window.confirm(`Delete “${post.title}” permanently?`)) return;
+    setAdminSignedIn(true);
+    setAdminPanelOpen(false);
+    setAdminSignInSecret("");
+    setAdminSignInError(null);
+    setActionError(null);
+  }
+
+  function signOutAdmin() {
+    setAdminSignedIn(false);
+    setAdminPanelOpen(false);
+    setAdminSignInSecret("");
+    setAdminSignInError(null);
+    cancelPendingDelete();
+  }
+
+  function requestDelete(post: CommunityPost) {
+    setPendingDeletePost(post);
+    setDeleteConfirmSecret("");
+    setDeleteError(null);
+  }
+
+  function cancelPendingDelete() {
+    setPendingDeletePost(null);
+    setDeleteConfirmSecret("");
+    setDeleteError(null);
+  }
+
+  async function confirmDelete() {
+    const post = pendingDeletePost;
+    if (!post) return;
+    const secret = deleteConfirmSecret.trim();
+    if (!secret) {
+      setDeleteError("Enter the admin secret to delete this post.");
+      return;
+    }
     setDeleteBusy(true);
+    setDeleteError(null);
     setActionError(null);
     try {
       const res = await fetch(`/api/community?id=${encodeURIComponent(post.id)}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          "x-community-admin-secret": adminSecret.trim(),
+          "x-community-admin-secret": secret,
         },
-        body: JSON.stringify({ id: post.id, secret: adminSecret.trim() }),
+        body: JSON.stringify({ id: post.id, secret }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error || `Delete failed (${res.status})`);
       onPostsChange(posts.filter((p) => p.id !== post.id));
-      closeViewer();
+      cancelPendingDelete();
+      if (activeId === post.id) closeViewer();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not delete post.");
+      setDeleteError(
+        err instanceof Error ? err.message : "Could not delete post.",
+      );
     } finally {
       setDeleteBusy(false);
     }
@@ -285,27 +329,63 @@ export function CommunityLibrary({
         {adminDeleteConfigured ? (
           <button
             type="button"
-            onClick={() => setAdminOpen((v) => !v)}
+            onClick={() => {
+              if (adminSignedIn) signOutAdmin();
+              else setAdminPanelOpen((v) => !v);
+            }}
             className="text-[11px] font-semibold text-white/45 underline-offset-2 hover:text-white/70 hover:underline"
           >
-            {adminOpen ? "Hide admin" : "Admin"}
+            {adminSignedIn
+              ? "Sign out admin"
+              : adminPanelOpen
+                ? "Hide admin"
+                : "Admin"}
           </button>
         ) : null}
       </div>
 
-      {adminOpen && adminDeleteConfigured ? (
-        <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2.5">
+      {adminDeleteConfigured && adminPanelOpen && !adminSignedIn ? (
+        <form
+          className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            signInAdmin();
+          }}
+        >
           <Label className="text-xs text-amber-100/90">
-            Admin secret (only you can delete posts)
+            Admin sign-in (shows delete controls on every post)
           </Label>
-          <Input
-            type="password"
-            value={adminSecret}
-            onChange={(e) => setAdminSecret(e.target.value)}
-            placeholder="COMMUNITY_ADMIN_SECRET"
-            className="mt-1 h-8 border-white/15 bg-black/20 text-white"
-            autoComplete="off"
-          />
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              type="password"
+              value={adminSignInSecret}
+              onChange={(e) => {
+                setAdminSignInSecret(e.target.value);
+                setAdminSignInError(null);
+              }}
+              placeholder="Admin secret"
+              className="h-8 border-white/15 bg-black/20 text-white"
+              autoComplete="off"
+            />
+            <Button
+              type="submit"
+              className="h-8 shrink-0 bg-amber-400 text-[#1a1200] hover:bg-amber-300"
+            >
+              Sign in
+            </Button>
+          </div>
+          {adminSignInError ? (
+            <p className="mt-1.5 text-xs text-red-300" role="alert">
+              {adminSignInError}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+
+      {adminDeleteConfigured && adminSignedIn ? (
+        <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-100/90">
+          Admin mode on — tap the red <span className="font-bold">X</span> on a
+          post, then enter the secret again to delete.
         </div>
       ) : null}
 
@@ -423,7 +503,24 @@ export function CommunityLibrary({
             const liked = likedIds.has(post.id);
             return (
               <li key={post.id}>
-                <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+                <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+                  {adminSignedIn && adminDeleteConfigured ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        requestDelete(post);
+                      }}
+                      className="absolute right-1 top-1 z-20 flex h-14 w-14 items-center justify-center rounded-xl bg-red-600 text-white shadow-lg shadow-red-950/50 ring-2 ring-red-300/80 transition hover:scale-105 hover:bg-red-500 active:scale-95 sm:h-16 sm:w-16"
+                      aria-label={`Delete “${post.title}”`}
+                      title="Delete post"
+                    >
+                      <X
+                        className="h-10 w-10 stroke-[3.5] sm:h-12 sm:w-12"
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => openAt(post.id)}
@@ -492,6 +589,77 @@ export function CommunityLibrary({
         </ul>
       )}
 
+      {pendingDeletePost ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm delete"
+          onClick={cancelPendingDelete}
+        >
+          <form
+            className="w-full max-w-md rounded-2xl border border-red-400/40 bg-[#140a0a] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void confirmDelete();
+            }}
+          >
+            <div className="mb-3 flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white">
+                <X className="h-9 w-9 stroke-[3.5]" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-white">Delete post?</h3>
+                <p className="mt-1 text-sm text-white/65">
+                  Permanently remove{" "}
+                  <span className="font-semibold text-white">
+                    “{pendingDeletePost.title}”
+                  </span>
+                  . Enter the admin secret again to confirm.
+                </p>
+              </div>
+            </div>
+            <Label className="text-xs text-red-100/80">Admin secret</Label>
+            <Input
+              type="password"
+              value={deleteConfirmSecret}
+              onChange={(e) => {
+                setDeleteConfirmSecret(e.target.value);
+                setDeleteError(null);
+              }}
+              placeholder="Enter secret to delete"
+              className="mt-1 h-10 border-red-400/30 bg-black/30 text-white"
+              autoComplete="off"
+              autoFocus
+            />
+            {deleteError ? (
+              <p className="mt-2 text-xs text-red-300" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={cancelPendingDelete}
+                disabled={deleteBusy}
+                className="h-9 text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={deleteBusy}
+                className="h-9 bg-red-600 text-white hover:bg-red-500"
+              >
+                {deleteBusy ? "Deleting…" : "Delete permanently"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {active ? (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
@@ -516,16 +684,16 @@ export function CommunityLibrary({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                {adminOpen && adminDeleteConfigured ? (
+                {adminSignedIn && adminDeleteConfigured ? (
                   <button
                     type="button"
-                    onClick={() => void deletePost(active)}
+                    onClick={() => requestDelete(active)}
                     disabled={deleteBusy}
-                    className="rounded-lg border border-red-400/30 p-1.5 text-red-200 hover:bg-red-500/15"
+                    className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white shadow-md ring-2 ring-red-300/70 transition hover:bg-red-500"
                     aria-label="Delete post"
                     title="Delete post"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <X className="h-8 w-8 stroke-[3.5]" aria-hidden />
                   </button>
                 ) : null}
                 <button
