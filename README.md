@@ -23,7 +23,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |
 | `/forecast` | Live BoM location forecasts — search any suburb/town/postcode |
 | `/forecast/[geohash]` | Direct forecast for a BoM location (incl. 24–48h rain timeline) |
-| `/archive` | Forward-growing archive from midnight AEST today — satellite, synoptic, lightning with date/time picker |
+| `/archive` | Forward-growing archive (satellite, synoptic/MSLP, lightning) — durable on Upstash Redis so scrub/play survives deploys |
 | `/risk` | MetEye thunderstorm risk map for the full MetEye horizon |
 | `/community` | Shared weather photo posts — upload, filter library, likes, comments; admin-only delete |
 | `/more` | Secondary tools + mobile install hint (PWA) |
@@ -65,6 +65,8 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 **Local preferences (no auth/DB):** saved place and warning-alert settings live in `localStorage`. Map view is shareable via query params (`region`, `mode`, `radar`, `lightning`, `synoptic`, `product`).
 
 **Community:** posts (images, captions, likes, comments, dates) use durable storage so they survive deploys. Preference order: Upstash Redis (`KV_REST_API_URL` + `KV_REST_API_TOKEN`) → healthy Vercel Blob → local `/tmp` (dev only). On Vercel, mutations refuse ephemeral `/tmp` and return 503 if no durable backend is available. Likes also keep a per-browser toggle in `localStorage`. Admin delete: sign in with `COMMUNITY_ADMIN_SECRET` to show a red X on each post and comment, then enter the secret again to confirm each delete.
+
+**Archive:** satellite JPEGs, synoptic GeoJSON, and lightning hours use the same Upstash Redis credentials when present (then Blob, then local `/tmp` for dev). Meta epoch is created once and kept, so the date picker can move through stored history instead of resetting to “today” on every cold start. Frame responses race a live encode against archive capture so scrub/play is not blocked on a cold persist.
 
 **PWA:** web manifest + light service worker caches the shell and last successful radar/satellite frame responses for an offline “last view”.
 

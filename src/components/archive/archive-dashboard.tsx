@@ -313,20 +313,31 @@ function ArchiveDashboardInner() {
     loadedFramesRef.current.clear();
   }, [regionId, product]);
 
-  // Prefetch the whole loop so play/scrub does not skip unloaded frames.
+  // Prefetch the loop from the playhead outward (bounded concurrency) so play
+  // does not stall on a cold capture chain.
   useEffect(() => {
     if (frames.length === 0) return;
     let cancelled = false;
+    const order: WeatherFrame[] = [];
+    for (let i = 0; i < frames.length; i++) {
+      order.push(frames[(frameIndexRef.current + i) % frames.length]!);
+    }
+    const CONCURRENCY = 3;
     (async () => {
-      // Warm from the playhead outward so the next frames arrive first.
-      const order: WeatherFrame[] = [];
-      for (let i = 0; i < frames.length; i++) {
-        order.push(frames[(frameIndexRef.current + i) % frames.length]!);
+      let cursor = 0;
+      async function worker() {
+        while (!cancelled && cursor < order.length) {
+          const idx = cursor++;
+          const f = order[idx];
+          if (!f?.imageUrl) continue;
+          await prefetchFrame(f.imageUrl);
+        }
       }
-      for (const f of order) {
-        if (cancelled || !f.imageUrl) break;
-        await prefetchFrame(f.imageUrl);
-      }
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, order.length) }, () =>
+          worker(),
+        ),
+      );
     })();
     return () => {
       cancelled = true;
@@ -564,38 +575,123 @@ function ArchiveDashboardInner() {
   }, [catalog]);
 
   const monthOptions = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => ({
-      value: i + 1,
-      label: new Date(2000, i, 1).toLocaleString("en-AU", { month: "short" }),
-    }));
-  }, []);
+    if (!catalog || !parts) {
+      return Array.from({ length: 12 }, (_, i) => ({
+        value: i + 1,
+        label: new Date(2000, i, 1).toLocaleString("en-AU", { month: "short" }),
+      }));
+    }
+    const epoch = unixToAestParts(catalog.epochUnix);
+    const tip = unixToAestParts(catalog.tipUnix);
+    const months: { value: number; label: string }[] = [];
+    for (let m = 1; m <= 12; m++) {
+      if (parts.year === epoch.year && m < epoch.month) continue;
+      if (parts.year === tip.year && m > tip.month) continue;
+      months.push({
+        value: m,
+        label: new Date(2000, m - 1, 1).toLocaleString("en-AU", {
+          month: "short",
+        }),
+      });
+    }
+    return months;
+  }, [catalog, parts]);
 
   const dayOptions = useMemo(() => {
-    if (!parts) return [];
+    if (!parts || !catalog) return [];
+    const epoch = unixToAestParts(catalog.epochUnix);
+    const tip = unixToAestParts(catalog.tipUnix);
     const daysInMonth = new Date(parts.year, parts.month, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, i) => ({
-      value: i + 1,
-      label: String(i + 1),
-    }));
-  }, [parts]);
+    const days: { value: number; label: string }[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (
+        parts.year === epoch.year &&
+        parts.month === epoch.month &&
+        d < epoch.day
+      ) {
+        continue;
+      }
+      if (
+        parts.year === tip.year &&
+        parts.month === tip.month &&
+        d > tip.day
+      ) {
+        continue;
+      }
+      days.push({ value: d, label: String(d) });
+    }
+    return days;
+  }, [parts, catalog]);
 
-  const hourOptions = useMemo(
-    () =>
-      Array.from({ length: 24 }, (_, i) => ({
+  const hourOptions = useMemo(() => {
+    if (!parts || !catalog) {
+      return Array.from({ length: 24 }, (_, i) => ({
         value: i,
         label: `${String(i).padStart(2, "0")}:00`,
-      })),
-    [],
-  );
+      }));
+    }
+    const epoch = unixToAestParts(catalog.epochUnix);
+    const tip = unixToAestParts(catalog.tipUnix);
+    const hours: { value: number; label: string }[] = [];
+    for (let h = 0; h < 24; h++) {
+      if (
+        parts.year === epoch.year &&
+        parts.month === epoch.month &&
+        parts.day === epoch.day &&
+        h < epoch.hour
+      ) {
+        continue;
+      }
+      if (
+        parts.year === tip.year &&
+        parts.month === tip.month &&
+        parts.day === tip.day &&
+        h > tip.hour
+      ) {
+        continue;
+      }
+      hours.push({
+        value: h,
+        label: `${String(h).padStart(2, "0")}:00`,
+      });
+    }
+    return hours;
+  }, [parts, catalog]);
 
-  const minuteOptions = useMemo(
-    () =>
-      Array.from({ length: 6 }, (_, i) => ({
+  const minuteOptions = useMemo(() => {
+    if (!parts || !catalog) {
+      return Array.from({ length: 6 }, (_, i) => ({
         value: i * 10,
         label: String(i * 10).padStart(2, "0"),
-      })),
-    [],
-  );
+      }));
+    }
+    const epoch = unixToAestParts(catalog.epochUnix);
+    const tip = unixToAestParts(catalog.tipUnix);
+    const mins: { value: number; label: string }[] = [];
+    for (let i = 0; i < 6; i++) {
+      const minute = i * 10;
+      if (
+        parts.year === epoch.year &&
+        parts.month === epoch.month &&
+        parts.day === epoch.day &&
+        parts.hour === epoch.hour &&
+        minute < epoch.minute
+      ) {
+        continue;
+      }
+      if (
+        parts.year === tip.year &&
+        parts.month === tip.month &&
+        parts.day === tip.day &&
+        parts.hour === tip.hour &&
+        minute > tip.minute
+      ) {
+        continue;
+      }
+      mins.push({ value: minute, label: String(minute).padStart(2, "0") });
+    }
+    return mins;
+  }, [parts, catalog]);
 
   const edges = timelineEdgeLabels(frames);
   const scrub = frameIndexToScrub(frameIndex, frames.length);

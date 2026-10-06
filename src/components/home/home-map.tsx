@@ -344,11 +344,12 @@ function SatelliteFrameView({
     let attempts = 0;
     let usingFallback = false;
     let activeUrl = url;
+    let fallbackTimer: number | null = null;
     loadingRef.current = url;
     setFailed(false);
     const isArchive = url.includes("/api/weather/archive/frame");
-    const maxAttempts = isArchive ? 3 : 2;
-    const retryDelayMs = isArchive ? 900 : 400;
+    const maxAttempts = isArchive ? 2 : 2;
+    const retryDelayMs = isArchive ? 600 : 400;
 
     const commit = (committedUrl: string) => {
       if (gen !== loadGenRef.current) return;
@@ -375,7 +376,7 @@ function SatelliteFrameView({
           usingFallback = true;
           attempts = 0;
           activeUrl = fallbackUrl;
-          window.setTimeout(load, 120);
+          window.setTimeout(load, 80);
           return;
         }
         loadingRef.current = null;
@@ -389,7 +390,20 @@ function SatelliteFrameView({
     };
 
     load();
+    // Archive: kick the live proxy in parallel after a short wait so a cold
+    // capture cannot pin the UI on "Loading archive frame…".
+    if (isArchive && fallbackUrl) {
+      fallbackTimer = window.setTimeout(() => {
+        if (gen !== loadGenRef.current) return;
+        if (displayRef.current || usingFallback) return;
+        usingFallback = true;
+        attempts = 0;
+        activeUrl = fallbackUrl;
+        load();
+      }, 1400);
+    }
     return () => {
+      if (fallbackTimer != null) window.clearTimeout(fallbackTimer);
       if (loadingRef.current === url) loadingRef.current = null;
     };
   }, [url, fallbackUrl]);
@@ -397,7 +411,7 @@ function SatelliteFrameView({
   if (!displayUrl) {
     const archive = url?.includes("/api/weather/archive/frame");
     return (
-      <div className="absolute inset-0 z-[1] flex items-center justify-center bg-[#0a1628] px-4 text-center text-sm text-white/70">
+      <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-[#0a1628]/92 px-4 text-center text-sm text-white/70">
         {failed
           ? archive
             ? "Archive frame still capturing — scrub slightly or wait a moment…"
