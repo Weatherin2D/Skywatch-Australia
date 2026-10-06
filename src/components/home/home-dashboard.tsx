@@ -521,11 +521,14 @@ function HomeDashboardInner({
   const useSatelliteFrames = showSatelliteLoop || himawariOnMap;
   /**
    * Radar drives the timeline on open Map when rain radar is on and satellite
-   * imagery is not already owning the loop (same play/scrub UX as Himawari).
-   * Site mode still uses the national WMTS loop — it only changes map framing.
+   * imagery is not already owning the loop. Site mode uses a high-res IDR
+   * frame (polled) — composite WMTS scrubber stays for Composite mode.
    */
   const useRadarLoop =
-    showRadarOverlay && mode === "Map" && !himawariOnMap;
+    showRadarOverlay &&
+    radarMode === "composite" &&
+    mode === "Map" &&
+    !himawariOnMap;
   const useTimeline = useSatelliteFrames || useRadarLoop;
   const radarSiteMeta = findBomRadarSite(radarSite);
 
@@ -1381,7 +1384,7 @@ function HomeDashboardInner({
               radarSiteCode={radarSite}
               radarRangeKm={radarRange}
               frameTileUrl={
-                showRadarOverlay
+                showRadarOverlay && radarMode === "composite"
                   ? (overlayRadarFrame?.tileUrlTemplate ?? null)
                   : null
               }

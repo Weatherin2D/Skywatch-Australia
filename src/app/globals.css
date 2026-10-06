@@ -235,18 +235,17 @@
   image-rendering: crisp-edges;
 }
 
-/* BoM WMTS uses bilinear overzoom — prefer smooth scaling over blocky pixels. */
+/* Crisp bins (RadarScope-like) — avoid muddy bilinear blur on BoM tiles. */
 .skywatch-radar-tiles--bom img,
 .leaflet-tile-pane .skywatch-radar-tiles--bom img {
-  image-rendering: auto;
-  image-rendering: smooth;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
-/* Legacy site GIF overlay class — unused (WMTS tiles only). */
 .skywatch-bom-site-radar,
 .leaflet-image-layer.skywatch-bom-site-radar {
-  image-rendering: auto !important;
-  image-rendering: smooth !important;
+  image-rendering: pixelated !important;
+  image-rendering: crisp-edges !important;
   pointer-events: none;
 }
 

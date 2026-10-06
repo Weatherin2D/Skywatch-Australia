@@ -282,6 +282,7 @@ type SrcTile = {
   res: number;
 };
 
+/** Nearest-neighbour sample — keeps discrete reflectivity bins crisp. */
 function sampleSrc(
   tiles: SrcTile[],
   mx: number,
@@ -290,54 +291,14 @@ function sampleSrc(
   for (const t of tiles) {
     const sx = (mx - t.west) / t.res;
     const sy = (t.north - my) / t.res;
-    if (sx < -0.5 || sy < -0.5 || sx >= t.png.width + 0.5 || sy >= t.png.height + 0.5) {
+    if (sx < 0 || sy < 0 || sx >= t.png.width || sy >= t.png.height) {
       continue;
     }
-    const x0 = Math.max(0, Math.min(t.png.width - 1, Math.floor(sx)));
-    const y0 = Math.max(0, Math.min(t.png.height - 1, Math.floor(sy)));
-    const x1 = Math.max(0, Math.min(t.png.width - 1, x0 + 1));
-    const y1 = Math.max(0, Math.min(t.png.height - 1, y0 + 1));
-    const fx = Math.min(1, Math.max(0, sx - x0));
-    const fy = Math.min(1, Math.max(0, sy - y0));
-    const idx = (yy: number, xx: number) => (yy * t.png.width + xx) << 2;
-    const i00 = idx(y0, x0);
-    const i10 = idx(y0, x1);
-    const i01 = idx(y1, x0);
-    const i11 = idx(y1, x1);
+    const x = Math.min(t.png.width - 1, Math.max(0, Math.floor(sx)));
+    const y = Math.min(t.png.height - 1, Math.max(0, Math.floor(sy)));
+    const i = (y * t.png.width + x) << 2;
     const d = t.png.data;
-    const a00 = d[i00 + 3]!;
-    const a10 = d[i10 + 3]!;
-    const a01 = d[i01 + 3]!;
-    const a11 = d[i11 + 3]!;
-    // Prefer opaque neighbours — avoid bleeding transparent into rain edges.
-    const w00 = (1 - fx) * (1 - fy) * (a00 > 10 ? 1 : 0.05);
-    const w10 = fx * (1 - fy) * (a10 > 10 ? 1 : 0.05);
-    const w01 = (1 - fx) * fy * (a01 > 10 ? 1 : 0.05);
-    const w11 = fx * fy * (a11 > 10 ? 1 : 0.05);
-    const wsum = w00 + w10 + w01 + w11;
-    if (wsum < 1e-6) return [0, 0, 0, 0];
-    const r =
-      (d[i00]! * w00 + d[i10]! * w10 + d[i01]! * w01 + d[i11]! * w11) / wsum;
-    const g =
-      (d[i00 + 1]! * w00 +
-        d[i10 + 1]! * w10 +
-        d[i01 + 1]! * w01 +
-        d[i11 + 1]! * w11) /
-      wsum;
-    const b =
-      (d[i00 + 2]! * w00 +
-        d[i10 + 2]! * w10 +
-        d[i01 + 2]! * w01 +
-        d[i11 + 2]! * w11) /
-      wsum;
-    const a =
-      (a00 * w00 + a10 * w10 + a01 * w01 + a11 * w11) / wsum;
-    return [
-      Math.round(r),
-      Math.round(g),
-      Math.round(b),
-      Math.round(a),
-    ];
+    return [d[i]!, d[i + 1]!, d[i + 2]!, d[i + 3]!];
   }
   return [0, 0, 0, 0];
 }
