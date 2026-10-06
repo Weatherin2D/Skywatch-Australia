@@ -171,7 +171,7 @@ export function LeafletMapAnnotations({
       {settings.townLabels
         ? visibleTowns.map((town) => (
             <Marker
-              key={`town-${town.name}-${town.lat}`}
+              key={`town-${town.name}-${town.lat}-${town.labelOpacity.toFixed(2)}`}
               position={[town.lat, town.lon]}
               icon={townLabelIcon(town.name, town.labelOpacity)}
               interactive={false}

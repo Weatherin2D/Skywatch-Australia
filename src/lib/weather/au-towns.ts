@@ -2573,6 +2573,9 @@ export type TownWithFade<T> = T & { labelOpacity: number };
 /**
  * Declutter towns for the current Leaflet zoom and attach fade opacities
  * (established labels stay solid; newly admitted ones ease in).
+ *
+ * Fade completes early in each density band so national zoom (~4) stays
+ * readable, while zooming still eases new towns in/out like Google Earth.
  */
 export function declutterTownsWithFade<
   T extends { lat: number; lon: number; population?: number; name?: string },
@@ -2585,9 +2588,13 @@ export function declutterTownsWithFade<
     townDensityForLeafletZoom(Math.max(0, band.from - 0.001)),
   );
   const prevKeys = new Set(previous.map(townKey));
-  const emerge = smoothstep01(band.t);
-  // Keep a faint floor so mid-fade labels stay legible on busy imagery.
-  const emergingOpacity = 0.18 + 0.82 * emerge;
+  // First density step (empty → national set): keep solid. Later steps fade.
+  if (previous.length === 0) {
+    return current.map((t) => ({ ...t, labelOpacity: 1 }));
+  }
+  // Reach full opacity by ~40% through the band so labels don't linger ghosted.
+  const emerge = smoothstep01(Math.min(1, band.t / 0.4));
+  const emergingOpacity = 0.22 + 0.78 * emerge;
 
   return current.map((t) => ({
     ...t,
@@ -2597,7 +2604,7 @@ export function declutterTownsWithFade<
 
 /**
  * Population-rank fade for fixed satellite/region crops (no continuous zoom).
- * Larger towns stay solid; smaller ones ease toward translucent.
+ * Capitals stay solid; smaller towns ease toward translucent (Google Earth–like).
  */
 export function townOpacityByPopulationRank(
   population: number,
@@ -2609,5 +2616,6 @@ export function townOpacityByPopulationRank(
   const min = Math.min(...pops);
   if (max <= min) return 1;
   const rank = (population - min) / (max - min); // 0 = smallest, 1 = largest
-  return 0.35 + 0.65 * smoothstep01(rank);
+  // Bias toward capitals (sqrt) so mid-size towns sit clearly between extremes.
+  return 0.22 + 0.78 * smoothstep01(Math.sqrt(rank));
 }
