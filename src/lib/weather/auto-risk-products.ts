@@ -31,6 +31,8 @@ export type ChanceBand = {
   label: string;
   color: string;
   rgba: [number, number, number, number];
+  /** Optional darker contour / swatch frame (nested key look). */
+  strokeColor?: string;
   blurb: string;
 };
 
@@ -53,6 +55,7 @@ function band(
   color: string,
   rgba: [number, number, number, number],
   blurb: string,
+  strokeColor?: string,
 ): ChanceBand {
   return {
     rank,
@@ -61,17 +64,56 @@ function band(
     label: `${pct}%`,
     color,
     rgba,
+    strokeColor,
     blurb,
   };
 }
 
-/** General thunderstorm chance (broader, higher probabilities). */
+/**
+ * General thunderstorm chance (broader, higher probabilities).
+ * Beige → gold nested scale (fill / darker frame).
+ */
 export const TSTORM_CHANCE_BANDS: ChanceBand[] = [
-  band(1, 15, "#6B8E6B", [107, 142, 107, 165], "15% chance of a thunderstorm."),
-  band(2, 30, "#8FBC8F", [143, 188, 143, 170], "30% chance of a thunderstorm."),
-  band(3, 45, "#C5D86D", [197, 216, 109, 175], "45% chance of a thunderstorm."),
-  band(4, 60, "#E8C547", [232, 197, 71, 180], "60% chance of a thunderstorm."),
-  band(5, 75, "#E09F3E", [224, 159, 62, 185], "75%+ chance of a thunderstorm."),
+  band(
+    1,
+    15,
+    "#D9CDAF",
+    [217, 205, 175, 190],
+    "15% chance of a thunderstorm.",
+    "#C4BA9F",
+  ),
+  band(
+    2,
+    30,
+    "#DFCA93",
+    [223, 202, 147, 195],
+    "30% chance of a thunderstorm.",
+    "#CAB787",
+  ),
+  band(
+    3,
+    45,
+    "#DDBD67",
+    [221, 189, 103, 200],
+    "45% chance of a thunderstorm.",
+    "#BCA15A",
+  ),
+  band(
+    4,
+    60,
+    "#ECBE43",
+    [236, 190, 67, 205],
+    "60% chance of a thunderstorm.",
+    "#C09B38",
+  ),
+  band(
+    5,
+    75,
+    "#DBA71C",
+    [219, 167, 28, 210],
+    "75%+ chance of a thunderstorm.",
+    "#A37B10",
+  ),
 ];
 
 /** Large hail (≥ ~2 cm) chance. */
@@ -220,8 +262,8 @@ export function chanceColorMap(
 function styleForBand(b: ChanceBand): CategoryStyle {
   return {
     fillColor: b.color,
-    fillOpacity: 0.72,
-    strokeColor: b.color,
+    fillOpacity: 0.78,
+    strokeColor: b.strokeColor ?? b.color,
     strokeOpacity: 0.95,
     strokeWidth: 1.5,
     hatch: "none",

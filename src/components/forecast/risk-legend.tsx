@@ -64,16 +64,36 @@ export function RiskLegend({ items, onItemClick, activeId }: Props) {
           active && "bg-white/[0.08] ring-1 ring-[var(--cyan)]/40",
           !used && "opacity-35",
         );
+        const stroke = item.style.strokeColor;
+        const nestedStroke =
+          Boolean(stroke) &&
+          stroke !== item.style.fillColor &&
+          hatchKind(item) === "none";
         const body = (
           <>
             <span
               className={cn(
-                "h-5 w-8 shrink-0",
-                used ? "border-2 border-white" : "border border-white/20",
+                "relative flex h-5 w-8 shrink-0 items-center justify-center",
+                !nestedStroke &&
+                  (used ? "border-2 border-white" : "border border-white/20"),
               )}
-              style={swatchBackground(item)}
+              style={
+                nestedStroke
+                  ? {
+                      backgroundColor: stroke,
+                      opacity: used ? 1 : 0.35,
+                    }
+                  : swatchBackground(item)
+              }
               aria-hidden="true"
-            />
+            >
+              {nestedStroke ? (
+                <span
+                  className="h-3 w-5"
+                  style={{ backgroundColor: item.style.fillColor }}
+                />
+              ) : null}
+            </span>
             <span className="min-w-0 flex-1">
               <span
                 className={cn(
