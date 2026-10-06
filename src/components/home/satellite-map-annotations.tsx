@@ -6,6 +6,7 @@ import {
   AU_TOWNS,
   declutterTowns,
   townDensityForBounds,
+  townOpacityByPopulationRank,
 } from "@/lib/weather/au-towns";
 import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
 
@@ -218,16 +219,17 @@ export function SatelliteMapAnnotations({
       {settings.townLabels
         ? visibleTowns.map((town) => {
             const { x, y } = lonLatToBoundsPct(town.lon, town.lat, bounds);
+            const opacity = townOpacityByPopulationRank(
+              town.population,
+              visibleTowns,
+            );
             return (
               <span
                 key={`town-${town.name}-${town.lat}`}
-                className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-                style={{ left: `${x}%`, top: `${y}%` }}
+                className="absolute z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-[8px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-opacity duration-300 sm:text-[9px]"
+                style={{ left: `${x}%`, top: `${y}%`, opacity }}
               >
-                <span className="h-1.5 w-1.5 rounded-full border border-white/90 bg-[var(--cyan)]/90" />
-                <span className="mt-0.5 whitespace-nowrap text-[8px] font-semibold text-white/95 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-[9px]">
-                  {town.name}
-                </span>
+                {town.name}
               </span>
             );
           })

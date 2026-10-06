@@ -5,11 +5,7 @@ import { GeoJSON, Marker, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import type { MapSettingsState } from "@/components/home/mock-data";
 import { CITY_MARKERS } from "@/components/home/mock-data";
-import {
-  AU_TOWNS,
-  declutterTowns,
-  townDensityForLeafletZoom,
-} from "@/lib/weather/au-towns";
+import { AU_TOWNS, declutterTownsWithFade } from "@/lib/weather/au-towns";
 
 type GeoJsonObject = GeoJSON.GeoJsonObject;
 
@@ -43,10 +39,26 @@ function useMapZoom() {
   return zoom;
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 const labelIcon = (text: string, kind: "state" | "ocean" | "city" | "town") =>
   L.divIcon({
     className: "skywatch-map-label",
-    html: `<span class="skywatch-map-label__text skywatch-map-label__text--${kind}">${text}</span>`,
+    html: `<span class="skywatch-map-label__text skywatch-map-label__text--${kind}">${escapeHtml(text)}</span>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+
+const townLabelIcon = (text: string, opacity: number) =>
+  L.divIcon({
+    className: "skywatch-map-label",
+    html: `<span class="skywatch-map-label__text skywatch-map-label__text--town" style="opacity:${opacity.toFixed(3)}">${escapeHtml(text)}</span>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   });
@@ -56,13 +68,6 @@ const cityDot = L.divIcon({
   html: `<span class="skywatch-city-dot__mark"></span>`,
   iconSize: [8, 8],
   iconAnchor: [4, 4],
-});
-
-const townDot = L.divIcon({
-  className: "skywatch-city-dot skywatch-city-dot--town",
-  html: `<span class="skywatch-city-dot__mark skywatch-city-dot__mark--town"></span>`,
-  iconSize: [6, 6],
-  iconAnchor: [3, 3],
 });
 
 /** Leaflet annotation layers for Map / Radar views. */
@@ -88,7 +93,7 @@ export function LeafletMapAnnotations({
 
   const visibleTowns = useMemo(() => {
     if (!settings.townLabels) return [];
-    return declutterTowns(AU_TOWNS, townDensityForLeafletZoom(zoom));
+    return declutterTownsWithFade(AU_TOWNS, zoom);
   }, [settings.townLabels, zoom]);
 
   return (
@@ -162,25 +167,17 @@ export function LeafletMapAnnotations({
           })
         : null}
 
-      {/* Dense towns replace the sparse capital dots while enabled. */}
+      {/* Dense towns: floating text only (no pin / tooltip triangle), with fade. */}
       {settings.townLabels
         ? visibleTowns.map((town) => (
             <Marker
               key={`town-${town.name}-${town.lat}`}
               position={[town.lat, town.lon]}
-              icon={townDot}
+              icon={townLabelIcon(town.name, town.labelOpacity)}
               interactive={false}
               zIndexOffset={200}
-            >
-              <Tooltip
-                permanent
-                direction="right"
-                offset={[5, 0]}
-                className="skywatch-city-tooltip skywatch-town-tooltip"
-              >
-                {town.name}
-              </Tooltip>
-            </Marker>
+              opacity={1}
+            />
           ))
         : CITY_MARKERS.map((city) => (
             <Marker

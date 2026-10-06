@@ -2482,6 +2482,9 @@ export type TownDensity = {
   minSeparationKm: number;
 };
 
+/** Leaflet zoom breakpoints where town density steps up. */
+export const LEAFLET_TOWN_ZOOM_BREAKS = [4, 4.7, 5.5, 6.3, 7.2, 8.2] as const;
+
 /** Leaflet zoom → how many town labels to keep readable. */
 export function townDensityForLeafletZoom(zoom: number): TownDensity {
   if (zoom < 4) return { maxCount: 0, minSeparationKm: 999 };
@@ -2525,4 +2528,86 @@ export function declutterTowns<T extends { lat: number; lon: number; population?
     }
   }
   return picked;
+}
+
+function townKey(t: { name?: string; lat: number; lon: number }): string {
+  return `${t.name ?? ""}|${t.lat}|${t.lon}`;
+}
+
+function smoothstep01(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+}
+
+/**
+ * Zoom band progress for Google Earth–style label fade-in/out.
+ * New towns in the current density band fade up as you zoom in,
+ * and fade out again before the next coarser declutter drop.
+ */
+export function leafletTownZoomBand(zoom: number): {
+  from: number;
+  to: number;
+  t: number;
+} {
+  const breaks = LEAFLET_TOWN_ZOOM_BREAKS;
+  if (zoom < breaks[0]!) {
+    return { from: breaks[0]!, to: breaks[1]!, t: 0 };
+  }
+  for (let i = 0; i < breaks.length - 1; i++) {
+    const from = breaks[i]!;
+    const to = breaks[i + 1]!;
+    if (zoom < to) {
+      return { from, to, t: (zoom - from) / (to - from) };
+    }
+  }
+  const last = breaks[breaks.length - 1]!;
+  return {
+    from: last,
+    to: last + 1.4,
+    t: Math.min(1, (zoom - last) / 1.4),
+  };
+}
+
+export type TownWithFade<T> = T & { labelOpacity: number };
+
+/**
+ * Declutter towns for the current Leaflet zoom and attach fade opacities
+ * (established labels stay solid; newly admitted ones ease in).
+ */
+export function declutterTownsWithFade<
+  T extends { lat: number; lon: number; population?: number; name?: string },
+>(towns: readonly T[], zoom: number): TownWithFade<T>[] {
+  const current = declutterTowns(towns, townDensityForLeafletZoom(zoom));
+  if (current.length === 0) return [];
+  const band = leafletTownZoomBand(zoom);
+  const previous = declutterTowns(
+    towns,
+    townDensityForLeafletZoom(Math.max(0, band.from - 0.001)),
+  );
+  const prevKeys = new Set(previous.map(townKey));
+  const emerge = smoothstep01(band.t);
+  // Keep a faint floor so mid-fade labels stay legible on busy imagery.
+  const emergingOpacity = 0.18 + 0.82 * emerge;
+
+  return current.map((t) => ({
+    ...t,
+    labelOpacity: prevKeys.has(townKey(t)) ? 1 : emergingOpacity,
+  }));
+}
+
+/**
+ * Population-rank fade for fixed satellite/region crops (no continuous zoom).
+ * Larger towns stay solid; smaller ones ease toward translucent.
+ */
+export function townOpacityByPopulationRank(
+  population: number,
+  visible: readonly { population?: number }[],
+): number {
+  if (visible.length <= 1) return 1;
+  const pops = visible.map((t) => t.population ?? 0);
+  const max = Math.max(...pops);
+  const min = Math.min(...pops);
+  if (max <= min) return 1;
+  const rank = (population - min) / (max - min); // 0 = smallest, 1 = largest
+  return 0.35 + 0.65 * smoothstep01(rank);
 }

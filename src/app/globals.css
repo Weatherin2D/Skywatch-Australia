@@ -300,6 +300,14 @@
   color: rgba(224, 242, 254, 0.92);
 }
 
+.skywatch-map-label__text--town {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.95);
+  transition: opacity 0.28s ease;
+}
+
 .skywatch-city-dot {
   background: transparent !important;
   border: none !important;
@@ -312,13 +320,6 @@
   border-radius: 999px;
   background: #22d3ee;
   border: 1px solid #fff;
-}
-
-.skywatch-city-dot__mark--town {
-  width: 5px;
-  height: 5px;
-  background: #67e8f9;
-  border-color: rgba(255, 255, 255, 0.9);
 }
 
 .leaflet-div-icon.skywatch-station-model {
@@ -337,10 +338,12 @@
   padding: 0;
 }
 
-.leaflet-tooltip.skywatch-town-tooltip {
-  font-size: 9px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+/* Hide Leaflet’s default tooltip caret / triangle on place labels. */
+.leaflet-tooltip.skywatch-city-tooltip::before,
+.leaflet-tooltip.skywatch-town-tooltip::before {
+  display: none !important;
+  content: none !important;
+  border: none !important;
 }
 
 .skywatch-lightning-crosshair {
