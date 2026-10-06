@@ -915,6 +915,20 @@ export async function addCommunityComment(
   return persistPostUpdate(post);
 }
 
+export async function deleteCommunityComment(
+  postId: string,
+  commentId: string,
+): Promise<MutateResult> {
+  const post = await getCommunityPost(postId);
+  if (!post) return { ok: false, error: "Post not found.", status: 404 };
+  const next = post.comments.filter((c) => c.id !== commentId);
+  if (next.length === post.comments.length) {
+    return { ok: false, error: "Comment not found.", status: 404 };
+  }
+  post.comments = next;
+  return persistPostUpdate(post);
+}
+
 export async function deleteCommunityPost(
   id: string,
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {

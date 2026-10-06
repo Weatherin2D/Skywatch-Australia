@@ -18,6 +18,7 @@ import {
   writeLikedPostIds,
 } from "@/lib/community/liked-local";
 import type {
+  CommunityComment,
   CommunityImageAsset,
   CommunityPost,
   PictureFormatFilter,
@@ -30,6 +31,10 @@ export type LibrarySort =
   | "event-old"
   | "most-liked"
   | "most-comments";
+
+type PendingDelete =
+  | { kind: "post"; post: CommunityPost }
+  | { kind: "comment"; post: CommunityPost; comment: CommunityComment };
 
 function pictureKind(contentType: string): PictureFormatFilter | "other" {
   const t = contentType.toLowerCase();
@@ -116,9 +121,7 @@ export function CommunityLibrary({
   const [adminSignedIn, setAdminSignedIn] = useState(false);
   const [adminSignInSecret, setAdminSignInSecret] = useState("");
   const [adminSignInError, setAdminSignInError] = useState<string | null>(null);
-  const [pendingDeletePost, setPendingDeletePost] = useState<CommunityPost | null>(
-    null,
-  );
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteConfirmSecret, setDeleteConfirmSecret] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -268,46 +271,96 @@ export function CommunityLibrary({
     cancelPendingDelete();
   }
 
-  function requestDelete(post: CommunityPost) {
-    setPendingDeletePost(post);
+  function requestDeletePost(post: CommunityPost) {
+    setPendingDelete({ kind: "post", post });
+    setDeleteConfirmSecret("");
+    setDeleteError(null);
+  }
+
+  function requestDeleteComment(post: CommunityPost, comment: CommunityComment) {
+    setPendingDelete({ kind: "comment", post, comment });
     setDeleteConfirmSecret("");
     setDeleteError(null);
   }
 
   function cancelPendingDelete() {
-    setPendingDeletePost(null);
+    setPendingDelete(null);
     setDeleteConfirmSecret("");
     setDeleteError(null);
   }
 
   async function confirmDelete() {
-    const post = pendingDeletePost;
-    if (!post) return;
+    if (!pendingDelete) return;
     const secret = deleteConfirmSecret.trim();
     if (!secret) {
-      setDeleteError("Enter the admin secret to delete this post.");
+      setDeleteError(
+        pendingDelete.kind === "post"
+          ? "Enter the admin secret to delete this post."
+          : "Enter the admin secret to delete this comment.",
+      );
       return;
     }
     setDeleteBusy(true);
     setDeleteError(null);
     setActionError(null);
     try {
-      const res = await fetch(`/api/community?id=${encodeURIComponent(post.id)}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-community-admin-secret": secret,
-        },
-        body: JSON.stringify({ id: post.id, secret }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error || `Delete failed (${res.status})`);
-      onPostsChange(posts.filter((p) => p.id !== post.id));
-      cancelPendingDelete();
-      if (activeId === post.id) closeViewer();
+      if (pendingDelete.kind === "post") {
+        const post = pendingDelete.post;
+        const res = await fetch(
+          `/api/community?id=${encodeURIComponent(post.id)}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              "x-community-admin-secret": secret,
+            },
+            body: JSON.stringify({ id: post.id, secret }),
+          },
+        );
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) {
+          throw new Error(json.error || `Delete failed (${res.status})`);
+        }
+        onPostsChange(posts.filter((p) => p.id !== post.id));
+        cancelPendingDelete();
+        if (activeId === post.id) closeViewer();
+      } else {
+        const { post, comment } = pendingDelete;
+        const res = await fetch("/api/community/comment", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-community-admin-secret": secret,
+          },
+          body: JSON.stringify({
+            id: post.id,
+            commentId: comment.id,
+            secret,
+          }),
+        });
+        const json = (await res.json()) as {
+          post?: CommunityPost;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(json.error || `Delete failed (${res.status})`);
+        }
+        if (json.post) replacePost(json.post);
+        else {
+          replacePost({
+            ...post,
+            comments: post.comments.filter((c) => c.id !== comment.id),
+          });
+        }
+        cancelPendingDelete();
+      }
     } catch (err) {
       setDeleteError(
-        err instanceof Error ? err.message : "Could not delete post.",
+        err instanceof Error
+          ? err.message
+          : pendingDelete.kind === "post"
+            ? "Could not delete post."
+            : "Could not delete comment.",
       );
     } finally {
       setDeleteBusy(false);
@@ -385,7 +438,7 @@ export function CommunityLibrary({
       {adminDeleteConfigured && adminSignedIn ? (
         <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-100/90">
           Admin mode on — tap the red <span className="font-bold">X</span> on a
-          post, then enter the secret again to delete.
+          post or comment, then enter the secret again to delete.
         </div>
       ) : null}
 
@@ -509,7 +562,7 @@ export function CommunityLibrary({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        requestDelete(post);
+                        requestDeletePost(post);
                       }}
                       className="absolute right-1 top-1 z-20 flex h-14 w-14 items-center justify-center rounded-xl bg-red-600 text-white shadow-lg shadow-red-950/50 ring-2 ring-red-300/80 transition hover:scale-105 hover:bg-red-500 active:scale-95 sm:h-16 sm:w-16"
                       aria-label={`Delete “${post.title}”`}
@@ -589,7 +642,7 @@ export function CommunityLibrary({
         </ul>
       )}
 
-      {pendingDeletePost ? (
+      {pendingDelete ? (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-6"
           role="dialog"
@@ -610,13 +663,46 @@ export function CommunityLibrary({
                 <X className="h-9 w-9 stroke-[3.5]" aria-hidden />
               </div>
               <div className="min-w-0">
-                <h3 className="text-base font-bold text-white">Delete post?</h3>
+                <h3 className="text-base font-bold text-white">
+                  {pendingDelete.kind === "post"
+                    ? "Delete post?"
+                    : "Delete comment?"}
+                </h3>
                 <p className="mt-1 text-sm text-white/65">
-                  Permanently remove{" "}
-                  <span className="font-semibold text-white">
-                    “{pendingDeletePost.title}”
-                  </span>
-                  . Enter the admin secret again to confirm.
+                  {pendingDelete.kind === "post" ? (
+                    <>
+                      Permanently remove{" "}
+                      <span className="font-semibold text-white">
+                        “{pendingDelete.post.title}”
+                      </span>
+                      . Enter the admin secret again to confirm.
+                    </>
+                  ) : (
+                    <>
+                      Permanently remove{" "}
+                      <span className="font-semibold text-white">
+                        {pendingDelete.comment.author}
+                      </span>
+                      ’s comment
+                      {pendingDelete.comment.text.trim()
+                        ? (
+                            <>
+                              {" "}
+                              (
+                              <span className="font-semibold text-white">
+                                “
+                                {pendingDelete.comment.text.length > 80
+                                  ? `${pendingDelete.comment.text.slice(0, 80)}…`
+                                  : pendingDelete.comment.text}
+                                ”
+                              </span>
+                              )
+                            </>
+                          )
+                        : null}
+                      . Enter the admin secret again to confirm.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -687,7 +773,7 @@ export function CommunityLibrary({
                 {adminSignedIn && adminDeleteConfigured ? (
                   <button
                     type="button"
-                    onClick={() => requestDelete(active)}
+                    onClick={() => requestDeletePost(active)}
                     disabled={deleteBusy}
                     className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white shadow-md ring-2 ring-red-300/70 transition hover:bg-red-500"
                     aria-label="Delete post"
@@ -847,8 +933,23 @@ export function CommunityLibrary({
                       {active.comments.map((c) => (
                         <li
                           key={c.id}
-                          className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2"
+                          className="relative rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 pr-12"
                         >
+                          {adminSignedIn && adminDeleteConfigured ? (
+                            <button
+                              type="button"
+                              onClick={() => requestDeleteComment(active, c)}
+                              disabled={deleteBusy}
+                              className="absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white shadow-md ring-2 ring-red-300/70 transition hover:bg-red-500"
+                              aria-label={`Delete comment by ${c.author}`}
+                              title="Delete comment"
+                            >
+                              <X
+                                className="h-6 w-6 stroke-[3.5]"
+                                aria-hidden
+                              />
+                            </button>
+                          ) : null}
                           <p className="text-xs font-semibold text-white/85">
                             {c.author}
                           </p>
