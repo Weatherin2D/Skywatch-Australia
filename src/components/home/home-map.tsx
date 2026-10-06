@@ -285,7 +285,7 @@ function SatelliteRadarOverlay({
           padding={0}
           isNational={false}
         />
-        <SmoothRadarLayer url={tileUrl} opacity={0.95} />
+        <SmoothRadarLayer url={tileUrl} opacity={0.88} />
       </MapContainer>
     </div>
   );
@@ -635,7 +635,7 @@ export function HomeMap({
             className="skywatch-risk-chart"
           />
         ) : null}
-        {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.95} /> : null}
+        {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.9} /> : null}
         {showRadarOverlay && radarLoopFrames.length > 0 ? (
           <RadarFramePreloader
             frames={radarLoopFrames}

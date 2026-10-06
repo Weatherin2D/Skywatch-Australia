@@ -4,25 +4,33 @@ import universalBlueDbz from "../../../data/rainviewer-universal-blue.json";
 export type Rgba = readonly [number, number, number, number];
 
 /**
- * RadarScope-inspired reflectivity ladder — saturated greens → yellow →
- * orange → red → magenta on a transparent void (no muddy dark stops).
+ * SkyWatch dBZ colour stops — raw RainViewer reflectivity remapped to this
+ * ladder (value, [r,g,b,a]).
  */
 export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
-  { dbz: 0, rgba: [0, 0, 0, 0] },
-  { dbz: 10, rgba: [4, 55, 140, 200] },
-  { dbz: 15, rgba: [0, 120, 210, 220] },
-  { dbz: 20, rgba: [0, 180, 100, 230] },
-  { dbz: 25, rgba: [20, 210, 40, 240] },
-  { dbz: 30, rgba: [80, 230, 30, 245] },
-  { dbz: 35, rgba: [180, 240, 20, 250] },
-  { dbz: 40, rgba: [255, 230, 0, 255] },
-  { dbz: 45, rgba: [255, 170, 0, 255] },
-  { dbz: 50, rgba: [255, 100, 0, 255] },
-  { dbz: 55, rgba: [240, 20, 20, 255] },
-  { dbz: 60, rgba: [200, 0, 80, 255] },
-  { dbz: 65, rgba: [255, 40, 200, 255] },
-  { dbz: 70, rgba: [255, 160, 255, 255] },
-  { dbz: 75, rgba: [255, 255, 255, 255] },
+  { dbz: 0, rgba: [0, 0, 0, 255] },
+  { dbz: 10, rgba: [75, 62, 217, 255] },
+  { dbz: 15, rgba: [99, 208, 255, 255] },
+  { dbz: 22, rgba: [50, 60, 128, 255] },
+  { dbz: 25, rgba: [29, 32, 94, 255] },
+  { dbz: 30, rgba: [140, 227, 100, 255] },
+  { dbz: 33, rgba: [42, 94, 50, 255] },
+  { dbz: 35, rgba: [11, 56, 41, 255] },
+  { dbz: 40, rgba: [215, 224, 90, 255] },
+  { dbz: 44, rgba: [212, 168, 59, 255] },
+  { dbz: 46, rgba: [255, 112, 60, 255] },
+  { dbz: 48, rgba: [240, 22, 22, 255] },
+  { dbz: 50, rgba: [143, 2, 2, 255] },
+  { dbz: 52, rgba: [247, 47, 215, 255] },
+  { dbz: 56, rgba: [128, 35, 126, 255] },
+  { dbz: 60, rgba: [65, 27, 69, 255] },
+  { dbz: 65, rgba: [115, 230, 151, 255] },
+  { dbz: 68, rgba: [21, 66, 30, 255] },
+  { dbz: 70, rgba: [117, 230, 220, 255] },
+  { dbz: 75, rgba: [0, 236, 252, 255] },
+  { dbz: 80, rgba: [130, 88, 48, 255] },
+  { dbz: 85, rgba: [92, 60, 32, 255] },
+  { dbz: 90, rgba: [0, 0, 0, 255] },
   { dbz: 255, rgba: [255, 255, 255, 255] },
 ] as const;
 
@@ -189,58 +197,8 @@ export function transparentRadarTilePng(): Buffer {
 }
 
 /**
- * Sample parent RGBA with premultiplied-alpha bilinear filtering.
- * Transparent neighbours do not bleed grey into rain cells.
- */
-function sampleBilinearPremul(
-  data: Uint8Array,
-  srcSize: number,
-  fx: number,
-  fy: number,
-): [number, number, number, number] {
-  const x0 = Math.floor(fx);
-  const y0 = Math.floor(fy);
-  const x1 = Math.min(srcSize - 1, x0 + 1);
-  const y1 = Math.min(srcSize - 1, y0 + 1);
-  const tx = fx - x0;
-  const ty = fy - y0;
-  const x0c = Math.max(0, Math.min(srcSize - 1, x0));
-  const y0c = Math.max(0, Math.min(srcSize - 1, y0));
-
-  const read = (x: number, y: number) => {
-    const i = (y * srcSize + x) << 2;
-    const a = data[i + 3]! / 255;
-    return [
-      data[i]! * a,
-      data[i + 1]! * a,
-      data[i + 2]! * a,
-      a,
-    ] as const;
-  };
-
-  const c00 = read(x0c, y0c);
-  const c10 = read(x1, y0c);
-  const c01 = read(x0c, y1);
-  const c11 = read(x1, y1);
-
-  const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-  const r = mix(mix(c00[0], c10[0], tx), mix(c01[0], c11[0], tx), ty);
-  const g = mix(mix(c00[1], c10[1], tx), mix(c01[1], c11[1], tx), ty);
-  const b = mix(mix(c00[2], c10[2], tx), mix(c01[2], c11[2], tx), ty);
-  const a = mix(mix(c00[3], c10[3], tx), mix(c01[3], c11[3], tx), ty);
-  if (a < 0.02) return [0, 0, 0, 0];
-  return [
-    clampByte(r / a),
-    clampByte(g / a),
-    clampByte(b / a),
-    clampByte(a * 255),
-  ];
-}
-
-/**
- * Crop a child tile out of a recoloured native parent and bilinear-upscale
- * to the parent tile size (512²). Used when z > RADAR_NATIVE_MAX_ZOOM so
- * state/metro zooms stay smooth instead of nearest-neighbour blocks.
+ * Crop a child tile out of a recoloured native parent and nearest-neighbour
+ * upscale to 256². Used when the client requests z > RADAR_NATIVE_MAX_ZOOM.
  */
 export function extractOverzoomTile(
   parentPng: Buffer,
@@ -251,33 +209,29 @@ export function extractOverzoomTile(
   if (scale <= 1) return parentPng;
   const parent = PNG.sync.read(parentPng);
   const srcSize = parent.width;
-  const outSize = srcSize;
   const childSize = srcSize / scale;
   if (!Number.isFinite(childSize) || childSize < 1) {
     return transparentRadarTilePng();
   }
   const ox = (childX % scale) * childSize;
   const oy = (childY % scale) * childSize;
-  const out = new PNG({ width: outSize, height: outSize });
-  const src = parent.data;
-  // Sample at pixel centres; slight inset avoids bleeding past the crop edge.
-  const maxCoord = srcSize - 1.001;
-  for (let y = 0; y < outSize; y++) {
-    const fy = Math.min(
-      maxCoord,
-      Math.max(0, oy + ((y + 0.5) * childSize) / outSize - 0.5),
+  const out = new PNG({ width: 256, height: 256 });
+  for (let y = 0; y < 256; y++) {
+    const sy = Math.min(
+      srcSize - 1,
+      Math.floor(oy + (y * childSize) / 256),
     );
-    for (let x = 0; x < outSize; x++) {
-      const fx = Math.min(
-        maxCoord,
-        Math.max(0, ox + ((x + 0.5) * childSize) / outSize - 0.5),
+    for (let x = 0; x < 256; x++) {
+      const sx = Math.min(
+        srcSize - 1,
+        Math.floor(ox + (x * childSize) / 256),
       );
-      const [r, g, b, a] = sampleBilinearPremul(src, srcSize, fx, fy);
-      const di = (y * outSize + x) << 2;
-      out.data[di] = r;
-      out.data[di + 1] = g;
-      out.data[di + 2] = b;
-      out.data[di + 3] = a;
+      const si = (sy * srcSize + sx) << 2;
+      const di = (y * 256 + x) << 2;
+      out.data[di] = parent.data[si]!;
+      out.data[di + 1] = parent.data[si + 1]!;
+      out.data[di + 2] = parent.data[si + 2]!;
+      out.data[di + 3] = parent.data[si + 3]!;
     }
   }
   return PNG.sync.write(out);
@@ -289,20 +243,16 @@ export function extractOverzoomTile(
  */
 export const RADAR_NATIVE_MAX_ZOOM = 7;
 
-/** RainViewer 512² tiles — highest public size, same geographic coverage as 256. */
-export const RAINVIEWER_TILE_SIZE = 512 as const;
-
-/** Upstream RainViewer tile URL — Universal Blue, unsmoothed (`0_0`), no snow. */
+/** Upstream RainViewer tile URL — Universal Blue, unsmoothed, no snow. */
 export function rainviewerRawTileUrl(
   host: string,
   path: string,
   z: number | string,
   x: number | string,
   y: number | string,
-  size: 256 | 512 = RAINVIEWER_TILE_SIZE,
+  size: 256 | 512 = 256,
 ): string {
   const base = `${host.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-  // colour=2 Universal Blue; options=0_0 = no smooth, no snow
   return `${base}/${size}/${z}/${x}/${y}/2/0_0.png`;
 }
 
@@ -363,9 +313,8 @@ export function radarWarmupTileUrls(
   maxTilesPerZoom = 64,
 ): string[] {
   const urls: string[] = [];
-  const maxNative = RADAR_NATIVE_MAX_ZOOM;
   for (const z of zooms) {
-    if (z < 0 || z > maxNative) continue;
+    if (z < 0 || z > RADAR_NATIVE_MAX_ZOOM) continue;
     const n = 2 ** z;
     let x0 = Math.floor(lonToTileX(bounds.west, z)) - 1;
     let x1 = Math.ceil(lonToTileX(bounds.east, z)) + 1;

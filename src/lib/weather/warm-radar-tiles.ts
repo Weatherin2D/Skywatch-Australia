@@ -111,14 +111,14 @@ export function warmRadarFramesInBackground(
       [];
     for (const f of frames) {
       for (const z of zooms) {
-        // Prefer a denser z7 warm so 512² native tiles are ready on zoom-in.
-        const cap = z >= 7 ? 64 : z >= 6 ? 56 : 64;
+        // z7 is denser — keep the national warm window modest.
+        const cap = z >= 7 ? 36 : z >= 6 ? 48 : 56;
         for (const { x, y } of tileRange(z, AU_BOUNDS, cap)) {
           jobs.push({ host: f.host, path: f.path, z, x, y });
         }
       }
     }
-    const CONCURRENCY = 12;
+    const CONCURRENCY = 16;
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       const slice = jobs.slice(i, i + CONCURRENCY);
       await Promise.all(

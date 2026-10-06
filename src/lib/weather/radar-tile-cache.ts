@@ -14,8 +14,7 @@ function store(): Map<string, CacheEntry> {
   return g.__skywatchRadarTileCache;
 }
 
-/** Larger cache — 512² + bilinear overzoom children are heavier per entry. */
-const MAX_ENTRIES = 3200;
+const MAX_ENTRIES = 2400;
 const TTL_MS = 90 * 60 * 1000;
 
 export function radarTileCacheKey(
@@ -25,7 +24,7 @@ export function radarTileCacheKey(
   x: number,
   y: number,
 ): string {
-  return `${host}|${path}|${z}/${x}/${y}|v5-512-bilin`;
+  return `${host}|${path}|${z}/${x}/${y}|v3`;
 }
 
 export function getCachedRadarTile(key: string): Buffer | null {

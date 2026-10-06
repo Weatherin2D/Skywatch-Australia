@@ -60,8 +60,7 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   lightningBolts: false,
   /** Thermal / pressure colour coding on station-model numbers */
   stationColorValues: false,
-  /** Capitals / major cities over radar (RadarScope-style) */
-  cityLabels: true,
+  cityLabels: false,
   /** Hundreds of regional towns (decluttered by zoom / region) */
   townLabels: false,
   stateOutlines: false,

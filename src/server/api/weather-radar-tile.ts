@@ -12,15 +12,11 @@ import {
   radarTileCacheKey,
   setCachedRadarTile,
 } from "@/lib/weather/radar-tile-cache";
-import { renderBomRadarXyzTile } from "@/lib/weather/bom-radar";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-export const maxDuration = 30;
 
 const HOST_RE = /^https:\/\/([a-z0-9.-]+\.)?rainviewer\.com$/i;
 const PATH_RE = /^\/v2\/radar\/[a-z0-9]+$/i;
-const BOM_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 function pngResponse(
   body: Buffer,
@@ -37,11 +33,30 @@ function pngResponse(
   });
 }
 
-function parseTileCoords(sp: URLSearchParams) {
+/**
+ * Proxy RainViewer radar tiles as unsmoothed pixels, remapped to the
+ * SkyWatch dBZ colour scale.
+ *
+ * GET /api/weather/radar-tile?host=&path=&z=&x=&y=
+ *
+ * RainViewer only has real reflectivity through ~z7. Requests above that are
+ * served by cropping/upscaling the native parent tile so zoomed-in views keep
+ * paint instead of empty z8–12 placeholders.
+ */
+export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams;
+  const host = sp.get("host") ?? "";
+  const path = sp.get("path") ?? "";
   const z = sp.get("z");
   const x = sp.get("x");
   const y = sp.get("y");
-  if (z == null || x == null || y == null) return null;
+
+  if (!HOST_RE.test(host) || !PATH_RE.test(path)) {
+    return NextResponse.json({ error: "Invalid host or path" }, { status: 400 });
+  }
+  if (z == null || x == null || y == null) {
+    return NextResponse.json({ error: "Missing z/x/y" }, { status: 400 });
+  }
   const zi = Number(z);
   const xi = Number(x);
   const yi = Number(y);
@@ -54,75 +69,7 @@ function parseTileCoords(sp: URLSearchParams) {
     xi < 0 ||
     yi < 0
   ) {
-    return null;
-  }
-  return { zi, xi, yi };
-}
-
-async function serveBomTile(
-  time: string,
-  zi: number,
-  xi: number,
-  yi: number,
-): Promise<NextResponse> {
-  const cacheKey = `bom-v1|${time}|${zi}/${xi}/${yi}`;
-  const cached = getCachedRadarTile(cacheKey);
-  if (cached) {
-    return pngResponse(cached, {
-      "X-Radar-Cache": "HIT",
-      "X-Radar-Source": "bom-wmts",
-      "X-Radar-Palette": "skywatch-dbz",
-      "X-Radar-Native-Z": String(Math.min(zi, 8)),
-    });
-  }
-  const out = await renderBomRadarXyzTile(time, zi, xi, yi);
-  setCachedRadarTile(cacheKey, out);
-  return pngResponse(out, {
-    "X-Radar-Cache": "MISS",
-    "X-Radar-Source": "bom-wmts",
-    "X-Radar-Palette": "skywatch-dbz",
-    "X-Radar-Native-Z": String(Math.min(zi, 8)),
-    "X-Radar-Overzoom": zi > 8 ? String(2 ** (zi - 8)) : "1",
-  });
-}
-
-/**
- * Proxy radar tiles:
- *  - source=bom&time=ISO — BoM WMTS reflectivity composited to Leaflet XYZ
- *  - host=&path= — RainViewer Universal Blue remapped to SkyWatch dBZ
- *
- * GET /api/weather/radar-tile?...&z=&x=&y=
- */
-export async function GET(req: NextRequest) {
-  const sp = req.nextUrl.searchParams;
-  const coords = parseTileCoords(sp);
-  if (!coords) {
     return NextResponse.json({ error: "Invalid tile coords" }, { status: 400 });
-  }
-  const { zi, xi, yi } = coords;
-
-  const source = (sp.get("source") ?? "").toLowerCase();
-  const bomTime = sp.get("time") ?? "";
-  if (source === "bom" || (bomTime && BOM_TIME_RE.test(bomTime) && !sp.get("host"))) {
-    if (!BOM_TIME_RE.test(bomTime)) {
-      return NextResponse.json({ error: "Invalid BoM time" }, { status: 400 });
-    }
-    try {
-      return await serveBomTile(bomTime, zi, xi, yi);
-    } catch (err) {
-      console.error("[weather/radar-tile bom]", err);
-      return NextResponse.json(
-        { error: "BoM radar tile unavailable" },
-        { status: 502 },
-      );
-    }
-  }
-
-  const host = sp.get("host") ?? "";
-  const path = sp.get("path") ?? "";
-
-  if (!HOST_RE.test(host) || !PATH_RE.test(path)) {
-    return NextResponse.json({ error: "Invalid host or path" }, { status: 400 });
   }
 
   const overzoom = zi > RADAR_NATIVE_MAX_ZOOM;
@@ -131,6 +78,7 @@ export async function GET(req: NextRequest) {
   const fetchX = overzoom ? Math.floor(xi / scale) : xi;
   const fetchY = overzoom ? Math.floor(yi / scale) : yi;
 
+  // Cache key includes requested z/x/y so overzoom crops stay distinct.
   const cacheKey = radarTileCacheKey(host, path, zi, xi, yi);
   const cached = getCachedRadarTile(cacheKey);
   if (cached) {
@@ -138,13 +86,11 @@ export async function GET(req: NextRequest) {
       "X-Radar-Cache": "HIT",
       "X-Radar-Source": "rainviewer-raw",
       "X-Radar-Palette": "skywatch-dbz",
-      "X-Radar-Tile-Size": "512",
-      "X-Radar-Smooth": "0",
-      "X-Radar-Overzoom-Filter": overzoom ? "bilinear" : "none",
       "X-Radar-Native-Z": String(fetchZ),
     });
   }
 
+  // Parent native tile may already be cached from a sibling overzoom request.
   const parentKey = radarTileCacheKey(host, path, fetchZ, fetchX, fetchY);
   let parentRecoloured = getCachedRadarTile(parentKey);
 
@@ -193,9 +139,6 @@ export async function GET(req: NextRequest) {
     "X-Radar-Cache": "MISS",
     "X-Radar-Source": "rainviewer-raw",
     "X-Radar-Palette": "skywatch-dbz",
-    "X-Radar-Tile-Size": "512",
-    "X-Radar-Smooth": "0",
-    "X-Radar-Overzoom-Filter": overzoom ? "bilinear" : "none",
     "X-Radar-Native-Z": String(fetchZ),
     "X-Radar-Overzoom": overzoom ? String(scale) : "1",
   });

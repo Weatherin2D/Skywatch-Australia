@@ -486,7 +486,6 @@ function HomeDashboardInner({
     showRadarOverlay && mode === "Map" && !himawariOnMap;
   const useTimeline = useSatelliteFrames || useRadarLoop;
 
-
   const loopFrames = useMemo(() => {
     if (useSatelliteFrames) {
       return satelliteFrames.map((frame) => ({
@@ -751,29 +750,21 @@ function HomeDashboardInner({
   // a second dashboard-wide storm of tile requests burned Fluid Active CPU.
 
   useEffect(() => {
-    const anyOpen =
-      satMenuOpen ||
-      regionMenuOpen ||
-false;
-    if (!anyOpen) return;
-    function closeIfOutside(
-      open: boolean,
-      ref: { current: HTMLDivElement | null },
-      close: () => void,
-      t: Node,
-    ) {
-      if (open && ref.current && !ref.current.contains(t)) close();
-    }
+    if (!satMenuOpen && !regionMenuOpen) return;
     function onPointerDown(e: MouseEvent) {
       const t = e.target as Node;
-      closeIfOutside(satMenuOpen, satMenuRef, () => setSatMenuOpen(false), t);
-      closeIfOutside(
-        regionMenuOpen,
-        regionMenuRef,
-        () => setRegionMenuOpen(false),
-        t,
-      );
+      if (satMenuOpen && satMenuRef.current && !satMenuRef.current.contains(t)) {
+        setSatMenuOpen(false);
+      }
+      if (
+        regionMenuOpen &&
+        regionMenuRef.current &&
+        !regionMenuRef.current.contains(t)
+      ) {
+        setRegionMenuOpen(false);
+      }
     }
+    // Use bubble-phase click so button onClick runs first.
     document.addEventListener("click", onPointerDown);
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -786,10 +777,7 @@ false;
       document.removeEventListener("click", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [
-    satMenuOpen,
-    regionMenuOpen,
-  ]);
+  }, [satMenuOpen, regionMenuOpen]);
 
   const scrubLabel = useMemo(() => {
     if (!useTimeline) return "";
@@ -1070,8 +1058,6 @@ false;
                 </ul>
               ) : null}
             </div>
-
-            
 
             <button
               type="button"

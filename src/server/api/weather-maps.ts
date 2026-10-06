@@ -38,6 +38,9 @@ type RainViewerMaps = {
     past?: Array<{ time: number; path: string }>;
     nowcast?: Array<{ time: number; path: string }>;
   };
+  satellite?: {
+    infrared?: Array<{ time: number; path: string }>;
+  };
 };
 
 function emptyProductFrames(): WeatherMapsPayload["satellite"]["products"] {
@@ -168,7 +171,6 @@ function normalizeRainviewerFrames(
     time: f.time,
     path: f.path,
     tileUrlTemplate: rainviewerTileUrl(host, f.path, kind),
-    radarSource: kind === "radar" ? ("rainviewer" as const) : undefined,
   }));
 }
 
@@ -270,7 +272,10 @@ export async function GET(request: NextRequest) {
       : DEFAULT_SATELLITE_PRODUCT;
 
     const rvPromise = fetch(RAINVIEWER_URL, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "SkyWatchAustralia/1.0",
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(8000),
     })
@@ -331,6 +336,8 @@ export async function GET(request: NextRequest) {
     const frames = satellite.products[activeProduct].frames;
     const activeMeta = getSatelliteProduct(activeProduct);
 
+    // Prime the radar tile cache for the newest frames so the first map paint
+    // hits memory instead of waiting on RainViewer + recolour.
     warmRadarFramesInBackground(
       radarAll.slice(-2).flatMap((f) =>
         f.path ? [{ host, path: f.path }] : [],
@@ -349,7 +356,6 @@ export async function GET(request: NextRequest) {
       radar: {
         past: radarAll,
         source: "rainviewer",
-        attribution: "Radar © RainViewer / LightningMaps.org",
       },
     };
 
@@ -365,10 +371,6 @@ export async function GET(request: NextRequest) {
           ? String(frames[frames.length - 1]!.time)
           : "",
         "X-Satellite-Frame-Count": String(frames.length),
-        "X-Radar-Source": "rainviewer",
-        "X-Radar-Tile-Size": "512",
-        "X-Radar-Smooth": "0",
-        "X-Radar-Frame-Count": String(radarAll.length),
       },
     });
   } catch (error) {

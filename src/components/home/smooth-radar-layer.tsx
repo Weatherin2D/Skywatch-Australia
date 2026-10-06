@@ -5,7 +5,6 @@ import { useMap } from "react-leaflet";
 import L from "leaflet";
 import {
   RADAR_NATIVE_MAX_ZOOM,
-  RAINVIEWER_TILE_SIZE,
   radarWarmupTileUrls,
 } from "@/lib/weather/radar-palette";
 import type { WeatherFrame } from "@/lib/weather/maps";
@@ -13,7 +12,7 @@ import type { WeatherFrame } from "@/lib/weather/maps";
 const TRANSPARENT_TILE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-function createBufferLayer(zIndex: number, maxNativeZoom: number): L.TileLayer {
+function createBufferLayer(zIndex: number): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
     className: "skywatch-radar-tiles",
@@ -24,10 +23,10 @@ function createBufferLayer(zIndex: number, maxNativeZoom: number): L.TileLayer {
     updateWhenZooming: false,
     updateInterval: 120,
     zIndex,
-    // RainViewer 512² unsmoothed tiles; native useful data through z7.
-    tileSize: RAINVIEWER_TILE_SIZE,
+    // RainViewer only has real data through ~z7. Overzoom past that so tight
+    // zooms keep showing scaled reflectivity instead of empty z8–12 tiles.
     maxZoom: 22,
-    maxNativeZoom,
+    maxNativeZoom: RADAR_NATIVE_MAX_ZOOM,
     minZoom: 0,
     errorTileUrl: TRANSPARENT_TILE,
     crossOrigin: true,
@@ -59,8 +58,8 @@ export function SmoothRadarLayer({
   opacityRef.current = opacity;
 
   useEffect(() => {
-    const a = createBufferLayer(450, RADAR_NATIVE_MAX_ZOOM);
-    const b = createBufferLayer(451, RADAR_NATIVE_MAX_ZOOM);
+    const a = createBufferLayer(450);
+    const b = createBufferLayer(451);
     buffersRef.current = [a, b];
     frontRef.current = 0;
     displayedUrlRef.current = null;
@@ -133,13 +132,6 @@ export function SmoothRadarLayer({
     const gen = ++loadGenRef.current;
     pendingUrlRef.current = url;
     const hasPaintedFrame = Boolean(displayedUrlRef.current && frontUrl);
-    const nativeZ = RADAR_NATIVE_MAX_ZOOM;
-    front.options.maxNativeZoom = nativeZ;
-    back.options.maxNativeZoom = nativeZ;
-    for (const layer of [front, back]) {
-      const el = layer.getContainer();
-      if (el) el.classList.remove("skywatch-radar-tiles--bom");
-    }
 
     const reveal = (layer: L.TileLayer, hide: L.TileLayer, newFront: number) => {
       if (gen !== loadGenRef.current) return;
@@ -229,35 +221,32 @@ export function useRadarFramePreloader(
       }
     };
 
-    const zoomLevels = (tpl: string) => {
+    const zoomLevels = () => {
       let z = 5;
       try {
         z = Math.round(map.getZoom());
       } catch {
         /* map may be tearing down */
       }
-      const maxNative = RADAR_NATIVE_MAX_ZOOM;
-      const native = Math.max(3, Math.min(maxNative, z));
-      if (z > maxNative) {
-        const coarser = Math.max(3, maxNative - 1);
-        return [coarser, maxNative];
+      const native = Math.max(3, Math.min(RADAR_NATIVE_MAX_ZOOM, z));
+      if (z > RADAR_NATIVE_MAX_ZOOM) {
+        const coarser = Math.max(3, RADAR_NATIVE_MAX_ZOOM - 1);
+        return [coarser, RADAR_NATIVE_MAX_ZOOM];
       }
       const coarser = Math.max(3, native - 1);
-      const finer = native < maxNative ? native + 1 : native;
+      const finer = native < RADAR_NATIVE_MAX_ZOOM ? native + 1 : native;
       return [...new Set([coarser, native, finer])];
     };
 
     const pushFrame = (idx: number, force = false) => {
       const tpl = templates[idx];
       if (!tpl) return;
-      const zooms = zoomLevels(tpl);
+      const zooms = zoomLevels();
       const cacheKey = `${tpl}|${zooms.join(",")}|${Math.round(map.getZoom())}`;
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      const maxNative = RADAR_NATIVE_MAX_ZOOM;
-      // 512² tiles are heavier — still warm denser at native z so zoom-in paints.
-      const cap = zooms.includes(maxNative) ? 72 : 40;
+      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 48 : 32;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }

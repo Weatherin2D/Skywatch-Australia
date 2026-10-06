@@ -1,9 +1,7 @@
-export type RadarFrameSource = "rainviewer";
-
 export type WeatherFrame = {
   /** Unix time in seconds */
   time: number;
-  /** RainViewer path fragment when available (legacy / unused for radar) */
+  /** RainViewer path fragment when available */
   path?: string;
   /**
    * Leaflet tile URL with {z}/{x}/{y} placeholders already ordered
@@ -14,8 +12,6 @@ export type WeatherFrame = {
   imageUrl?: string;
   /** Leaflet LatLngBounds as [[south, west], [north, east]] */
   imageBounds?: [[number, number], [number, number]];
-  /** Radar provider for this frame (tile proxy / native zoom). */
-  radarSource?: RadarFrameSource;
 };
 
 export type SatelliteProductId =
@@ -127,7 +123,6 @@ export type WeatherMapsPayload = {
   radar: {
     past: WeatherFrame[];
     source: "rainviewer";
-    attribution?: string;
   };
 };
 
@@ -386,46 +381,6 @@ export function rainviewerTileUrl(
     return `/api/weather/radar-tile?${q.toString()}&z={z}&x={x}&y={y}`;
   }
   return `${base}/256/{z}/{x}/{y}/0/0_0.png`;
-}
-
-/** Prefer BoM within ±matchSec of a BoM stamp; keep RainViewer for gaps/nowcast. */
-export function mergeRadarTimelines(
-  bomFrames: WeatherFrame[],
-  rainviewerFrames: WeatherFrame[],
-  matchSec = 150,
-): WeatherFrame[] {
-  if (!bomFrames.length) return rainviewerFrames;
-  if (!rainviewerFrames.length) return bomFrames;
-
-  const bomByTime = [...bomFrames].sort((a, b) => a.time - b.time);
-  const out: WeatherFrame[] = [];
-  const usedBom = new Set<number>();
-
-  for (const rv of rainviewerFrames) {
-    let best: WeatherFrame | null = null;
-    let bestD = matchSec + 1;
-    for (const bom of bomByTime) {
-      const d = Math.abs(bom.time - rv.time);
-      if (d < bestD) {
-        bestD = d;
-        best = bom;
-      }
-    }
-    if (best && bestD <= matchSec) {
-      out.push(best);
-      usedBom.add(best.time);
-    } else {
-      out.push(rv);
-    }
-  }
-
-  for (const bom of bomByTime) {
-    if (usedBom.has(bom.time)) continue;
-    // Insert BoM-only stamps (finer 5-min cadence between RV 10-min frames).
-    out.push(bom);
-  }
-
-  return out.sort((a, b) => a.time - b.time);
 }
 
 export function toIsoZ(ms: number): string {
