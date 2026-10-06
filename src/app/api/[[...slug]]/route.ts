@@ -18,6 +18,7 @@ import * as weatherEcmwfMapPoint from "@/server/api/weather-ecmwf-map-point";
 import * as weatherUpperAir from "@/server/api/weather-upper-air";
 import * as weatherSounding from "@/server/api/weather-sounding";
 import * as weatherRadarTile from "@/server/api/weather-radar-tile";
+import * as weatherBomSiteRadar from "@/server/api/weather-bom-site-radar";
 import * as weatherRisk from "@/server/api/weather-risk";
 import * as weatherRiskImage from "@/server/api/weather-risk-image";
 import * as weatherRiskProbe from "@/server/api/weather-risk-probe";
@@ -71,6 +72,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/upper-air": weatherUpperAir as RouteHandlers,
   "weather/sounding": weatherSounding as RouteHandlers,
   "weather/radar-tile": weatherRadarTile as RouteHandlers,
+  "weather/bom-site-radar": weatherBomSiteRadar as RouteHandlers,
   "weather/risk": weatherRisk as RouteHandlers,
   "weather/risk-image": weatherRiskImage as RouteHandlers,
   "weather/risk-probe": weatherRiskProbe as RouteHandlers,

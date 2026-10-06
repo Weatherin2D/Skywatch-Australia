@@ -42,6 +42,7 @@ import {
   RadarFramePreloader,
   SmoothRadarLayer,
 } from "@/components/home/smooth-radar-layer";
+import { BomSiteRadarLayer } from "@/components/home/bom-site-radar-layer";
 import { RiskPolygonLayer } from "@/components/risk/risk-polygon-layer";
 import { StormCellOverlay } from "@/components/home/storm-cell-overlay";
 import type { DisplayFeature } from "@/lib/forecast/types";
@@ -636,6 +637,7 @@ export function HomeMap({
           />
         ) : null}
         {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.9} /> : null}
+        <BomSiteRadarLayer enabled={showRadarOverlay} />
         {showRadarOverlay && radarLoopFrames.length > 0 ? (
           <RadarFramePreloader
             frames={radarLoopFrames}

@@ -32,7 +32,9 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 | `/api/weather/archive/synoptic` | Archived / on-demand synoptic GeoJSON |
 | `/api/weather/archive/lightning` | Archived lightning strikes (`from`/`to`) |
 | `/api/weather/archive/ingest` | Archive ingest (daily Vercel Cron + lazy on catalog visits; Hobby plan limit) |
-| `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth |
+| `/api/weather/maps` | Satellite frame catalog (`?all=1` or `?product=…`) via NASA GIBS + SSEC RealEarth; radar merges BoM WMTS reflectivity (5-min, z≤8) with RainViewer history/nowcast |
+| `/api/weather/radar-tile` | Radar XYZ proxy — `source=bom&time=` (BoM) or RainViewer `host`/`path` |
+| `/api/weather/bom-site-radar` | Georeferenced BoM IDR site radar (`?lat=&lon=` or `?code=&format=png`) for metro zooms |
 | `/api/weather/frame` | Proxied/cached full-frame satellite imagery for smooth playback |
 | `/api/weather/lightning` | Blitzortung live (WS/MQTT) + LightningMaps Mercator PNG backfill |
 | `/api/weather/storm-activity` | Lightning hotspot summary for Storm Tracker |

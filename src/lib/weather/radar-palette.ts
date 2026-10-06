@@ -313,8 +313,12 @@ export function radarWarmupTileUrls(
   maxTilesPerZoom = 64,
 ): string[] {
   const urls: string[] = [];
+  // BoM WMTS native max is z8; RainViewer is z7.
+  const maxNative = /[?&]source=bom\b/.test(template)
+    ? 8
+    : RADAR_NATIVE_MAX_ZOOM;
   for (const z of zooms) {
-    if (z < 0 || z > RADAR_NATIVE_MAX_ZOOM) continue;
+    if (z < 0 || z > maxNative) continue;
     const n = 2 ** z;
     let x0 = Math.floor(lonToTileX(bounds.west, z)) - 1;
     let x1 = Math.ceil(lonToTileX(bounds.east, z)) + 1;

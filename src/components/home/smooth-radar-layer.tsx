@@ -9,10 +9,23 @@ import {
 } from "@/lib/weather/radar-palette";
 import type { WeatherFrame } from "@/lib/weather/maps";
 
+/** BoM WMTS native max (keep in sync with bom-radar.ts — do not import that here). */
+const BOM_RADAR_NATIVE_MAX_ZOOM = 8;
+
 const TRANSPARENT_TILE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-function createBufferLayer(zIndex: number): L.TileLayer {
+function isBomRadarUrl(url: string | null | undefined): boolean {
+  return Boolean(url && /[?&]source=bom\b/.test(url));
+}
+
+function nativeZoomForUrl(url: string | null | undefined): number {
+  return isBomRadarUrl(url)
+    ? BOM_RADAR_NATIVE_MAX_ZOOM
+    : RADAR_NATIVE_MAX_ZOOM;
+}
+
+function createBufferLayer(zIndex: number, maxNativeZoom: number): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
     className: "skywatch-radar-tiles",
@@ -23,10 +36,9 @@ function createBufferLayer(zIndex: number): L.TileLayer {
     updateWhenZooming: false,
     updateInterval: 120,
     zIndex,
-    // RainViewer only has real data through ~z7. Overzoom past that so tight
-    // zooms keep showing scaled reflectivity instead of empty z8–12 tiles.
+    // BoM native through z8; RainViewer through z7. Overzoom keeps paint.
     maxZoom: 22,
-    maxNativeZoom: RADAR_NATIVE_MAX_ZOOM,
+    maxNativeZoom,
     minZoom: 0,
     errorTileUrl: TRANSPARENT_TILE,
     crossOrigin: true,
@@ -58,8 +70,8 @@ export function SmoothRadarLayer({
   opacityRef.current = opacity;
 
   useEffect(() => {
-    const a = createBufferLayer(450);
-    const b = createBufferLayer(451);
+    const a = createBufferLayer(450, RADAR_NATIVE_MAX_ZOOM);
+    const b = createBufferLayer(451, RADAR_NATIVE_MAX_ZOOM);
     buffersRef.current = [a, b];
     frontRef.current = 0;
     displayedUrlRef.current = null;
@@ -132,6 +144,14 @@ export function SmoothRadarLayer({
     const gen = ++loadGenRef.current;
     pendingUrlRef.current = url;
     const hasPaintedFrame = Boolean(displayedUrlRef.current && frontUrl);
+    const nativeZ = nativeZoomForUrl(url);
+    front.options.maxNativeZoom = nativeZ;
+    back.options.maxNativeZoom = nativeZ;
+    const bom = isBomRadarUrl(url);
+    for (const layer of [front, back]) {
+      const el = layer.getContainer();
+      if (el) el.classList.toggle("skywatch-radar-tiles--bom", bom);
+    }
 
     const reveal = (layer: L.TileLayer, hide: L.TileLayer, newFront: number) => {
       if (gen !== loadGenRef.current) return;
@@ -221,32 +241,34 @@ export function useRadarFramePreloader(
       }
     };
 
-    const zoomLevels = () => {
+    const zoomLevels = (tpl: string) => {
       let z = 5;
       try {
         z = Math.round(map.getZoom());
       } catch {
         /* map may be tearing down */
       }
-      const native = Math.max(3, Math.min(RADAR_NATIVE_MAX_ZOOM, z));
-      if (z > RADAR_NATIVE_MAX_ZOOM) {
-        const coarser = Math.max(3, RADAR_NATIVE_MAX_ZOOM - 1);
-        return [coarser, RADAR_NATIVE_MAX_ZOOM];
+      const maxNative = nativeZoomForUrl(tpl);
+      const native = Math.max(3, Math.min(maxNative, z));
+      if (z > maxNative) {
+        const coarser = Math.max(3, maxNative - 1);
+        return [coarser, maxNative];
       }
       const coarser = Math.max(3, native - 1);
-      const finer = native < RADAR_NATIVE_MAX_ZOOM ? native + 1 : native;
+      const finer = native < maxNative ? native + 1 : native;
       return [...new Set([coarser, native, finer])];
     };
 
     const pushFrame = (idx: number, force = false) => {
       const tpl = templates[idx];
       if (!tpl) return;
-      const zooms = zoomLevels();
+      const zooms = zoomLevels(tpl);
       const cacheKey = `${tpl}|${zooms.join(",")}|${Math.round(map.getZoom())}`;
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 48 : 32;
+      const maxNative = nativeZoomForUrl(tpl);
+      const cap = zooms.includes(maxNative) ? 48 : 32;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }

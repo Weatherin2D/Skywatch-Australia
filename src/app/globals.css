@@ -235,6 +235,21 @@
   image-rendering: crisp-edges;
 }
 
+/* BoM WMTS uses bilinear overzoom — prefer smooth scaling over blocky pixels. */
+.skywatch-radar-tiles--bom img,
+.leaflet-tile-pane .skywatch-radar-tiles--bom img {
+  image-rendering: auto;
+  image-rendering: smooth;
+}
+
+.skywatch-bom-site-radar,
+.leaflet-image-layer.skywatch-bom-site-radar {
+  image-rendering: auto !important;
+  image-rendering: smooth !important;
+  pointer-events: none;
+}
+}
+
 /* BoM risk bands — keep carved edges smooth when Leaflet scales the overlay. */
 .skywatch-risk-chart,
 .leaflet-overlay-pane img.skywatch-risk-chart,
