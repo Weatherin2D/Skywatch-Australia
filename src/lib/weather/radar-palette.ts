@@ -189,8 +189,58 @@ export function transparentRadarTilePng(): Buffer {
 }
 
 /**
- * Crop a child tile out of a recoloured native parent and nearest-neighbour
- * upscale to the parent tile size. Used when z > RADAR_NATIVE_MAX_ZOOM.
+ * Sample parent RGBA with premultiplied-alpha bilinear filtering.
+ * Transparent neighbours do not bleed grey into rain cells.
+ */
+function sampleBilinearPremul(
+  data: Uint8Array,
+  srcSize: number,
+  fx: number,
+  fy: number,
+): [number, number, number, number] {
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const x1 = Math.min(srcSize - 1, x0 + 1);
+  const y1 = Math.min(srcSize - 1, y0 + 1);
+  const tx = fx - x0;
+  const ty = fy - y0;
+  const x0c = Math.max(0, Math.min(srcSize - 1, x0));
+  const y0c = Math.max(0, Math.min(srcSize - 1, y0));
+
+  const read = (x: number, y: number) => {
+    const i = (y * srcSize + x) << 2;
+    const a = data[i + 3]! / 255;
+    return [
+      data[i]! * a,
+      data[i + 1]! * a,
+      data[i + 2]! * a,
+      a,
+    ] as const;
+  };
+
+  const c00 = read(x0c, y0c);
+  const c10 = read(x1, y0c);
+  const c01 = read(x0c, y1);
+  const c11 = read(x1, y1);
+
+  const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+  const r = mix(mix(c00[0], c10[0], tx), mix(c01[0], c11[0], tx), ty);
+  const g = mix(mix(c00[1], c10[1], tx), mix(c01[1], c11[1], tx), ty);
+  const b = mix(mix(c00[2], c10[2], tx), mix(c01[2], c11[2], tx), ty);
+  const a = mix(mix(c00[3], c10[3], tx), mix(c01[3], c11[3], tx), ty);
+  if (a < 0.02) return [0, 0, 0, 0];
+  return [
+    clampByte(r / a),
+    clampByte(g / a),
+    clampByte(b / a),
+    clampByte(a * 255),
+  ];
+}
+
+/**
+ * Crop a child tile out of a recoloured native parent and bilinear-upscale
+ * to the parent tile size (512²). Used when z > RADAR_NATIVE_MAX_ZOOM so
+ * state/metro zooms stay smooth instead of nearest-neighbour blocks.
  */
 export function extractOverzoomTile(
   parentPng: Buffer,
@@ -209,22 +259,25 @@ export function extractOverzoomTile(
   const ox = (childX % scale) * childSize;
   const oy = (childY % scale) * childSize;
   const out = new PNG({ width: outSize, height: outSize });
+  const src = parent.data;
+  // Sample at pixel centres; slight inset avoids bleeding past the crop edge.
+  const maxCoord = srcSize - 1.001;
   for (let y = 0; y < outSize; y++) {
-    const sy = Math.min(
-      srcSize - 1,
-      Math.floor(oy + (y * childSize) / outSize),
+    const fy = Math.min(
+      maxCoord,
+      Math.max(0, oy + ((y + 0.5) * childSize) / outSize - 0.5),
     );
     for (let x = 0; x < outSize; x++) {
-      const sx = Math.min(
-        srcSize - 1,
-        Math.floor(ox + (x * childSize) / outSize),
+      const fx = Math.min(
+        maxCoord,
+        Math.max(0, ox + ((x + 0.5) * childSize) / outSize - 0.5),
       );
-      const si = (sy * srcSize + sx) << 2;
+      const [r, g, b, a] = sampleBilinearPremul(src, srcSize, fx, fy);
       const di = (y * outSize + x) << 2;
-      out.data[di] = parent.data[si]!;
-      out.data[di + 1] = parent.data[si + 1]!;
-      out.data[di + 2] = parent.data[si + 2]!;
-      out.data[di + 3] = parent.data[si + 3]!;
+      out.data[di] = r;
+      out.data[di + 1] = g;
+      out.data[di + 2] = b;
+      out.data[di + 3] = a;
     }
   }
   return PNG.sync.write(out);

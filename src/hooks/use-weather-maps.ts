@@ -100,7 +100,7 @@ export function useWeatherMaps(
       for (const frame of radarTip) {
         const tpl = frame.tileUrlTemplate;
         if (!tpl) continue;
-        for (const url of radarWarmupTileUrls(tpl, [4, 5, 6], undefined, 40)) {
+        for (const url of radarWarmupTileUrls(tpl, [4, 5, 6, 7], undefined, 56)) {
           const img = new window.Image();
           img.decoding = "async";
           img.src = url;

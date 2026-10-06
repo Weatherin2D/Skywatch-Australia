@@ -228,11 +228,14 @@
   min-height: 100% !important;
 }
 
-/* Keep RainViewer reflectivity blocks crisp (no browser bilinear blur). */
+/*
+ * RainViewer 512² tiles are bilinear-overzoomed server-side. Let the browser
+ * use smooth scaling so Leaflet fractional zoom / retina stays clean — forced
+ * pixelated made metro zooms look blockier than the source.
+ */
 .skywatch-radar-tiles img,
 .leaflet-tile-pane .skywatch-radar-tiles img {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
 }
 
 /* Crisp bins (RadarScope-like) — avoid muddy bilinear blur on BoM tiles. */

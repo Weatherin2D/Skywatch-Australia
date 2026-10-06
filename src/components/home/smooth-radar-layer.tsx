@@ -256,7 +256,8 @@ export function useRadarFramePreloader(
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
       const maxNative = RADAR_NATIVE_MAX_ZOOM;
-      const cap = zooms.includes(maxNative) ? 48 : 32;
+      // 512² tiles are heavier — still warm denser at native z so zoom-in paints.
+      const cap = zooms.includes(maxNative) ? 72 : 40;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }
