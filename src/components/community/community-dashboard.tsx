@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
-import { ImagePlus, Loader2, Upload } from "lucide-react";
+import { ImagePlus, Loader2, Upload, X } from "lucide-react";
 import { CommunityLibrary } from "@/components/community/community-library";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CommunityPost, StorageStatus } from "@/lib/community/types";
+
+const MAX_PHOTOS = 8;
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -15,6 +17,8 @@ function todayLocalISO(): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+type PreviewItem = { file: File; url: string };
 
 export function CommunityDashboard() {
   const formId = useId();
@@ -28,8 +32,8 @@ export function CommunityDashboard() {
   const [author, setAuthor] = useState("");
   const [caption, setCaption] = useState("");
   const [eventDate, setEventDate] = useState(todayLocalISO);
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<PreviewItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formOk, setFormOk] = useState<string | null>(null);
@@ -70,21 +74,44 @@ export function CommunityDashboard() {
   }, [loadPosts]);
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    const next = files.map((file) => ({
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setPreviews(next);
+    return () => {
+      for (const item of next) URL.revokeObjectURL(item.url);
+    };
+  }, [files]);
+
+  function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    setFormError(null);
+    setFormOk(null);
+    setFiles((prev) => {
+      const incoming = Array.from(list);
+      const merged = [...prev];
+      for (const file of incoming) {
+        if (merged.length >= MAX_PHOTOS) break;
+        if (!file.type.startsWith("image/")) continue;
+        merged.push(file);
+      }
+      return merged;
+    });
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setFormError(null);
+    setFormOk(null);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
     setFormOk(null);
-    if (!file) {
-      setFormError("Choose a weather photo to upload.");
+    if (files.length === 0) {
+      setFormError("Choose at least one weather photo to upload.");
       return;
     }
     setSubmitting(true);
@@ -94,7 +121,9 @@ export function CommunityDashboard() {
       body.set("author", author.trim());
       body.set("caption", caption.trim());
       body.set("eventDate", eventDate);
-      body.set("image", file);
+      for (const file of files) {
+        body.append("images", file);
+      }
       const res = await fetch("/api/community", {
         method: "POST",
         body,
@@ -115,8 +144,12 @@ export function CommunityDashboard() {
       setAuthor("");
       setCaption("");
       setEventDate(todayLocalISO());
-      setFile(null);
-      setFormOk("Posted — thanks for sharing.");
+      setFiles([]);
+      setFormOk(
+        files.length > 1
+          ? `Posted ${files.length} photos — thanks for sharing.`
+          : "Posted — thanks for sharing.",
+      );
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Could not publish post.",
@@ -168,7 +201,8 @@ export function CommunityDashboard() {
               New weather post
             </h2>
             <p className="mt-0.5 text-xs text-white/55">
-              Title, photo, optional caption, your name, and when it happened.
+              Title, one or more photos, optional caption, your name, and when
+              it happened.
             </p>
           </div>
         </div>
@@ -235,30 +269,54 @@ export function CommunityDashboard() {
 
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor={`${formId}-image`} className="text-white/80">
-              Picture
+              Photos
             </Label>
             <Input
               id={`${formId}-image`}
               type="file"
               accept="image/jpeg,image/png,image/webp"
+              multiple
               onChange={(e) => {
-                const next = e.target.files?.[0] ?? null;
-                setFile(next);
-                setFormError(null);
-                setFormOk(null);
+                addFiles(e.target.files);
+                e.target.value = "";
               }}
               className="border-white/15 bg-white/5 text-white file:mr-3 file:text-white/80"
             />
             <p className="text-[11px] text-white/45">
-              JPEG, PNG or WebP · max 5 MB
+              JPEG, PNG or WebP · up to {MAX_PHOTOS} photos · max 5 MB each
+              {files.length > 0
+                ? ` · ${files.length} selected`
+                : ""}
             </p>
-            {previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={previewUrl}
-                alt="Selected upload preview"
-                className="mt-2 max-h-48 w-full rounded-xl object-cover"
-              />
+            {previews.length > 0 ? (
+              <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {previews.map((item, index) => (
+                  <li
+                    key={`${item.file.name}-${index}`}
+                    className="relative overflow-hidden rounded-xl border border-white/10 bg-[#0a1628]"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.url}
+                      alt={`Selected upload ${index + 1}`}
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="absolute right-1.5 top-1.5 rounded-full border border-white/20 bg-black/60 p-1 text-white hover:bg-black/80"
+                      aria-label={`Remove photo ${index + 1}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    {index === 0 ? (
+                      <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white/90">
+                        Cover
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             ) : null}
           </div>
 
@@ -287,7 +345,9 @@ export function CommunityDashboard() {
               ) : (
                 <>
                   <Upload data-icon="inline-start" />
-                  Publish post
+                  {files.length > 1
+                    ? `Publish ${files.length} photos`
+                    : "Publish post"}
                 </>
               )}
             </Button>

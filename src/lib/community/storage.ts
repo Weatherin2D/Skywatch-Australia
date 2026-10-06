@@ -22,10 +22,15 @@ import {
 } from "@/lib/community/backends";
 import type {
   CommunityComment,
+  CommunityImageAsset,
   CommunityPost,
 } from "@/lib/community/types";
 
-export type { CommunityPost, CommunityComment } from "@/lib/community/types";
+export type {
+  CommunityPost,
+  CommunityComment,
+  CommunityImageAsset,
+} from "@/lib/community/types";
 export type { StorageStatus } from "@/lib/community/backends";
 
 const LOCAL_ROOT = path.join(
@@ -41,10 +46,14 @@ const redisPostKey = (id: string) => `community:post:${id}`;
 const redisImageKey = (id: string) => `community:image:${id}`;
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Max photos per community post album. */
+export const MAX_IMAGES_PER_POST = 8;
 export const MAX_TITLE_LEN = 80;
 export const MAX_AUTHOR_LEN = 60;
 export const MAX_CAPTION_LEN = 280;
 export const MAX_COMMENT_LEN = 400;
+
+const POST_ID_RE = /^[a-z0-9]+-[a-f0-9]+$/i;
 
 const ALLOWED_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -277,6 +286,43 @@ function isComment(value: unknown): value is CommunityComment {
   );
 }
 
+function isImageAsset(value: unknown): value is CommunityImageAsset {
+  if (!value || typeof value !== "object") return false;
+  const i = value as Record<string, unknown>;
+  return (
+    typeof i.id === "string" &&
+    typeof i.imageUrl === "string" &&
+    typeof i.contentType === "string" &&
+    typeof i.imagePath === "string"
+  );
+}
+
+function coverAssetFromLegacy(
+  postId: string,
+  imageUrl: string,
+  contentType: string,
+  imagePath: string,
+): CommunityImageAsset {
+  return { id: postId, imageUrl, contentType, imagePath };
+}
+
+/** Stable image id: cover uses post id; extras use `${postId}i2`, `i3`, … */
+export function imageIdForPostIndex(postId: string, index: number): string {
+  return index <= 0 ? postId : `${postId}i${index + 1}`;
+}
+
+export function postImageAssets(post: CommunityPost): CommunityImageAsset[] {
+  if (Array.isArray(post.images) && post.images.length > 0) return post.images;
+  return [
+    coverAssetFromLegacy(
+      post.id,
+      post.imageUrl,
+      post.contentType,
+      post.imagePath,
+    ),
+  ];
+}
+
 function normalizePost(value: unknown): CommunityPost | null {
   if (!value || typeof value !== "object") return null;
   const p = value as Record<string, unknown>;
@@ -299,15 +345,29 @@ function normalizePost(value: unknown): CommunityPost | null {
       ? Math.floor(p.likes)
       : 0;
   const caption = typeof p.caption === "string" ? p.caption : "";
+  const imagesRaw = Array.isArray(p.images) ? p.images.filter(isImageAsset) : [];
+  const images =
+    imagesRaw.length > 0
+      ? imagesRaw
+      : [
+          coverAssetFromLegacy(
+            p.id,
+            p.imageUrl,
+            p.contentType,
+            p.imagePath,
+          ),
+        ];
+  const cover = images[0]!;
   return {
     id: p.id,
     title: p.title,
     author: p.author,
     caption,
     eventDate: p.eventDate,
-    imageUrl: p.imageUrl,
-    contentType: p.contentType,
-    imagePath: p.imagePath,
+    imageUrl: cover.imageUrl,
+    contentType: cover.contentType,
+    imagePath: cover.imagePath,
+    images,
     createdAt: p.createdAt,
     likes,
     comments,
@@ -410,19 +470,27 @@ async function redisGetPost(id: string): Promise<CommunityPost | null> {
   return normalizePost(raw);
 }
 
+type ImagePayload = {
+  id: string;
+  buffer: Buffer;
+  contentType: string;
+};
+
 async function redisWritePost(
   post: CommunityPost,
-  image?: { buffer: Buffer; contentType: string },
+  images?: ImagePayload[],
   opts?: { addToIndex?: boolean },
 ): Promise<void> {
   const redis = getRedis();
   if (!redis) throw new Error("Redis is not configured.");
   await redis.set(redisPostKey(post.id), post);
-  if (image) {
-    await redis.set(redisImageKey(post.id), {
-      contentType: image.contentType,
-      data: image.buffer.toString("base64"),
-    });
+  if (images?.length) {
+    for (const image of images) {
+      await redis.set(redisImageKey(image.id), {
+        contentType: image.contentType,
+        data: image.buffer.toString("base64"),
+      });
+    }
   }
   if (opts?.addToIndex) {
     // Newest first — remove any stale id then push left.
@@ -435,7 +503,10 @@ async function redisDeletePost(post: CommunityPost): Promise<void> {
   const redis = getRedis();
   if (!redis) throw new Error("Redis is not configured.");
   await redis.del(redisPostKey(post.id));
-  await redis.del(redisImageKey(post.id));
+  for (const asset of postImageAssets(post)) {
+    await redis.del(redisImageKey(asset.id));
+  }
+  // Legacy single-image key (same as post id) — already covered by cover asset.
   await redis.lrem(REDIS_INDEX, 0, post.id);
 }
 
@@ -487,7 +558,7 @@ async function blobLocalListPosts(): Promise<CommunityPost[]> {
 }
 
 async function blobLocalGetPost(id: string): Promise<CommunityPost | null> {
-  if (!/^[a-z0-9]+-[a-f0-9]+$/i.test(id)) return null;
+  if (!POST_ID_RE.test(id)) return null;
   const pathname = `${POSTS_PREFIX}${id}.json`;
   const buf = (await getBlobBytes(pathname)) ?? (await getLocal(pathname));
   if (!buf) return null;
@@ -498,24 +569,33 @@ async function blobLocalGetPost(id: string): Promise<CommunityPost | null> {
   }
 }
 
+async function putImageBytes(
+  imagePath: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<void> {
+  const blobOk = await putBlobBytes(imagePath, buffer, contentType);
+  if (blobOk) return;
+  if (isVercelRuntime()) {
+    throw new Error(
+      blobDisableReason ||
+        "Blob write failed; refusing ephemeral /tmp on Vercel.",
+    );
+  }
+  await putLocal(imagePath, buffer);
+}
+
 async function blobLocalWritePost(
   post: CommunityPost,
-  image?: { buffer: Buffer; contentType: string },
+  images?: ImagePayload[],
 ): Promise<"blob" | "local"> {
-  if (image) {
-    const blobOk = await putBlobBytes(
-      post.imagePath,
-      image.buffer,
-      image.contentType,
-    );
-    if (!blobOk) {
-      if (isVercelRuntime()) {
-        throw new Error(
-          blobDisableReason ||
-            "Blob write failed; refusing ephemeral /tmp on Vercel.",
-        );
-      }
-      await putLocal(post.imagePath, image.buffer);
+  if (images?.length) {
+    const assets = postImageAssets(post);
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i]!;
+      const asset = assets.find((a) => a.id === image.id) ?? assets[i];
+      const imagePath = asset?.imagePath ?? `${IMAGES_PREFIX}${image.id}.bin`;
+      await putImageBytes(imagePath, image.buffer, image.contentType);
     }
   }
 
@@ -537,21 +617,23 @@ async function blobLocalWritePost(
 }
 
 async function blobLocalDeletePost(post: CommunityPost): Promise<void> {
-  await deleteBlobBytes(post.imagePath);
+  for (const asset of postImageAssets(post)) {
+    await deleteBlobBytes(asset.imagePath);
+    if (!isVercelRuntime()) await deleteLocal(asset.imagePath);
+  }
   await deleteBlobBytes(`${POSTS_PREFIX}${post.id}.json`);
   if (!isVercelRuntime()) {
-    await deleteLocal(post.imagePath);
     await deleteLocal(`${POSTS_PREFIX}${post.id}.json`);
   }
 }
 
-async function blobLocalGetImage(
-  post: CommunityPost,
+async function blobLocalGetImageAsset(
+  asset: CommunityImageAsset,
 ): Promise<{ body: Buffer; contentType: string } | null> {
   const body =
-    (await getBlobBytes(post.imagePath)) ?? (await getLocal(post.imagePath));
+    (await getBlobBytes(asset.imagePath)) ?? (await getLocal(asset.imagePath));
   if (!body) return null;
-  return { body, contentType: post.contentType };
+  return { body, contentType: asset.contentType };
 }
 
 /* ---------------- Public API ---------------- */
@@ -574,10 +656,17 @@ export async function listCommunityPosts(): Promise<CommunityPost[]> {
   return blobLocalListPosts();
 }
 
+function postIdFromImageId(imageId: string): string | null {
+  if (POST_ID_RE.test(imageId)) return imageId;
+  const m = imageId.match(/^(.*)i(\d+)$/i);
+  if (m && POST_ID_RE.test(m[1]!)) return m[1]!;
+  return null;
+}
+
 export async function getCommunityPost(
   id: string,
 ): Promise<CommunityPost | null> {
-  if (!/^[a-z0-9]+-[a-f0-9]+$/i.test(id)) return null;
+  if (!POST_ID_RE.test(id)) return null;
   if (activeBackend() === "redis") {
     const fromRedis = await redisGetPost(id);
     if (fromRedis) return fromRedis;
@@ -592,9 +681,22 @@ export async function getCommunityImage(
     const fromRedis = await redisGetImage(id);
     if (fromRedis) return fromRedis;
   }
-  const post = await getCommunityPost(id);
+  const postId = postIdFromImageId(id);
+  if (!postId) return null;
+  const post = await getCommunityPost(postId);
   if (!post) return null;
-  return blobLocalGetImage(post);
+  const asset =
+    postImageAssets(post).find((a) => a.id === id) ??
+    (id === post.id
+      ? coverAssetFromLegacy(
+          post.id,
+          post.imageUrl,
+          post.contentType,
+          post.imagePath,
+        )
+      : null);
+  if (!asset) return null;
+  return blobLocalGetImageAsset(asset);
 }
 
 export type CreateCommunityPostInput = {
@@ -602,10 +704,11 @@ export type CreateCommunityPostInput = {
   author: unknown;
   caption?: unknown;
   eventDate: unknown;
-  image: {
+  /** One or more photos (album). At least one required. */
+  images: {
     buffer: Buffer;
     contentType: string;
-  };
+  }[];
 };
 
 export type CreateCommunityPostResult =
@@ -652,40 +755,70 @@ export async function createCommunityPost(
     };
   }
 
-  const contentType = input.image.contentType
-    .toLowerCase()
-    .split(";")[0]!
-    .trim();
-  const ext = ALLOWED_TYPES[contentType];
-  if (!ext) {
+  if (!Array.isArray(input.images) || input.images.length === 0) {
+    return { ok: false, error: "At least one photo is required.", status: 400 };
+  }
+  if (input.images.length > MAX_IMAGES_PER_POST) {
     return {
       ok: false,
-      error: "Image must be JPEG, PNG, or WebP.",
-      status: 400,
-    };
-  }
-  if (!input.image.buffer.length) {
-    return { ok: false, error: "Image file is empty.", status: 400 };
-  }
-  if (input.image.buffer.length > MAX_IMAGE_BYTES) {
-    return {
-      ok: false,
-      error: "Image must be 5 MB or smaller.",
+      error: `You can upload up to ${MAX_IMAGES_PER_POST} photos per post.`,
       status: 400,
     };
   }
 
+  const prepared: ImagePayload[] = [];
+  for (let i = 0; i < input.images.length; i++) {
+    const img = input.images[i]!;
+    const contentType = img.contentType.toLowerCase().split(";")[0]!.trim();
+    const ext = ALLOWED_TYPES[contentType];
+    if (!ext) {
+      return {
+        ok: false,
+        error: `Photo ${i + 1}: must be JPEG, PNG, or WebP.`,
+        status: 400,
+      };
+    }
+    if (!img.buffer.length) {
+      return {
+        ok: false,
+        error: `Photo ${i + 1} is empty.`,
+        status: 400,
+      };
+    }
+    if (img.buffer.length > MAX_IMAGE_BYTES) {
+      return {
+        ok: false,
+        error: `Photo ${i + 1} must be 5 MB or smaller.`,
+        status: 400,
+      };
+    }
+    prepared.push({ id: "", buffer: img.buffer, contentType });
+  }
+
   const id = newId();
-  const imagePath = `${IMAGES_PREFIX}${id}.${ext}`;
+  const assets: CommunityImageAsset[] = prepared.map((img, index) => {
+    const imageId = imageIdForPostIndex(id, index);
+    const ext = ALLOWED_TYPES[img.contentType]!;
+    const imagePath = `${IMAGES_PREFIX}${imageId}.${ext}`;
+    img.id = imageId;
+    return {
+      id: imageId,
+      imageUrl: imageUrlForId(imageId),
+      contentType: img.contentType,
+      imagePath,
+    };
+  });
+  const cover = assets[0]!;
   const post: CommunityPost = {
     id,
     title,
     author,
     caption,
     eventDate: eventDateRaw,
-    imageUrl: imageUrlForId(id),
-    contentType,
-    imagePath,
+    imageUrl: cover.imageUrl,
+    contentType: cover.contentType,
+    imagePath: cover.imagePath,
+    images: assets,
     createdAt: new Date().toISOString(),
     likes: 0,
     comments: [],
@@ -693,23 +826,13 @@ export async function createCommunityPost(
 
   try {
     if (backend === "redis") {
-      await redisWritePost(
-        post,
-        { buffer: input.image.buffer, contentType },
-        { addToIndex: true },
-      );
+      await redisWritePost(post, prepared, { addToIndex: true });
       // Best-effort mirror to Blob when healthy (extra durability).
       if (useBlobStorage()) {
-        void blobLocalWritePost(post, {
-          buffer: input.image.buffer,
-          contentType,
-        }).catch(() => undefined);
+        void blobLocalWritePost(post, prepared).catch(() => undefined);
       }
     } else {
-      await blobLocalWritePost(post, {
-        buffer: input.image.buffer,
-        contentType,
-      });
+      await blobLocalWritePost(post, prepared);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

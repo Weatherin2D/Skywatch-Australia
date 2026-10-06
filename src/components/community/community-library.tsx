@@ -19,6 +19,7 @@ import {
   writeLikedPostIds,
 } from "@/lib/community/liked-local";
 import type {
+  CommunityImageAsset,
   CommunityPost,
   PictureFormatFilter,
 } from "@/lib/community/types";
@@ -37,6 +38,18 @@ function pictureKind(contentType: string): PictureFormatFilter | "other" {
   if (t.includes("png")) return "png";
   if (t.includes("webp")) return "webp";
   return "other";
+}
+
+function postImages(post: CommunityPost): CommunityImageAsset[] {
+  if (Array.isArray(post.images) && post.images.length > 0) return post.images;
+  return [
+    {
+      id: post.id,
+      imageUrl: post.imageUrl,
+      contentType: post.contentType,
+      imagePath: post.imagePath,
+    },
+  ];
 }
 
 function sortPosts(posts: CommunityPost[], sort: LibrarySort): CommunityPost[] {
@@ -93,6 +106,7 @@ export function CommunityLibrary({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [likeBusy, setLikeBusy] = useState<string | null>(null);
   const [commentAuthor, setCommentAuthor] = useState("");
@@ -112,7 +126,10 @@ export function CommunityLibrary({
     const q = query.trim().toLowerCase();
     const base = posts.filter((p) => {
       if (!postMatchesText(p, q)) return false;
-      if (pictureFilter !== "all" && pictureKind(p.contentType) !== pictureFilter) {
+      if (
+        pictureFilter !== "all" &&
+        !postImages(p).some((img) => pictureKind(img.contentType) === pictureFilter)
+      ) {
         return false;
       }
       if (textFilter === "with-caption" && !p.caption.trim()) return false;
@@ -128,6 +145,12 @@ export function CommunityLibrary({
     ? filtered.findIndex((p) => p.id === activeId)
     : -1;
   const active = activeIndex >= 0 ? filtered[activeIndex] : null;
+  const activePhotos = active ? postImages(active) : [];
+  const safePhotoIndex =
+    activePhotos.length === 0
+      ? 0
+      : Math.min(photoIndex, activePhotos.length - 1);
+  const activePhoto = activePhotos[safePhotoIndex] ?? null;
 
   function replacePost(next: CommunityPost) {
     onPostsChange(posts.map((p) => (p.id === next.id ? next : p)));
@@ -135,22 +158,35 @@ export function CommunityLibrary({
 
   function openAt(id: string) {
     setActiveId(id);
+    setPhotoIndex(0);
     setCommentError(null);
     setActionError(null);
   }
 
   function closeViewer() {
     setActiveId(null);
+    setPhotoIndex(0);
     setCommentError(null);
     setActionError(null);
   }
 
-  function step(delta: number) {
+  function stepPost(delta: number) {
     if (filtered.length === 0 || activeIndex < 0) return;
     const next = (activeIndex + delta + filtered.length) % filtered.length;
     setActiveId(filtered[next]!.id);
+    setPhotoIndex(0);
     setCommentError(null);
     setActionError(null);
+  }
+
+  function stepPhoto(delta: number) {
+    if (activePhotos.length <= 1) {
+      stepPost(delta);
+      return;
+    }
+    setPhotoIndex(
+      (safePhotoIndex + delta + activePhotos.length) % activePhotos.length,
+    );
   }
 
   async function toggleLike(post: CommunityPost) {
@@ -393,13 +429,20 @@ export function CommunityLibrary({
                     onClick={() => openAt(post.id)}
                     className="group block w-full text-left"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={post.imageUrl}
-                      alt={post.title}
-                      className="aspect-[4/3] w-full object-cover bg-[#0a1628] transition duration-300 group-hover:scale-[1.02]"
-                      loading="lazy"
-                    />
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={post.imageUrl}
+                        alt={post.title}
+                        className="aspect-[4/3] w-full object-cover bg-[#0a1628] transition duration-300 group-hover:scale-[1.02]"
+                        loading="lazy"
+                      />
+                      {postImages(post).length > 1 ? (
+                        <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          {postImages(post).length} photos
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="space-y-1 p-3 pb-2">
                       <h3 className="text-sm font-semibold text-white">
                         {post.title}
@@ -500,31 +543,94 @@ export function CommunityLibrary({
               <div className="relative flex items-center justify-center bg-black/40 p-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={active.imageUrl}
-                  alt={active.title}
+                  src={activePhoto?.imageUrl ?? active.imageUrl}
+                  alt={
+                    activePhotos.length > 1
+                      ? `${active.title} (${safePhotoIndex + 1}/${activePhotos.length})`
+                      : active.title
+                  }
                   className="max-h-[42vh] w-auto max-w-full object-contain"
                 />
-                {filtered.length > 1 ? (
+                {activePhotos.length > 1 || filtered.length > 1 ? (
                   <>
                     <button
                       type="button"
-                      onClick={() => step(-1)}
+                      onClick={() => stepPhoto(-1)}
                       className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 p-2 text-white hover:bg-black/70"
-                      aria-label="Previous photo"
+                      aria-label={
+                        activePhotos.length > 1
+                          ? "Previous photo in album"
+                          : "Previous post"
+                      }
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
                     <button
                       type="button"
-                      onClick={() => step(1)}
+                      onClick={() => stepPhoto(1)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 p-2 text-white hover:bg-black/70"
-                      aria-label="Next photo"
+                      aria-label={
+                        activePhotos.length > 1
+                          ? "Next photo in album"
+                          : "Next post"
+                      }
                     >
                       <ChevronRight className="h-5 w-5" />
                     </button>
                   </>
                 ) : null}
+                {activePhotos.length > 1 ? (
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white">
+                    {safePhotoIndex + 1} / {activePhotos.length}
+                  </span>
+                ) : null}
               </div>
+              {activePhotos.length > 1 ? (
+                <div className="flex gap-1.5 overflow-x-auto px-3 pt-2">
+                  {activePhotos.map((img, i) => (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => setPhotoIndex(i)}
+                      className={cn(
+                        "h-14 w-14 shrink-0 overflow-hidden rounded-lg border",
+                        i === safePhotoIndex
+                          ? "border-[var(--cyan)]"
+                          : "border-white/15 opacity-80 hover:opacity-100",
+                      )}
+                      aria-label={`Show photo ${i + 1}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.imageUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {filtered.length > 1 ? (
+                <div className="flex items-center justify-between gap-2 px-4 pt-2 text-[11px] text-white/50">
+                  <button
+                    type="button"
+                    onClick={() => stepPost(-1)}
+                    className="hover:text-white"
+                  >
+                    ← Prev post
+                  </button>
+                  <span>
+                    Post {activeIndex + 1} of {filtered.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => stepPost(1)}
+                    className="hover:text-white"
+                  >
+                    Next post →
+                  </button>
+                </div>
+              ) : null}
 
               <div className="space-y-3 px-4 py-3">
                 {active.caption ? (

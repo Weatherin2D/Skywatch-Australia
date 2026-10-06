@@ -5,6 +5,14 @@ export type CommunityComment = {
   createdAt: string;
 };
 
+/** One photo inside a community post (cover or gallery extra). */
+export type CommunityImageAsset = {
+  id: string;
+  imageUrl: string;
+  contentType: string;
+  imagePath: string;
+};
+
 export type CommunityPost = {
   id: string;
   title: string;
@@ -13,10 +21,12 @@ export type CommunityPost = {
   caption: string;
   /** Event date as YYYY-MM-DD (user-editable). */
   eventDate: string;
-  /** Public path to serve the image (API proxy). */
+  /** Cover / primary image (same as images[0] when present). */
   imageUrl: string;
   contentType: string;
   imagePath: string;
+  /** All photos in this post (1+). Older posts may omit; clients should fall back to cover fields. */
+  images: CommunityImageAsset[];
   createdAt: string;
   likes: number;
   comments: CommunityComment[];

@@ -99,13 +99,20 @@ export function HomeCommunityPanel() {
                 href="/community"
                 className="group block overflow-hidden rounded-xl border border-white/10 bg-[#0a1628] transition hover:border-[var(--cyan)]/40"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.imageUrl}
-                  alt={post.title}
-                  className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
+                <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={post.imageUrl}
+                    alt={post.title}
+                    className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    loading="lazy"
+                  />
+                  {Array.isArray(post.images) && post.images.length > 1 ? (
+                    <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/65 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                      {post.images.length}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="space-y-0.5 p-2">
                   <p className="truncate text-xs font-semibold text-white">
                     {post.title}

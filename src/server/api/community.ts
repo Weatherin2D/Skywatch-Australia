@@ -7,6 +7,7 @@ import {
   isCommunityAdminAuthorized,
   listCommunityPosts,
   MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_POST,
 } from "@/lib/community/storage";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export const maxDuration = 60;
 
 /**
  * GET /api/community — list weather photo posts (newest first).
- * POST /api/community — multipart create (title, author, caption, eventDate, image).
+ * POST /api/community — multipart create (title, author, caption, eventDate, image|images).
  * DELETE /api/community — admin-only delete via secret.
  */
 export async function GET() {
@@ -44,6 +45,21 @@ export async function GET() {
   }
 }
 
+function collectImageFiles(form: FormData): File[] {
+  const files: File[] = [];
+  const multi = form.getAll("images");
+  for (const item of multi) {
+    if (item instanceof File && item.size > 0) files.push(item);
+  }
+  if (files.length === 0) {
+    const singles = form.getAll("image");
+    for (const item of singles) {
+      if (item instanceof File && item.size > 0) files.push(item);
+    }
+  }
+  return files;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get("content-type") ?? "";
@@ -59,31 +75,45 @@ export async function POST(request: NextRequest) {
     const author = form.get("author");
     const caption = form.get("caption");
     const eventDate = form.get("eventDate");
-    const image = form.get("image");
+    const files = collectImageFiles(form);
 
-    if (!(image instanceof File)) {
+    if (files.length === 0) {
       return NextResponse.json(
-        { error: "An image file is required." },
+        { error: "At least one photo is required." },
         { status: 400 },
       );
     }
-    if (image.size > MAX_IMAGE_BYTES) {
+    if (files.length > MAX_IMAGES_PER_POST) {
       return NextResponse.json(
-        { error: "Image must be 5 MB or smaller." },
+        {
+          error: `You can upload up to ${MAX_IMAGES_PER_POST} photos per post.`,
+        },
         { status: 400 },
       );
     }
 
-    const buffer = Buffer.from(await image.arrayBuffer());
+    for (let i = 0; i < files.length; i++) {
+      if (files[i]!.size > MAX_IMAGE_BYTES) {
+        return NextResponse.json(
+          { error: `Photo ${i + 1} must be 5 MB or smaller.` },
+          { status: 400 },
+        );
+      }
+    }
+
+    const images = await Promise.all(
+      files.map(async (file) => ({
+        buffer: Buffer.from(await file.arrayBuffer()),
+        contentType: file.type || "application/octet-stream",
+      })),
+    );
+
     const result = await createCommunityPost({
       title,
       author,
       caption,
       eventDate,
-      image: {
-        buffer,
-        contentType: image.type || "application/octet-stream",
-      },
+      images,
     });
 
     if (!result.ok) {
