@@ -228,11 +228,11 @@
   min-height: 100% !important;
 }
 
-/* Keep RainViewer reflectivity blocks crisp (no browser bilinear blur). */
+/* 512px RainViewer tiles + server bilinear overzoom — let the browser
+   interpolate smoothly instead of forcing blocky nearest-neighbour. */
 .skywatch-radar-tiles img,
 .leaflet-tile-pane .skywatch-radar-tiles img {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
 }
 
 /* BoM risk bands — keep carved edges smooth when Leaflet scales the overlay. */

@@ -34,14 +34,14 @@ function pngResponse(
 }
 
 /**
- * Proxy RainViewer radar tiles as unsmoothed pixels, remapped to the
+ * Proxy RainViewer radar tiles as unsmoothed 512px pixels, remapped to the
  * SkyWatch dBZ colour scale.
  *
  * GET /api/weather/radar-tile?host=&path=&z=&x=&y=
  *
  * RainViewer only has real reflectivity through ~z7. Requests above that are
- * served by cropping/upscaling the native parent tile so zoomed-in views keep
- * paint instead of empty z8–12 placeholders.
+ * served by cropping + bilinear-upscaling the native 512 parent so zoomed-in
+ * views keep paint instead of empty z8–12 placeholders.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
       "X-Radar-Cache": "HIT",
       "X-Radar-Source": "rainviewer-raw",
       "X-Radar-Palette": "skywatch-dbz",
+      "X-Radar-Tile-Size": "512",
       "X-Radar-Native-Z": String(fetchZ),
     });
   }
@@ -117,6 +118,7 @@ export async function GET(req: NextRequest) {
           "X-Radar-Cache": "MISS",
           "X-Radar-Source": "rainviewer-placeholder",
           "X-Radar-Palette": "skywatch-dbz",
+          "X-Radar-Tile-Size": "512",
           "X-Radar-Native-Z": String(fetchZ),
         });
       }
@@ -139,6 +141,7 @@ export async function GET(req: NextRequest) {
     "X-Radar-Cache": "MISS",
     "X-Radar-Source": "rainviewer-raw",
     "X-Radar-Palette": "skywatch-dbz",
+    "X-Radar-Tile-Size": "512",
     "X-Radar-Native-Z": String(fetchZ),
     "X-Radar-Overzoom": overzoom ? String(scale) : "1",
   });

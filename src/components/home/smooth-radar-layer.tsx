@@ -16,6 +16,8 @@ function createBufferLayer(zIndex: number): L.TileLayer {
   return L.tileLayer("", {
     opacity: 0,
     className: "skywatch-radar-tiles",
+    // Keep the standard 256 CSS tile grid (matches basemap). The proxy serves
+    // 512px PNGs into these slots for 2× supersampling / sharp retina paint.
     keepBuffer: 24,
     // Hold painted tiles through the gesture — updating mid-zoom was blanking
     // the radar so it looked like it "vanished" on pinch/scroll.
@@ -43,7 +45,7 @@ function createBufferLayer(zIndex: number): L.TileLayer {
  */
 export function SmoothRadarLayer({
   url,
-  opacity = 0.88,
+  opacity = 0.92,
 }: {
   url: string | null;
   opacity?: number;
