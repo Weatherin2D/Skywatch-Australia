@@ -22,6 +22,11 @@ export const PRIMARY_NAV = [
   { href: "/forecast", label: "Forecast", icon: CloudSun },
 ] as const;
 
+/** Right-aligned primary items (sit beside More / search). */
+export const PRIMARY_NAV_END = [
+  { href: "/community", label: "Community", icon: Users },
+] as const;
+
 export const SECONDARY_NAV = [
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/models", label: "Models", icon: Layers },
@@ -42,7 +47,6 @@ export const MORE_NAV = [
   { href: "/climate", label: "Climate" },
   { href: "/risk", label: "Risk outlook" },
   { href: "/hazards", label: "Hazards (UV · Fire · Marine)" },
-  { href: "/community", label: "Community" },
 ] as const;
 
 export const MOBILE_NAV = [

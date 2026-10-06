@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SiteShell } from "@/components/site/site-shell";
-import { MORE_NAV } from "@/components/site/nav-config";
+import { MORE_NAV, PRIMARY_NAV_END } from "@/components/site/nav-config";
 
 export default function MorePage() {
   const [installHint, setInstallHint] = useState(false);

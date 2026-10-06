@@ -3,12 +3,50 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, MapPin } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { SkyWatchLogo } from "@/components/site/skywatch-logo";
 import { LocationSearch } from "@/components/forecast/location-search";
-import { MORE_NAV, PRIMARY_NAV, STATE_PILLS } from "@/components/site/nav-config";
+import {
+  MORE_NAV,
+  PRIMARY_NAV,
+  PRIMARY_NAV_END,
+  STATE_PILLS,
+} from "@/components/site/nav-config";
 import { STATE_CAPITALS } from "@/lib/weather/location-forecast";
 import { cn } from "@/lib/utils";
+
+function NavLink({
+  href,
+  label,
+  icon: Icon,
+  active,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={cn(
+        "relative flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition",
+        active
+          ? "bg-[var(--cyan)]/12 text-[var(--cyan)]"
+          : "text-white/70 hover:bg-white/5 hover:text-white",
+      )}
+    >
+      <Icon className="pointer-events-none h-4 w-4 opacity-90" aria-hidden />
+      {label}
+      {active ? (
+        <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-[var(--cyan)]" />
+      ) : null}
+    </Link>
+  );
+}
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -38,6 +76,12 @@ export function SiteHeader() {
     };
   }, [moreOpen]);
 
+  function isActive(href: string) {
+    return href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b16]/80 text-white backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2.5 px-3 py-2.5 sm:px-4 lg:px-5">
@@ -53,67 +97,70 @@ export function SiteHeader() {
 
           <nav
             aria-label="Primary"
-            className="relative z-10 mx-auto hidden items-center gap-1 lg:flex"
+            className="relative z-10 hidden min-w-0 flex-1 items-center gap-1 lg:flex"
           >
-            {PRIMARY_NAV.map(({ href, label, icon: Icon }) => {
-              const active =
-                href === "/"
-                  ? pathname === "/"
-                  : pathname === href || pathname.startsWith(`${href}/`);
-              return (
-                <Link
+            {PRIMARY_NAV.map(({ href, label, icon }) => (
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                active={isActive(href)}
+                onNavigate={() => setMoreOpen(false)}
+              />
+            ))}
+
+            <div className="ml-auto flex items-center gap-1">
+              {PRIMARY_NAV_END.map(({ href, label, icon }) => (
+                <NavLink
                   key={href}
                   href={href}
-                  onClick={() => setMoreOpen(false)}
+                  label={label}
+                  icon={icon}
+                  active={isActive(href)}
+                  onNavigate={() => setMoreOpen(false)}
+                />
+              ))}
+              <div className="relative" ref={moreRef}>
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen((v) => !v)}
                   className={cn(
-                    "relative flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition",
-                    active
-                      ? "bg-[var(--cyan)]/12 text-[var(--cyan)]"
+                    "flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold transition",
+                    moreOpen
+                      ? "bg-white/10 text-white"
                       : "text-white/70 hover:bg-white/5 hover:text-white",
                   )}
+                  aria-expanded={moreOpen}
+                  aria-haspopup="menu"
                 >
-                  <Icon className="pointer-events-none h-4 w-4 opacity-90" aria-hidden />
-                  {label}
-                  {active ? (
-                    <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-[var(--cyan)]" />
-                  ) : null}
-                </Link>
-              );
-            })}
-            <div className="relative" ref={moreRef}>
-              <button
-                type="button"
-                onClick={() => setMoreOpen((v) => !v)}
-                className="flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold text-white/70 transition hover:bg-white/5 hover:text-white"
-                aria-expanded={moreOpen}
-                aria-haspopup="menu"
-              >
-                More
-                <ChevronDown className="pointer-events-none h-3.5 w-3.5" />
-              </button>
-              {moreOpen ? (
-                <ul
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 shadow-xl backdrop-blur-xl"
-                >
-                  {MORE_NAV.map((item) => (
-                    <li key={item.href} role="none">
-                      <Link
-                        role="menuitem"
-                        href={item.href}
-                        onClick={() => setMoreOpen(false)}
-                        className="block px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/5 hover:text-white"
-                      >
-                        {item.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+                  More
+                  <ChevronDown className="pointer-events-none h-3.5 w-3.5" />
+                </button>
+                {moreOpen ? (
+                  <ul
+                    role="menu"
+                    className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 shadow-xl backdrop-blur-xl"
+                  >
+                    {MORE_NAV.map((item) => (
+                      <li key={item.href} role="none">
+                        <Link
+                          role="menuitem"
+                          href={item.href}
+                          onClick={() => setMoreOpen(false)}
+                          className="block px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/5 hover:text-white"
+                        >
+                          {item.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </div>
           </nav>
 
-          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 lg:max-w-md lg:flex-none">
+          <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2 lg:ml-0 lg:max-w-md">
             <LocationSearch
               compact
               className="w-full max-w-[min(100%,280px)] sm:max-w-[240px]"
