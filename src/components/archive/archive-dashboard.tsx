@@ -6,8 +6,6 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { HomeMapDynamic } from "@/components/home/home-map-dynamic";
 import {
   clampLightningIconScale,
-  DEFAULT_MAP_REGION,
-  DEFAULT_MAP_SETTINGS,
   LIGHTNING_ICON_SCALE_MAX,
   LIGHTNING_ICON_SCALE_MIN,
   LIGHTNING_ICON_SCALE_STEP,
@@ -29,15 +27,12 @@ import {
 } from "@/lib/weather/archive-time";
 import {
   ARCHIVE_LOOP_OPTIONS,
-  DEFAULT_ARCHIVE_LOOP_HOURS,
   buildArchiveScrubFrames,
   clampArchiveLoopHours,
   parseArchiveLoopParam,
 } from "@/lib/weather/archive-client";
 import type { LightningStrike } from "@/lib/weather/lightning";
 import {
-  DEFAULT_PLAYBACK_SPEED,
-  DEFAULT_SATELLITE_PRODUCT,
   GIBS_AU_BOUNDS,
   PLAYBACK_SPEEDS,
   formatFrameTimeAEST,
@@ -55,6 +50,10 @@ import {
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
+import {
+  readArchiveUiPrefs,
+  writeArchiveUiPrefs,
+} from "@/lib/prefs/map-ui";
 import { cn } from "@/lib/utils";
 
 type CatalogProduct = { id: SatelliteProductId; label: string };
@@ -146,24 +145,28 @@ function clampPartsToRange(
 function ArchiveDashboardInner() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const savedUi = useMemo(() => readArchiveUiPrefs(), []);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [availableTimes, setAvailableTimes] = useState<number[]>([]);
   const [product, setProduct] = useState<SatelliteProductId>(
-    DEFAULT_SATELLITE_PRODUCT,
+    () => savedUi.product,
   );
-  const [regionId, setRegionId] = useState<MapRegionId>(DEFAULT_MAP_REGION);
+  const [regionId, setRegionId] = useState<MapRegionId>(() => savedUi.regionId);
   const [parts, setParts] = useState<AestParts | null>(null);
-  const [showLightning, setShowLightning] = useState(true);
-  const [showSynoptic, setShowSynoptic] = useState(true);
-  const [showStations, setShowStations] = useState(false);
+  const [showLightning, setShowLightning] = useState(
+    () => savedUi.showLightning,
+  );
+  const [showSynoptic, setShowSynoptic] = useState(() => savedUi.showSynoptic);
+  const [showStations, setShowStations] = useState(() => savedUi.showStations);
   const { stations: weatherStations } = useStations(showStations);
-  const [loopHours, setLoopHours] = useState(DEFAULT_ARCHIVE_LOOP_HOURS);
+  const [loopHours, setLoopHours] = useState(() => savedUi.loopHours);
   const [playing, setPlaying] = useState(false);
-  const [speedId, setSpeedId] = useState<PlaybackSpeedId>(DEFAULT_PLAYBACK_SPEED);
+  const [speedId, setSpeedId] = useState<PlaybackSpeedId>(() => savedUi.speedId);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [mapSettings, setMapSettings] =
-    useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
+  const [mapSettings, setMapSettings] = useState<MapSettingsState>(
+    () => savedUi.mapSettings,
+  );
   const [archiveLightning, setArchiveLightning] = useState<LightningStrike[]>(
     [],
   );
@@ -212,21 +215,47 @@ function ArchiveDashboardInner() {
         setCatalog(data);
         setCatalogError(null);
         if (!hydrated.current) {
+          // Client rehydrate from localStorage (SSR used defaults), then URL.
+          const saved = readArchiveUiPrefs();
+          setMapSettings(saved.mapSettings);
+          setSpeedId(saved.speedId);
+          setShowLightning(saved.showLightning);
+          setShowSynoptic(saved.showSynoptic);
+          setShowStations(saved.showStations);
+          setLoopHours(saved.loopHours);
+          setRegionId(saved.regionId);
+          if (
+            data.products.some((x) => x.id === saved.product)
+          ) {
+            setProduct(saved.product);
+          } else if (data.products[0]) {
+            setProduct(data.products[0].id);
+          }
+
           const tParam = searchParams.get("t");
           const t = tParam ? Number(tParam) : data.tipUnix;
           const unix = Number.isFinite(t)
             ? Math.min(Math.max(t, data.epochUnix), data.tipUnix)
             : data.tipUnix;
           setParts(unixToAestParts(quantizeArchiveStamp(unix)));
+          // Shareable URL params win over saved prefs.
           const p = searchParams.get("product");
-          if (p && isSatelliteProductId(p)) setProduct(p);
-          else if (data.products[0]) setProduct(data.products[0].id);
+          if (p && isSatelliteProductId(p)) {
+            setProduct(p);
+          }
           const r = searchParams.get("region");
           if (r && MAP_REGIONS.some((x) => x.id === r)) {
             setRegionId(r as MapRegionId);
           }
-          if (searchParams.get("lightning") === "0") setShowLightning(false);
-          if (searchParams.get("synoptic") === "0") setShowSynoptic(false);
+          const lightning = searchParams.get("lightning");
+          if (lightning === "0") setShowLightning(false);
+          else if (lightning === "1") setShowLightning(true);
+          const synoptic = searchParams.get("synoptic");
+          if (synoptic === "0") setShowSynoptic(false);
+          else if (synoptic === "1") setShowSynoptic(true);
+          const stations = searchParams.get("stations");
+          if (stations === "0") setShowStations(false);
+          else if (stations === "1") setShowStations(true);
           const loop = parseArchiveLoopParam(searchParams.get("loop"));
           if (loop != null) setLoopHours(loop);
           hydrated.current = true;
@@ -542,6 +571,30 @@ function ArchiveDashboardInner() {
     showSynoptic,
     loopHours,
     playing,
+  ]);
+
+  // Persist overlays / cartography / loop prefs across visits.
+  useEffect(() => {
+    if (!hydrated.current) return;
+    writeArchiveUiPrefs({
+      showLightning,
+      showSynoptic,
+      showStations,
+      mapSettings,
+      product,
+      regionId,
+      loopHours,
+      speedId,
+    });
+  }, [
+    showLightning,
+    showSynoptic,
+    showStations,
+    mapSettings,
+    product,
+    regionId,
+    loopHours,
+    speedId,
   ]);
 
   useEffect(() => {

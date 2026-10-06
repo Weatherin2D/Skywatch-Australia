@@ -29,8 +29,6 @@ import {
 import {
   clampLightningIconScale,
   DEFAULT_MAP_REGION,
-  DEFAULT_MAP_SETTINGS,
-  DEFAULT_WEATHER_LAYERS,
   LIGHTNING_ICON_SCALE_MAX,
   LIGHTNING_ICON_SCALE_MIN,
   LIGHTNING_ICON_SCALE_STEP,
@@ -52,8 +50,8 @@ import { useStations } from "@/hooks/use-stations";
 import { useSynoptic } from "@/hooks/use-synoptic";
 import { pickSynopticFrame } from "@/lib/weather/synoptic";
 import { prefetchSynopticGeoJson } from "@/lib/weather/synoptic-geojson-cache";
+import { readMapUiPrefs, writeMapUiPrefs } from "@/lib/prefs/map-ui";
 import {
-  DEFAULT_PLAYBACK_SPEED,
   DEFAULT_SATELLITE_PRODUCT,
   PLAYBACK_SPEEDS,
   SATELLITE_PRODUCTS,
@@ -280,23 +278,32 @@ function HomeDashboardInner({
   /** False until URL params have been applied — sync must wait for this render. */
   const [urlReady, setUrlReady] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const savedUi = useMemo(() => readMapUiPrefs(), []);
 
   const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
     if (focus === "radar") {
-      return { ...DEFAULT_WEATHER_LAYERS, radar: true, lightning: true };
+      return { ...savedUi.layers, radar: true, lightning: true };
     }
-    return DEFAULT_WEATHER_LAYERS;
+    return savedUi.layers;
   });
-  const [mapSettings, setMapSettings] =
-    useState<MapSettingsState>(DEFAULT_MAP_SETTINGS);
-  const [mode, setMode] = useState<MapMode>(() =>
-    focus === "radar" ? "Map" : "Satellite",
+  const [mapSettings, setMapSettings] = useState<MapSettingsState>(
+    () => savedUi.mapSettings,
   );
-  const [regionId, setRegionId] = useState<MapRegionId>(DEFAULT_MAP_REGION);
+  const [mode, setMode] = useState<MapMode>(() => {
+    if (focus === "radar") return "Map";
+    if (focus === "satellite") return "Satellite";
+    return savedUi.mode;
+  });
+  const [regionId, setRegionId] = useState<MapRegionId>(() => savedUi.regionId);
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
-    DEFAULT_SATELLITE_PRODUCT,
+    () => savedUi.satProduct,
   );
-  const [chaseEnabled, setChaseEnabled] = useState(false);
+  const [chaseEnabled, setChaseEnabled] = useState(
+    () => focus === "radar" || savedUi.chaseEnabled,
+  );
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
+    () => savedUi.playbackSpeed,
+  );
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [focusCellId, setFocusCellId] = useState<string | null>(null);
   const stormCellsEnabled = chaseEnabled || focus === "radar";
@@ -304,11 +311,30 @@ function HomeDashboardInner({
     useStormCells(45_000, stormCellsEnabled);
   const stormCells = stormCellsData?.cells ?? [];
 
-  // Hydrate map state from shareable query params once, then allow URL sync.
+  // Rehydrate from localStorage (SSR can't), then apply shareable URL params.
   // Sync must not run in the same effect flush with stale regionId — that was
   // stripping ?region= and yanking the map back to national framing.
   useEffect(() => {
     if (urlReady) return;
+    const saved = readMapUiPrefs();
+    setMapSettings(saved.mapSettings);
+    setPlaybackSpeed(saved.playbackSpeed);
+    setSatProduct(saved.satProduct);
+    setRegionId(saved.regionId);
+    if (focus === "radar") {
+      setMode("Map");
+      setChaseEnabled(true);
+      setLayers({ ...saved.layers, radar: true, lightning: true });
+    } else if (focus === "satellite") {
+      setMode("Satellite");
+      setChaseEnabled(saved.chaseEnabled);
+      setLayers(saved.layers);
+    } else {
+      setMode(saved.mode);
+      setChaseEnabled(saved.chaseEnabled);
+      setLayers(saved.layers);
+    }
+
     const region = searchParams.get("region");
     if (region && isMapRegionId(region)) setRegionId(region);
     const modeParam = searchParams.get("mode");
@@ -374,6 +400,32 @@ function HomeDashboardInner({
     }
   }, [focus]);
 
+  // Persist overlays / cartography / view prefs across visits. Dedicated
+  // /radar and /satellite pages force mode + chase — keep home prefs intact.
+  useEffect(() => {
+    if (!urlReady) return;
+    const prev = readMapUiPrefs();
+    writeMapUiPrefs({
+      layers,
+      mapSettings,
+      mode: focus ? prev.mode : mode,
+      regionId,
+      satProduct,
+      playbackSpeed,
+      chaseEnabled: focus ? prev.chaseEnabled : chaseEnabled,
+    });
+  }, [
+    urlReady,
+    focus,
+    layers,
+    mapSettings,
+    mode,
+    regionId,
+    satProduct,
+    playbackSpeed,
+    chaseEnabled,
+  ]);
+
   // Sync shareable map query params on the current dashboard route only.
   // Never rewrite the path — that fought Next.js <Link> navigations and left
   // users stuck on Home/Radar/Satellite when clicking Warnings, Forecast, etc.
@@ -436,9 +488,6 @@ function HomeDashboardInner({
   const regionMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
-    DEFAULT_PLAYBACK_SPEED,
-  );
   /** Respect manual pause; autoplay resumes only after user hits play again. */
   const userPausedRef = useRef(false);
   const autoPlayKeyRef = useRef("");
