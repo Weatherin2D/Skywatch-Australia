@@ -6,7 +6,7 @@ import { CommunityLibrary } from "@/components/community/community-library";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CommunityPost } from "@/lib/community/types";
+import type { CommunityPost, StorageStatus } from "@/lib/community/types";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -20,6 +20,7 @@ export function CommunityDashboard() {
   const formId = useId();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [adminDeleteConfigured, setAdminDeleteConfigured] = useState(false);
+  const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -45,10 +46,12 @@ export function CommunityDashboard() {
       const json = (await res.json()) as {
         posts?: CommunityPost[];
         adminDeleteConfigured?: boolean;
+        storage?: StorageStatus;
       };
       if (signal?.aborted) return;
       setPosts(Array.isArray(json.posts) ? json.posts : []);
       setAdminDeleteConfigured(Boolean(json.adminDeleteConfigured));
+      setStorage(json.storage ?? null);
       setLoading(false);
     } catch (err) {
       if (signal?.aborted) return;
@@ -133,6 +136,20 @@ export function CommunityDashboard() {
           Share photos of weather that has happened across Australia — storms,
           fog, rainbows, and more. Filter, like, and comment in the library.
         </p>
+        {storage ? (
+          <p
+            className={
+              storage.durable
+                ? "text-xs text-emerald-300/90"
+                : "text-xs text-amber-200/90"
+            }
+          >
+            Storage: {storage.backend}
+            {storage.durable ? " · durable across deploys" : " · not durable yet"}
+            {" — "}
+            {storage.detail}
+          </p>
+        ) : null}
       </div>
 
       <section

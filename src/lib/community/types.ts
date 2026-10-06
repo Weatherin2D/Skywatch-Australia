@@ -23,3 +23,13 @@ export type CommunityPost = {
 };
 
 export type PictureFormatFilter = "all" | "jpeg" | "png" | "webp";
+
+export type CommunityBackend = "redis" | "blob" | "local" | "none";
+
+export type StorageStatus = {
+  durable: boolean;
+  backend: CommunityBackend;
+  /** True when running on Vercel. */
+  vercel: boolean;
+  detail: string;
+};

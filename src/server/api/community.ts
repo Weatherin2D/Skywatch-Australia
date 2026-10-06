@@ -3,6 +3,7 @@ import {
   createCommunityPost,
   deleteCommunityPost,
   getCommunityAdminSecret,
+  getCommunityStorageStatus,
   isCommunityAdminAuthorized,
   listCommunityPosts,
   MAX_IMAGE_BYTES,
@@ -25,6 +26,7 @@ export async function GET() {
       {
         posts,
         adminDeleteConfigured: Boolean(getCommunityAdminSecret()),
+        storage: getCommunityStorageStatus(),
       },
       {
         headers: { "Cache-Control": "no-store" },

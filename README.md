@@ -63,7 +63,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local preferences (no auth/DB):** saved place and warning-alert settings live in `localStorage`. Map view is shareable via query params (`region`, `mode`, `radar`, `lightning`, `synoptic`, `product`).
 
-**Community:** posts persist in Vercel Blob (or `/tmp` locally). Likes are counted server-side with per-browser toggle state in `localStorage`. Public delete requires `COMMUNITY_ADMIN_SECRET` (header `x-community-admin-secret` or JSON body `secret`) — only the secret holder can remove posts.
+**Community:** posts (images, captions, likes, comments, dates) use durable storage so they survive deploys. Preference order: Upstash Redis (`KV_REST_API_URL` + `KV_REST_API_TOKEN`) → healthy Vercel Blob → local `/tmp` (dev only). On Vercel, mutations refuse ephemeral `/tmp` and return 503 if no durable backend is available. Likes also keep a per-browser toggle in `localStorage`. Public delete requires `COMMUNITY_ADMIN_SECRET`.
 
 **PWA:** web manifest + light service worker caches the shell and last successful radar/satellite frame responses for an offline “last view”.
 
