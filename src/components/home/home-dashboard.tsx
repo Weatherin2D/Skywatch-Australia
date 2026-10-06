@@ -908,7 +908,7 @@ function HomeDashboardInner({
         </p>
       </div>
 
-      <div className="animate-fade-up-delay grid items-start gap-3 lg:grid-cols-[220px_minmax(0,1fr)_280px] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+      <div className="animate-fade-up-delay grid items-start gap-2 lg:grid-cols-[220px_minmax(0,1fr)_280px] lg:gap-2 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
         {/* Desktop overlays sidebar */}
         <div className="hidden space-y-3 lg:block">
           <OverlayControls
