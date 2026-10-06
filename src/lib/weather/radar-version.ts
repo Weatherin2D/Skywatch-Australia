@@ -6,5 +6,5 @@
  * `RADAR_RENDER_REV` busts CDN/browser caches when tile size / overzoom /
  * encode behaviour changes.
  */
-export const RADAR_PALETTE_ID = "swdbz2";
-export const RADAR_RENDER_REV = "8";
+export const RADAR_PALETTE_ID = "swdbz3";
+export const RADAR_RENDER_REV = "9";

@@ -53,8 +53,10 @@ function lerp(a: number, b: number, t: number): number {
 
 export function colourForDbz(dbz: number): Rgba {
   const stops = RADAR_DBZ_STOPS;
-  // Below-scale / no echo → fully clear (never paint black slabs).
-  if (dbz < 5) return [0, 0, 0, 0];
+  // No reflectivity / below scale → fully clear.
+  if (dbz < 0) return [0, 0, 0, 0];
+  const first = stops[0]!;
+  if (dbz <= first.dbz) return first.rgba;
   const last = stops[stops.length - 1]!;
   if (dbz >= last.dbz) return last.rgba;
 
