@@ -230,7 +230,8 @@ async function redisPutSatFrame(
   };
   const pipeline = redis.pipeline();
   pipeline.set(key, record, { ex: REDIS_SAT_TTL_SEC });
-  pipeline.sadd(dayKey, hhmm);
+  // Prefix so Upstash does not coerce "1830" into a number on SMEMBERS.
+  pipeline.sadd(dayKey, `t${hhmm}`);
   pipeline.expire(dayKey, REDIS_SAT_TTL_SEC);
   await pipeline.exec();
 
@@ -281,11 +282,16 @@ async function redisListSatTimesForDay(
   if (!redis) return [];
   const [y, m, d] = dateKey.split("-");
   if (!y || !m || !d) return [];
+  // Upstash may decode pure-digit set members as numbers — accept both
+  // legacy "HHMM" / 1830 and prefixed "tHHMM" forms.
   const members = (await redis.smembers(
     redisSatDayKey(product, dateKey),
-  )) as string[];
+  )) as unknown[];
   const times: number[] = [];
-  for (const hhmm of members) {
+  for (const raw of members) {
+    let hhmm = String(raw);
+    if (hhmm.startsWith("t")) hhmm = hhmm.slice(1);
+    hhmm = hhmm.padStart(4, "0");
     if (!/^\d{4}$/.test(hhmm)) continue;
     times.push(
       aestPartsToUnix({
@@ -351,8 +357,10 @@ async function redisGetSynoptic(
 async function redisListSynopticStamps(): Promise<string[]> {
   const redis = getRedis();
   if (!redis) return [];
-  const stamps = (await redis.zrange(redisSynopticIndexKey(), 0, -1)) as string[];
-  return stamps.filter((s) => /^\d{12}$/.test(s));
+  const stamps = (await redis.zrange(redisSynopticIndexKey(), 0, -1)) as unknown[];
+  return stamps
+    .map((s) => String(s))
+    .filter((s) => /^\d{12}$/.test(s));
 }
 
 async function redisGetLightningHour(
