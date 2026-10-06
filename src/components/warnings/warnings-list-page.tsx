@@ -21,7 +21,10 @@ import {
   type BomWarningSummary,
   type WarningCategory,
 } from "@/lib/weather/warnings";
-import type { StormCellAlert } from "@/lib/weather/storm-cell-types";
+import {
+  formatThreatEta,
+  type StormCellAlert,
+} from "@/lib/weather/storm-cell-types";
 import { cn } from "@/lib/utils";
 
 type WarningSource = "bom" | "auto";
@@ -126,7 +129,18 @@ function AutoAlertCard({ alert }: { alert: StormCellAlert }) {
         <p className="mt-0.5 line-clamp-2 text-sm text-white/70">
           {alert.summary}
         </p>
-        <p className="mt-1.5 text-xs text-white/50">
+        {alert.threatTowns?.length ? (
+          <p className="mt-1.5 text-xs text-white/80">
+            <span className="font-semibold text-white/55">Towns: </span>
+            {alert.threatTowns
+              .slice(0, 4)
+              .map(
+                (t) => `${t.name} (${formatThreatEta(t.minutesAhead)})`,
+              )
+              .join(" · ")}
+          </p>
+        ) : null}
+        <p className="mt-1 text-xs text-white/50">
           {alert.lat.toFixed(2)}°, {alert.lon.toFixed(2)}° · lightning-tracked
         </p>
       </div>

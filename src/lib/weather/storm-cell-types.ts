@@ -15,6 +15,19 @@ export type StormCellProjectedPoint = {
   minutesAhead: number;
 };
 
+/** Town expected to be near the cell track, with ETA. */
+export type StormCellThreatTown = {
+  name: string;
+  /** Short state code when known (NSW, VIC, …) */
+  state: string;
+  lat: number;
+  lon: number;
+  /** Estimated minutes until the cell centre is nearest this town (0 = already nearby) */
+  minutesAhead: number;
+  /** Distance from the track / cell to the town (km) */
+  distanceKm: number;
+};
+
 export type StormCell = {
   id: string;
   label: string;
@@ -34,6 +47,8 @@ export type StormCell = {
   track: StormCellTrackPoint[];
   /** Forward projection from motion (empty when motion unknown) */
   projectedPath: StormCellProjectedPoint[];
+  /** Towns the cell is near now or expected to approach along the track */
+  threatTowns: StormCellThreatTown[];
   /** 0–1 severity score for internal ranking */
   strength: number;
   /** Calibrated display score out of 100 */
@@ -53,8 +68,32 @@ export type StormCellAlert = {
   lat: number;
   lon: number;
   summary: string;
+  /** Compact “Town (~30 min)” chips for list cards */
+  threatTowns: StormCellThreatTown[];
   href: string;
 };
+
+/** Human-readable ETA for a threat town. */
+export function formatThreatEta(minutesAhead: number): string {
+  if (!Number.isFinite(minutesAhead) || minutesAhead <= 5) return "now";
+  if (minutesAhead < 60) return `~${Math.round(minutesAhead)} min`;
+  const h = Math.floor(minutesAhead / 60);
+  const m = Math.round(minutesAhead % 60);
+  if (m === 0) return `~${h} h`;
+  return `~${h} h ${m} min`;
+}
+
+/** “Dubbo (~30 min), Orange (~60 min)” */
+export function formatThreatTownsLine(
+  towns: StormCellThreatTown[],
+  limit = 4,
+): string {
+  if (!towns.length) return "";
+  return towns
+    .slice(0, limit)
+    .map((t) => `${t.name} (${formatThreatEta(t.minutesAhead)})`)
+    .join(", ");
+}
 
 export type StormCellsPayload = {
   generated: number;

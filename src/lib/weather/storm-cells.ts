@@ -10,15 +10,18 @@
 import type { LightningStrike } from "@/lib/weather/lightning";
 import { LIGHTNING_AU_BOUNDS } from "@/lib/weather/lightning";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
+import { AU_TOWNS } from "@/lib/weather/au-towns";
 import {
   alertLevelFromScore,
   bearingBetween,
   compassLabel,
   destinationPoint,
   distanceKm,
+  formatThreatTownsLine,
   type StormCell,
   type StormCellAlert,
   type StormCellProjectedPoint,
+  type StormCellThreatTown,
   type StormCellTrackPoint,
   type StormCellsPayload,
 } from "@/lib/weather/storm-cell-types";
@@ -28,6 +31,7 @@ export type {
   StormCellAlert,
   StormCellAlertLevel,
   StormCellProjectedPoint,
+  StormCellThreatTown,
   StormCellTrackPoint,
   StormCellsPayload,
 } from "@/lib/weather/storm-cell-types";
@@ -37,6 +41,8 @@ export {
   compassLabel,
   destinationPoint,
   distanceKm,
+  formatThreatEta,
+  formatThreatTownsLine,
 } from "@/lib/weather/storm-cell-types";
 
 const CELL_GRID_DEG = 0.55;
@@ -47,6 +53,29 @@ const WINDOW_45 = 45 * 60;
 const WINDOW_OLD = 45 * 60;
 const WINDOW_MID = 25 * 60;
 const PROJECT_MINUTES = [15, 30, 60] as const;
+/** Towns within this radius of the cell / track count as a hit. */
+const TOWN_HIT_RADIUS_KM = 50;
+/** Ignore hamlets so alerts stay readable. */
+const MIN_TOWN_POPULATION = 1500;
+const MAX_THREAT_TOWNS = 8;
+/** Only consider towns roughly ahead of motion (degrees). */
+const AHEAD_BEARING_DEG = 55;
+const MAX_ETA_MINUTES = 90;
+
+const STATE_ABBR: Record<string, string> = {
+  "New South Wales": "NSW",
+  Victoria: "VIC",
+  Queensland: "QLD",
+  "Western Australia": "WA",
+  "South Australia": "SA",
+  Tasmania: "TAS",
+  "Northern Territory": "NT",
+  "Australian Capital Territory": "ACT",
+};
+
+function stateAbbr(state: string): string {
+  return STATE_ABBR[state] ?? state;
+}
 
 function cellKey(lat: number, lon: number): string {
   const i = Math.floor(lat / CELL_GRID_DEG);
@@ -196,6 +225,135 @@ function projectPath(
   });
 }
 
+function bearingDiffDeg(a: number, b: number): number {
+  let d = Math.abs(a - b) % 360;
+  if (d > 180) d = 360 - d;
+  return d;
+}
+
+/**
+ * Towns the cell is over now, or expected to approach along its motion track.
+ * ETA uses along-track distance / speed when motion is known.
+ */
+function findThreatTowns(
+  lat: number,
+  lon: number,
+  motionDeg: number | null,
+  speedKmh: number | null,
+  projectedPath: StormCellProjectedPoint[],
+): StormCellThreatTown[] {
+  const samples: StormCellProjectedPoint[] = [
+    { lat, lon, minutesAhead: 0 },
+    ...projectedPath,
+  ];
+  // Denser samples between projection nodes for better town catch.
+  if (
+    motionDeg != null &&
+    speedKmh != null &&
+    Number.isFinite(speedKmh) &&
+    speedKmh >= 2
+  ) {
+    for (let m = 10; m <= 75; m += 10) {
+      if (PROJECT_MINUTES.includes(m as (typeof PROJECT_MINUTES)[number])) {
+        continue;
+      }
+      const dist = (speedKmh * m) / 60;
+      const p = destinationPoint(lat, lon, motionDeg, dist);
+      samples.push({
+        lat: Math.round(p.lat * 1000) / 1000,
+        lon: Math.round(p.lon * 1000) / 1000,
+        minutesAhead: m,
+      });
+    }
+  }
+
+  const hits = new Map<string, StormCellThreatTown & { population: number }>();
+
+  for (const town of AU_TOWNS) {
+    if (town.population < MIN_TOWN_POPULATION) continue;
+
+    let nearSample: StormCellProjectedPoint | null = null;
+    let nearDist = Infinity;
+    for (const sample of samples) {
+      const d = distanceKm(sample.lat, sample.lon, town.lat, town.lon);
+      if (d > TOWN_HIT_RADIUS_KM) continue;
+      if (
+        !nearSample ||
+        sample.minutesAhead < nearSample.minutesAhead ||
+        (sample.minutesAhead === nearSample.minutesAhead && d < nearDist)
+      ) {
+        nearSample = sample;
+        nearDist = d;
+      }
+    }
+    if (!nearSample) continue;
+
+    let minutesAhead = nearSample.minutesAhead;
+    if (
+      motionDeg != null &&
+      speedKmh != null &&
+      Number.isFinite(speedKmh) &&
+      speedKmh >= 2
+    ) {
+      const distNow = distanceKm(lat, lon, town.lat, town.lon);
+      if (distNow <= TOWN_HIT_RADIUS_KM) {
+        minutesAhead = 0;
+      } else {
+        const bearingToTown = bearingBetween(lat, lon, town.lat, town.lon);
+        const diff = bearingDiffDeg(bearingToTown, motionDeg);
+        if (diff > AHEAD_BEARING_DEG) {
+          // Close to a future sample but not ahead of current motion — keep sample ETA
+          // only if sample is already ahead; otherwise skip behind-track towns.
+          if (nearSample.minutesAhead === 0) continue;
+        } else {
+          const alongTrack =
+            distNow * Math.cos((diff * Math.PI) / 180);
+          const crossTrack = Math.abs(
+            distNow * Math.sin((diff * Math.PI) / 180),
+          );
+          if (crossTrack > TOWN_HIT_RADIUS_KM || alongTrack < -8) continue;
+          minutesAhead = Math.max(
+            0,
+            Math.round((alongTrack / speedKmh) * 60),
+          );
+        }
+      }
+    }
+
+    if (minutesAhead > MAX_ETA_MINUTES) continue;
+
+    const key = `${town.name}|${town.state}`;
+    const next: StormCellThreatTown & { population: number } = {
+      name: town.name,
+      state: stateAbbr(town.state),
+      lat: town.lat,
+      lon: town.lon,
+      minutesAhead,
+      distanceKm: Math.round(nearDist * 10) / 10,
+      population: town.population,
+    };
+    const prev = hits.get(key);
+    if (
+      !prev ||
+      next.minutesAhead < prev.minutesAhead ||
+      (next.minutesAhead === prev.minutesAhead &&
+        next.population > prev.population)
+    ) {
+      hits.set(key, next);
+    }
+  }
+
+  return [...hits.values()]
+    .sort(
+      (a, b) =>
+        a.minutesAhead - b.minutesAhead ||
+        b.population - a.population ||
+        a.distanceKm - b.distanceKm,
+    )
+    .slice(0, MAX_THREAT_TOWNS)
+    .map(({ population: _p, ...town }) => town);
+}
+
 function buildScore(opts: {
   strikes15m: number;
   ratePerMin: number;
@@ -232,6 +390,7 @@ function buildAnalysis(opts: {
   speedKmh: number | null;
   score: number;
   alertLevel: ReturnType<typeof alertLevelFromScore>;
+  threatTowns: StormCellThreatTown[];
 }): { analysis: string[]; summary: string } {
   const analysis: string[] = [];
   const burstRatio =
@@ -256,6 +415,19 @@ function buildAnalysis(opts: {
     `${opts.strikes15m} strikes in 15 min (${opts.ratePerMin}/min) near ${opts.label}.`,
   );
 
+  const nowTowns = opts.threatTowns.filter((t) => t.minutesAhead <= 5);
+  const soonTowns = opts.threatTowns.filter((t) => t.minutesAhead > 5);
+  if (nowTowns.length) {
+    analysis.push(`Near ${formatThreatTownsLine(nowTowns, 5)} right now.`);
+  }
+  if (soonTowns.length) {
+    analysis.push(
+      `Expected to approach ${formatThreatTownsLine(soonTowns, 5)}.`,
+    );
+  } else if (!nowTowns.length) {
+    analysis.push("No larger towns on the near-term projected track.");
+  }
+
   if (opts.alertLevel === "warning") {
     analysis.push(
       "SkyWatch Warning — intense lightning cell; treat as elevated thunderstorm risk in the vicinity.",
@@ -274,7 +446,10 @@ function buildAnalysis(opts: {
       : opts.alertLevel === "watch"
         ? "Watch"
         : "Cell";
-  const summary = `${levelWord} · score ${opts.score}/100 · ${opts.ratePerMin}/min near ${opts.label}`;
+  const townBit = formatThreatTownsLine(opts.threatTowns, 3);
+  const summary = townBit
+    ? `${levelWord} · score ${opts.score}/100 · ${opts.ratePerMin}/min near ${opts.label} · ${townBit}`
+    : `${levelWord} · score ${opts.score}/100 · ${opts.ratePerMin}/min near ${opts.label}`;
   return { analysis, summary };
 }
 
@@ -357,6 +532,13 @@ export function buildStormCells(
       });
       const alertLevel = alertLevelFromScore(score);
       const projectedPath = projectPath(c.lat, c.lon, motionDeg, speedKmh);
+      const threatTowns = findThreatTowns(
+        c.lat,
+        c.lon,
+        motionDeg,
+        speedKmh,
+        projectedPath,
+      );
       const { analysis, summary } = buildAnalysis({
         label,
         strikes15m: g.n,
@@ -366,6 +548,7 @@ export function buildStormCells(
         speedKmh,
         score,
         alertLevel,
+        threatTowns,
       });
 
       return {
@@ -381,6 +564,7 @@ export function buildStormCells(
         speedKmh,
         track,
         projectedPath,
+        threatTowns,
         strength,
         score,
         alertLevel,
@@ -401,6 +585,7 @@ export function buildStormCells(
       lat: c.lat,
       lon: c.lon,
       summary: c.summary,
+      threatTowns: c.threatTowns,
       href: `/warnings/auto/${encodeURIComponent(c.id)}`,
     }));
 

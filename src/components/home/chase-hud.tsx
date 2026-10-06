@@ -6,6 +6,7 @@ import {
   bearingBetween,
   compassLabel,
   distanceKm,
+  formatThreatTownsLine,
   type StormCell,
 } from "@/lib/weather/storm-cell-types";
 import { useSavedPlace } from "@/hooks/use-saved-place";
@@ -158,6 +159,11 @@ export function ChaseHud({
                           ? ` · ${compassLabel(cell.motionDeg)} ${Math.round(cell.speedKmh)} km/h`
                           : ""}
                       </p>
+                      {cell.threatTowns?.length ? (
+                        <p className="truncate text-[11px] text-white/70">
+                          {formatThreatTownsLine(cell.threatTowns, 2)}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="inline-flex items-center gap-1 text-xs font-bold text-[var(--cyan)]">

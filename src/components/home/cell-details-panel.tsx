@@ -4,6 +4,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import {
   compassLabel,
+  formatThreatEta,
   type StormCell,
 } from "@/lib/weather/storm-cell-types";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ export function CellDetailsPanel({
 }) {
   if (!cell) return null;
 
+  const threatTowns = cell.threatTowns ?? [];
   const pathHint =
     cell.projectedPath.length > 0
       ? `Projected ${cell.projectedPath.map((p) => `+${p.minutesAhead}m`).join(" · ")}`
@@ -90,6 +92,50 @@ export function CellDetailsPanel({
           </p>
           <p className="text-white/50">{pathHint}</p>
         </div>
+      </div>
+
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+          Towns on track
+        </p>
+        {threatTowns.length === 0 ? (
+          <p className="text-xs text-white/50">
+            No larger towns on the near-term projected track.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {threatTowns.map((town) => (
+              <li
+                key={`${town.name}-${town.state}`}
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-white">
+                    {town.name}
+                    <span className="ml-1.5 font-medium text-white/45">
+                      {town.state}
+                    </span>
+                  </p>
+                  <p className="text-[10px] text-white/45">
+                    {town.distanceKm < 1
+                      ? "Over / adjacent"
+                      : `${town.distanceKm} km from track`}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                    town.minutesAhead <= 5
+                      ? "border-orange-400/40 bg-orange-500/15 text-orange-100"
+                      : "border-white/15 bg-white/[0.06] text-white/75",
+                  )}
+                >
+                  {formatThreatEta(town.minutesAhead)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div>
