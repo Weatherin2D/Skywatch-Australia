@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MapSettingsState } from "@/components/home/mock-data";
+import {
+  AU_TOWNS,
+  declutterTowns,
+  townDensityForBounds,
+} from "@/lib/weather/au-towns";
 import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
 
 type Ring = [number, number][];
@@ -93,6 +98,21 @@ export function SatelliteMapAnnotations({
     settings.stateLabels,
   );
   const oceans = useGeoJson("/geo/ocean-labels.geojson", settings.oceanNames);
+
+  const visibleTowns = useMemo(() => {
+    if (!settings.townLabels) return [];
+    const density = townDensityForBounds(
+      bounds ?? [
+        [-48, 108],
+        [-8, 160],
+      ],
+    );
+    const inFrame = AU_TOWNS.filter((town) => {
+      const pct = lonLatToBoundsPct(town.lon, town.lat, bounds);
+      return pct.x >= -2 && pct.x <= 102 && pct.y >= -2 && pct.y <= 102;
+    });
+    return declutterTowns(inFrame, density);
+  }, [settings.townLabels, bounds]);
 
   const outlinePaths: string[] = [];
   if (outline) {
@@ -195,23 +215,39 @@ export function SatelliteMapAnnotations({
           })
         : null}
 
-      {cities.map((city) => {
-        const { x, y } = lonLatToBoundsPct(city.lon, city.lat, bounds);
-        return (
-          <span
-            key={city.name}
-            className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-            style={{ left: `${x}%`, top: `${y}%` }}
-          >
-            <span className="h-2 w-2 rounded-full border border-white bg-[var(--cyan)]" />
-            {settings.cityLabels ? (
-              <span className="mt-0.5 whitespace-nowrap text-[9px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-[10px]">
-                {city.name}
+      {settings.townLabels
+        ? visibleTowns.map((town) => {
+            const { x, y } = lonLatToBoundsPct(town.lon, town.lat, bounds);
+            return (
+              <span
+                key={`town-${town.name}-${town.lat}`}
+                className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+                style={{ left: `${x}%`, top: `${y}%` }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full border border-white/90 bg-[var(--cyan)]/90" />
+                <span className="mt-0.5 whitespace-nowrap text-[8px] font-semibold text-white/95 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-[9px]">
+                  {town.name}
+                </span>
               </span>
-            ) : null}
-          </span>
-        );
-      })}
+            );
+          })
+        : cities.map((city) => {
+            const { x, y } = lonLatToBoundsPct(city.lon, city.lat, bounds);
+            return (
+              <span
+                key={city.name}
+                className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+                style={{ left: `${x}%`, top: `${y}%` }}
+              >
+                <span className="h-2 w-2 rounded-full border border-white bg-[var(--cyan)]" />
+                {settings.cityLabels ? (
+                  <span className="mt-0.5 whitespace-nowrap text-[9px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-[10px]">
+                    {city.name}
+                  </span>
+                ) : null}
+              </span>
+            );
+          })}
     </div>
   );
 }

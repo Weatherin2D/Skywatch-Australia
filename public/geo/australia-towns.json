@@ -1,0 +1,5255 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sydney",
+        "state": "New South Wales",
+        "population": 5450496
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.21,
+          -33.8678
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Melbourne",
+        "state": "Victoria",
+        "population": 5350705
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.9631,
+          -37.8142
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Brisbane",
+        "state": "Queensland",
+        "population": 2706966
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.0278,
+          -27.4678
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Perth",
+        "state": "Western Australia",
+        "population": 2141834
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.8597,
+          -31.9558
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Adelaide",
+        "state": "South Australia",
+        "population": 1387290
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.6,
+          -34.9275
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gold Coast",
+        "state": "Queensland",
+        "population": 607665
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.4,
+          -28.0167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Canberra",
+        "state": "Australian Capital Territory",
+        "population": 381488
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.1269,
+          -35.2931
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Central Coast",
+        "state": "New South Wales",
+        "population": 325255
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.1922,
+          -33.2992
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wollongong",
+        "state": "New South Wales",
+        "population": 261896
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8831,
+          -34.4331
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ipswich",
+        "state": "Queensland",
+        "population": 232930
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.7667,
+          -27.6167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hobart",
+        "state": "Tasmania",
+        "population": 197451
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.3167,
+          -42.8833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Geelong",
+        "state": "Victoria",
+        "population": 180239
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.35,
+          -38.15
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Townsville",
+        "state": "Queensland",
+        "population": 173724
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.8158,
+          -19.2622
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Newcastle",
+        "state": "New South Wales",
+        "population": 152984
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.75,
+          -32.9167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Cairns",
+        "state": "Queensland",
+        "population": 146778
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.7753,
+          -16.9256
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Darwin",
+        "state": "Northern Territory",
+        "population": 139902
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          130.8411,
+          -12.4381
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ballarat",
+        "state": "Victoria",
+        "population": 116201
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.8475,
+          -37.5608
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Toowoomba",
+        "state": "Queensland",
+        "population": 108398
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.95,
+          -27.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mandurah",
+        "state": "Western Australia",
+        "population": 107643
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.7231,
+          -32.5289
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bendigo",
+        "state": "Victoria",
+        "population": 103034
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.2667,
+          -36.75
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Maitland",
+        "state": "New South Wales",
+        "population": 89597
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.5511,
+          -32.7317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Launceston",
+        "state": "Tasmania",
+        "population": 80943
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.1378,
+          -41.4444
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mackay",
+        "state": "Queensland",
+        "population": 80455
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.1861,
+          -21.1411
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Melton",
+        "state": "Victoria",
+        "population": 76346
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.5833,
+          -37.6833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bunbury",
+        "state": "Western Australia",
+        "population": 75196
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.6369,
+          -33.3272
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bundaberg",
+        "state": "Queensland",
+        "population": 70540
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.35,
+          -24.85
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wagga Wagga",
+        "state": "New South Wales",
+        "population": 67364
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.3667,
+          -35.1194
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Maroochydore",
+        "state": "Queensland",
+        "population": 63673
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1,
+          -26.65
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Rockhampton",
+        "state": "Queensland",
+        "population": 63151
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.5109,
+          -23.379
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Buderim",
+        "state": "Queensland",
+        "population": 58956
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.053,
+          -26.685
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hervey Bay",
+        "state": "Queensland",
+        "population": 57722
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8728,
+          -25.2853
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Pakenham",
+        "state": "Victoria",
+        "population": 54118
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.4878,
+          -38.0712
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Port Macquarie",
+        "state": "New South Wales",
+        "population": 44830
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.9178,
+          -31.4317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Caloundra",
+        "state": "Queensland",
+        "population": 41293
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1289,
+          -26.7986
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Orange",
+        "state": "New South Wales",
+        "population": 41232
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.1011,
+          -33.2817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sunbury",
+        "state": "Victoria",
+        "population": 38851
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.714,
+          -37.5811
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dubbo",
+        "state": "New South Wales",
+        "population": 38783
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.6011,
+          -32.2483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Frankston",
+        "state": "Victoria",
+        "population": 37331
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.135,
+          -38.158
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Southport",
+        "state": "Queensland",
+        "population": 36786
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.4,
+          -27.9667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bathurst",
+        "state": "New South Wales",
+        "population": 36230
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.5778,
+          -33.42
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tamworth",
+        "state": "New South Wales",
+        "population": 35415
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.9317,
+          -31.0906
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gladstone",
+        "state": "Queensland",
+        "population": 34703
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.2519,
+          -23.8436
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mildura",
+        "state": "Victoria",
+        "population": 34565
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.1338,
+          -34.2111
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Geraldton",
+        "state": "Western Australia",
+        "population": 32717
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          114.6144,
+          -28.7792
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Shepparton",
+        "state": "Victoria",
+        "population": 32067
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.4,
+          -36.3833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Fremantle",
+        "state": "Western Australia",
+        "population": 31930
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.7475,
+          -32.0542
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Albany",
+        "state": "Western Australia",
+        "population": 31128
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          117.8814,
+          -35.0228
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Alice Springs",
+        "state": "Northern Territory",
+        "population": 31120
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          133.8667,
+          -23.7
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kalgoorlie",
+        "state": "Western Australia",
+        "population": 30841
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          121.4661,
+          -30.7489
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dandenong",
+        "state": "Victoria",
+        "population": 30127
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.215,
+          -37.981
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Warrnambool",
+        "state": "Victoria",
+        "population": 29661
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.4833,
+          -38.3833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Caboolture",
+        "state": "Queensland",
+        "population": 29534
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.967,
+          -27.0667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Armidale",
+        "state": "New South Wales",
+        "population": 28967
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.6667,
+          -30.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gawler",
+        "state": "South Australia",
+        "population": 28562
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.745,
+          -34.5981
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lismore",
+        "state": "New South Wales",
+        "population": 27916
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.2858,
+          -28.8067
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Quakers Hill",
+        "state": "New South Wales",
+        "population": 27893
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8789,
+          -33.7344
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Coffs Harbour",
+        "state": "New South Wales",
+        "population": 27089
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1189,
+          -30.3023
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mount Gambier",
+        "state": "South Australia",
+        "population": 25591
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.7828,
+          -37.8294
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Traralgon",
+        "state": "Victoria",
+        "population": 24933
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.54,
+          -38.1958
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Devonport",
+        "state": "Tasmania",
+        "population": 24591
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.3503,
+          -41.18
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Cessnock",
+        "state": "New South Wales",
+        "population": 23211
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.3561,
+          -32.8333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Maryborough",
+        "state": "Queensland",
+        "population": 22237
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.7019,
+          -25.5375
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mount Barker",
+        "state": "South Australia",
+        "population": 21554
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.85,
+          -35.0667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Whyalla",
+        "state": "South Australia",
+        "population": 21501
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          137.5648,
+          -33.0327
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Cranbourne",
+        "state": "Victoria",
+        "population": 21281
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.279,
+          -38.105
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nambour",
+        "state": "Queensland",
+        "population": 20918
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.9592,
+          -26.6269
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Griffith",
+        "state": "New South Wales",
+        "population": 20799
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.0344,
+          -34.2817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Burnie",
+        "state": "Tasmania",
+        "population": 20417
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.8919,
+          -41.0636
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wodonga",
+        "state": "Victoria",
+        "population": 20259
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.8881,
+          -36.1214
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Coomera",
+        "state": "Queensland",
+        "population": 20225
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.3205,
+          -27.8568
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kurri Kurri",
+        "state": "New South Wales",
+        "population": 20015
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.4806,
+          -32.8144
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wangaratta",
+        "state": "Victoria",
+        "population": 19712
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.312,
+          -36.3583
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gympie",
+        "state": "Queensland",
+        "population": 19435
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.6667,
+          -26.1833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lara",
+        "state": "Victoria",
+        "population": 19014
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.407,
+          -38.022
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yeppoon",
+        "state": "Queensland",
+        "population": 18789
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.7333,
+          -23.1333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mount Eliza",
+        "state": "Victoria",
+        "population": 18734
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.092,
+          -38.189
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Taree",
+        "state": "New South Wales",
+        "population": 18110
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.4511,
+          -31.915
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Penrith",
+        "state": "New South Wales",
+        "population": 17966
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6942,
+          -33.7511
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mount Isa",
+        "state": "Queensland",
+        "population": 17936
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.495,
+          -20.7253
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Barwon Heads",
+        "state": "Victoria",
+        "population": 17714
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.517,
+          -38.25
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Broken Hill",
+        "state": "New South Wales",
+        "population": 17706
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          141.4511,
+          -31.965
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Grafton",
+        "state": "New South Wales",
+        "population": 17155
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.9344,
+          -29.6817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nerang",
+        "state": "Queensland",
+        "population": 17048
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.322,
+          -27.9956
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Karratha",
+        "state": "Western Australia",
+        "population": 17013
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          116.846,
+          -20.7364
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Campbelltown",
+        "state": "New South Wales",
+        "population": 16577
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8261,
+          -34.0733
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Banora Point",
+        "state": "New South Wales",
+        "population": 16460
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5386,
+          -28.2225
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Australind",
+        "state": "Western Australia",
+        "population": 15988
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.726,
+          -33.28
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Port Hedland",
+        "state": "Western Australia",
+        "population": 15298
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          118.6011,
+          -20.31
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Drouin",
+        "state": "Victoria",
+        "population": 15287
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.85,
+          -38.1333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Horsham",
+        "state": "Victoria",
+        "population": 15134
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.2,
+          -36.7167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Echuca",
+        "state": "Victoria",
+        "population": 15056
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.75,
+          -36.1333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Murray Bridge",
+        "state": "South Australia",
+        "population": 15043
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.2765,
+          -35.1189
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wallan",
+        "state": "Victoria",
+        "population": 15004
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.983,
+          -37.4167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kiama",
+        "state": "New South Wales",
+        "population": 14761
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8511,
+          -34.665
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Broome",
+        "state": "Western Australia",
+        "population": 14660
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          122.2361,
+          -17.9619
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Port Lincoln",
+        "state": "South Australia",
+        "population": 14458
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          135.8608,
+          -34.7322
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Morwell",
+        "state": "Victoria",
+        "population": 14389
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.4,
+          -38.2333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Forster",
+        "state": "New South Wales",
+        "population": 14187
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.5117,
+          -32.1806
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Warwick",
+        "state": "Queensland",
+        "population": 14110
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.0347,
+          -28.2172
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ulverstone",
+        "state": "Tasmania",
+        "population": 14109
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.1667,
+          -41.1667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Raymond Terrace",
+        "state": "New South Wales",
+        "population": 14081
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.7441,
+          -32.7615
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Goonellabah",
+        "state": "New South Wales",
+        "population": 13351
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.3167,
+          -28.8167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Leopold",
+        "state": "Victoria",
+        "population": 13272
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.464,
+          -38.1892
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Torquay",
+        "state": "Victoria",
+        "population": 13258
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.3167,
+          -38.3333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Rutherford",
+        "state": "New South Wales",
+        "population": 13091
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.5317,
+          -32.715
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kingston",
+        "state": "Tasmania",
+        "population": 12288
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.3083,
+          -42.9769
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Muswellbrook",
+        "state": "New South Wales",
+        "population": 12272
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.9,
+          -32.2667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Inverell",
+        "state": "New South Wales",
+        "population": 12057
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.1167,
+          -29.7667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mareeba",
+        "state": "Queensland",
+        "population": 11825
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.417,
+          -16.9833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Corinda",
+        "state": "Queensland",
+        "population": 11678
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1,
+          -27.4833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mudgee",
+        "state": "New South Wales",
+        "population": 11563
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.5872,
+          -32.6125
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Parkes",
+        "state": "New South Wales",
+        "population": 11408
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.176,
+          -33.133
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bowen",
+        "state": "Queensland",
+        "population": 11205
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.2333,
+          -20.0167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lithgow",
+        "state": "New South Wales",
+        "population": 11197
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.1511,
+          -33.4817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Swan Hill",
+        "state": "Victoria",
+        "population": 11186
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.55,
+          -35.3333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gisborne",
+        "state": "Victoria",
+        "population": 10999
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.589,
+          -37.49
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Casino",
+        "state": "New South Wales",
+        "population": 10930
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.05,
+          -28.8667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bowral",
+        "state": "New South Wales",
+        "population": 10764
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.4178,
+          -34.4817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Young",
+        "state": "New South Wales",
+        "population": 10610
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.3,
+          -34.3
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Esperance",
+        "state": "Western Australia",
+        "population": 10218
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          121.8919,
+          -33.8611
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bli Bli",
+        "state": "Queensland",
+        "population": 10138
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.037,
+          -26.618
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nowra",
+        "state": "New South Wales",
+        "population": 9956
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6075,
+          -34.8808
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Andergrove",
+        "state": "Queensland",
+        "population": 9924
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.186,
+          -21.0931
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Murwillumbah",
+        "state": "New South Wales",
+        "population": 9812
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.3833,
+          -28.3333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mount Evelyn",
+        "state": "Victoria",
+        "population": 9799
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.385,
+          -37.783
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Burpengary",
+        "state": "Queensland",
+        "population": 9654
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153,
+          -27.1442
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Moranbah",
+        "state": "Queensland",
+        "population": 9425
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.0489,
+          -22.0003
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Moe",
+        "state": "Victoria",
+        "population": 9375
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.263,
+          -38.1749
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Moree",
+        "state": "New South Wales",
+        "population": 9311
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.8344,
+          -29.465
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Colac",
+        "state": "Victoria",
+        "population": 9243
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.5833,
+          -38.3333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Leeton",
+        "state": "New South Wales",
+        "population": 9170
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.4011,
+          -34.5483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Coolum Beach",
+        "state": "Queensland",
+        "population": 9152
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1,
+          -26.5333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Flemington",
+        "state": "New South Wales",
+        "population": 9108
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.071,
+          -33.8633
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Goolwa",
+        "state": "South Australia",
+        "population": 8756
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.7667,
+          -35.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ballina",
+        "state": "New South Wales",
+        "population": 8655
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.561,
+          -28.8417
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ayr",
+        "state": "Queensland",
+        "population": 8603
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.4,
+          -19.5833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ararat",
+        "state": "Victoria",
+        "population": 8500
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.933,
+          -37.285
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Springwood",
+        "state": "New South Wales",
+        "population": 8475
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.55,
+          -33.7036
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Beenleigh",
+        "state": "Queensland",
+        "population": 8425
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.202,
+          -27.7161
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kingscliff",
+        "state": "New South Wales",
+        "population": 8355
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5769,
+          -28.2617
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mooroopna",
+        "state": "Victoria",
+        "population": 8312
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.35,
+          -36.3833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Katoomba",
+        "state": "New South Wales",
+        "population": 8268
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.312,
+          -33.715
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Merimbula",
+        "state": "New South Wales",
+        "population": 8220
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.9011,
+          -36.8983
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tweed Heads",
+        "state": "New South Wales",
+        "population": 8176
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.55,
+          -28.1833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bongaree",
+        "state": "Queensland",
+        "population": 8162
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.157,
+          -27.0814
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Maryborough",
+        "state": "Victoria",
+        "population": 8160
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.735,
+          -37.05
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Beaudesert",
+        "state": "Queensland",
+        "population": 8127
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.9833,
+          -27.9833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Charters Towers",
+        "state": "Queensland",
+        "population": 8040
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.2603,
+          -20.0731
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wauchope",
+        "state": "New South Wales",
+        "population": 7982
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.7333,
+          -31.45
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Urraween",
+        "state": "Queensland",
+        "population": 7951
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8219,
+          -25.2955
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bairnsdale",
+        "state": "Victoria",
+        "population": 7905
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.625,
+          -37.8275
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sanctuary Point",
+        "state": "New South Wales",
+        "population": 7874
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6272,
+          -35.1028
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Deniliquin",
+        "state": "New South Wales",
+        "population": 7862
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.9569,
+          -35.5297
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gatton",
+        "state": "Queensland",
+        "population": 7851
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.2833,
+          -27.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Claremont",
+        "state": "Tasmania",
+        "population": 7750
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.2544,
+          -42.7897
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Atherton",
+        "state": "Queensland",
+        "population": 7724
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.4742,
+          -17.2656
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lennox Head",
+        "state": "New South Wales",
+        "population": 7687
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5844,
+          -28.7983
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Clifton Springs",
+        "state": "Victoria",
+        "population": 7646
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.5667,
+          -38.15
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Narrabri",
+        "state": "New South Wales",
+        "population": 7606
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.7678,
+          -30.3317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kyneton",
+        "state": "Victoria",
+        "population": 7513
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.455,
+          -37.247
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Castlemaine",
+        "state": "Victoria",
+        "population": 7506
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.2172,
+          -37.0636
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Blaxland",
+        "state": "New South Wales",
+        "population": 7451
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6167,
+          -33.75
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kyabram",
+        "state": "Victoria",
+        "population": 7331
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.05,
+          -36.3167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Strathalbyn",
+        "state": "South Australia",
+        "population": 7246
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.9,
+          -35.2667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Moama",
+        "state": "New South Wales",
+        "population": 7213
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.7511,
+          -36.0983
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Merrimac",
+        "state": "Queensland",
+        "population": 7212
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.3667,
+          -28.05
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Innisfail",
+        "state": "Queensland",
+        "population": 7173
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.0292,
+          -17.5236
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gordonvale",
+        "state": "Queensland",
+        "population": 6944
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.7792,
+          -17.0972
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Waterford",
+        "state": "Queensland",
+        "population": 6942
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1332,
+          -27.6906
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nuriootpa",
+        "state": "South Australia",
+        "population": 6901
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.99,
+          -34.468
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Cootamundra",
+        "state": "New South Wales",
+        "population": 6885
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.0344,
+          -34.6483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Roma",
+        "state": "Queensland",
+        "population": 6848
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.8,
+          -26.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yass",
+        "state": "New South Wales",
+        "population": 6763
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.9136,
+          -34.8203
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bomaderry",
+        "state": "New South Wales",
+        "population": 6738
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6178,
+          -34.8483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dromana",
+        "state": "Victoria",
+        "population": 6626
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.965,
+          -38.338
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tumut",
+        "state": "New South Wales",
+        "population": 6613
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.2233,
+          -35.3039
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Cannonvale",
+        "state": "Queensland",
+        "population": 6596
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.6994,
+          -20.2787
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Helensburgh",
+        "state": "New South Wales",
+        "population": 6576
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.9811,
+          -34.1889
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Seymour",
+        "state": "Victoria",
+        "population": 6569
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.13,
+          -37.03
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Port Augusta",
+        "state": "South Australia",
+        "population": 6562
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          137.7658,
+          -32.4925
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Inverloch",
+        "state": "Victoria",
+        "population": 6526
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.7167,
+          -38.6333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yamba",
+        "state": "New South Wales",
+        "population": 6405
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.3594,
+          -29.44
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bacchus Marsh",
+        "state": "Victoria",
+        "population": 6394
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.4389,
+          -37.675
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tuncurry",
+        "state": "New South Wales",
+        "population": 6376
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.4894,
+          -32.1644
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Palmwoods",
+        "state": "Queensland",
+        "population": 6357
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.9613,
+          -26.6858
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Goondiwindi",
+        "state": "New South Wales",
+        "population": 6355
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.3106,
+          -28.5444
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wynyard",
+        "state": "Tasmania",
+        "population": 6296
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.7167,
+          -41
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Queanbeyan",
+        "state": "Australian Capital Territory",
+        "population": 6237
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.2342,
+          -35.3533
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Stawell",
+        "state": "Victoria",
+        "population": 6220
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.78,
+          -37.057
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "North Mackay",
+        "state": "Queensland",
+        "population": 6194
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.1783,
+          -21.1216
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "New Norfolk",
+        "state": "Tasmania",
+        "population": 6153
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.0594,
+          -42.7828
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Woolgoolga",
+        "state": "New South Wales",
+        "population": 6151
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.2011,
+          -30.115
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nelson Bay",
+        "state": "New South Wales",
+        "population": 6141
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.1511,
+          -32.715
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mittagong",
+        "state": "New South Wales",
+        "population": 6090
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.4511,
+          -34.4483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Alstonville",
+        "state": "New South Wales",
+        "population": 5912
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.4344,
+          -28.8317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Scone",
+        "state": "New South Wales",
+        "population": 5824
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8678,
+          -32.0483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tahmoor",
+        "state": "New South Wales",
+        "population": 5777
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.5928,
+          -34.2233
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Biloela",
+        "state": "Queensland",
+        "population": 5758
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.5166,
+          -24.3991
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Point Vernon",
+        "state": "Queensland",
+        "population": 5718
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8177,
+          -25.2538
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Leongatha",
+        "state": "Victoria",
+        "population": 5654
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.95,
+          -38.4833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Corowa",
+        "state": "New South Wales",
+        "population": 5595
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.3911,
+          -35.9986
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kununurra",
+        "state": "Western Australia",
+        "population": 5494
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          128.739,
+          -15.7736
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Maddingley",
+        "state": "Victoria",
+        "population": 5491
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.4336,
+          -37.6864
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Richmond",
+        "state": "New South Wales",
+        "population": 5482
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.7511,
+          -33.5983
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Maffra",
+        "state": "Victoria",
+        "population": 5384
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.983,
+          -37.95
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Worragee",
+        "state": "New South Wales",
+        "population": 5384
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6386,
+          -34.9144
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nairne",
+        "state": "South Australia",
+        "population": 5327
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.917,
+          -35.0333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Encounter Bay",
+        "state": "South Australia",
+        "population": 5305
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.6005,
+          -35.5742
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Red Cliffs",
+        "state": "Victoria",
+        "population": 5294
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.1881,
+          -34.3075
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Picton",
+        "state": "New South Wales",
+        "population": 5282
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6011,
+          -34.1817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tannum Sands",
+        "state": "Queensland",
+        "population": 5227
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.367,
+          -23.95
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Old Bar",
+        "state": "New South Wales",
+        "population": 5126
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.583,
+          -31.9667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Millicent",
+        "state": "South Australia",
+        "population": 5110
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.35,
+          -37.5833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kiama Downs",
+        "state": "New South Wales",
+        "population": 5087
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8511,
+          -34.6317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hazelbrook",
+        "state": "New South Wales",
+        "population": 5077
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.45,
+          -33.7333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Latrobe",
+        "state": "Tasmania",
+        "population": 5030
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.4246,
+          -41.2464
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Thirlmere",
+        "state": "New South Wales",
+        "population": 4986
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.5667,
+          -34.2
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Drysdale",
+        "state": "Victoria",
+        "population": 4976
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.5667,
+          -38.1667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Peregian Beach",
+        "state": "Queensland",
+        "population": 4972
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.096,
+          -26.481
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Albury",
+        "state": "New South Wales",
+        "population": 4955
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.9144,
+          -36.0733
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tatura",
+        "state": "Victoria",
+        "population": 4955
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.233,
+          -36.4401
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Churchill",
+        "state": "Victoria",
+        "population": 4924
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.417,
+          -38.3167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gosford",
+        "state": "New South Wales",
+        "population": 4873
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.3414,
+          -33.4233
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Boulder",
+        "state": "Western Australia",
+        "population": 4872
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          121.4886,
+          -30.7819
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Cooroy",
+        "state": "Queensland",
+        "population": 4801
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.905,
+          -26.433
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Beachmere",
+        "state": "Queensland",
+        "population": 4782
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.052,
+          -27.13
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Korumburra",
+        "state": "Victoria",
+        "population": 4749
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.8167,
+          -38.4333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Legana",
+        "state": "Tasmania",
+        "population": 4719
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.05,
+          -41.3667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tanunda",
+        "state": "South Australia",
+        "population": 4710
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.967,
+          -34.5167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Temora",
+        "state": "New South Wales",
+        "population": 4706
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.5344,
+          -34.4483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Renmark",
+        "state": "South Australia",
+        "population": 4705
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.7333,
+          -34.1667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Loxton",
+        "state": "South Australia",
+        "population": 4677
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.5667,
+          -34.45
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Rasmussen",
+        "state": "Queensland",
+        "population": 4669
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.716,
+          -19.3497
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Landsborough",
+        "state": "Queensland",
+        "population": 4635
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.967,
+          -26.8
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Numurkah",
+        "state": "Victoria",
+        "population": 4604
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.4333,
+          -36.0833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wellington",
+        "state": "New South Wales",
+        "population": 4581
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.9344,
+          -32.5483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gerringong",
+        "state": "New South Wales",
+        "population": 4565
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8344,
+          -34.7483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Glenella",
+        "state": "Queensland",
+        "population": 4545
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.1542,
+          -21.1197
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Silverdale",
+        "state": "New South Wales",
+        "population": 4543
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6094,
+          -33.915
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "George Town",
+        "state": "Tasmania",
+        "population": 4536
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.8167,
+          -41.1
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Victor Harbor",
+        "state": "South Australia",
+        "population": 4520
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.6167,
+          -35.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Narrandera",
+        "state": "New South Wales",
+        "population": 4375
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.5511,
+          -34.7483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Trafalgar",
+        "state": "Victoria",
+        "population": 4349
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.15,
+          -38.2
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Broadford",
+        "state": "Victoria",
+        "population": 4319
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.067,
+          -37.2
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lake Cathie",
+        "state": "New South Wales",
+        "population": 4296
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8511,
+          -31.5483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Longford",
+        "state": "Tasmania",
+        "population": 4268
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.122,
+          -41.5958
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "The Entrance",
+        "state": "New South Wales",
+        "population": 4244
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.496,
+          -33.3472
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Anna Bay",
+        "state": "New South Wales",
+        "population": 4241
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.0844,
+          -32.7817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Margate",
+        "state": "Tasmania",
+        "population": 4239
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.2617,
+          -43.0294
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Suffolk Park",
+        "state": "New South Wales",
+        "population": 4222
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.6178,
+          -28.6983
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Curlewis",
+        "state": "Victoria",
+        "population": 4175
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.5,
+          -38.1833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Carnarvon",
+        "state": "Western Australia",
+        "population": 4162
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          113.6569,
+          -24.8839
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Berri",
+        "state": "South Australia",
+        "population": 4143
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.6,
+          -34.2833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Penguin",
+        "state": "Tasmania",
+        "population": 4132
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.0708,
+          -41.1167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sandstone Point",
+        "state": "Queensland",
+        "population": 4094
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.133,
+          -27.0833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Weston",
+        "state": "New South Wales",
+        "population": 4088
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.4561,
+          -32.8103
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Somerset",
+        "state": "Tasmania",
+        "population": 4067
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.8333,
+          -41.05
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "McLaren Vale",
+        "state": "South Australia",
+        "population": 4061
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.533,
+          -35.2333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Koo-Wee-Rup",
+        "state": "Victoria",
+        "population": 4047
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.489,
+          -38.198
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kerang",
+        "state": "Victoria",
+        "population": 3960
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.9167,
+          -35.7167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Smithton",
+        "state": "Tasmania",
+        "population": 3934
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.12,
+          -40.844
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bellingen",
+        "state": "New South Wales",
+        "population": 3923
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.9011,
+          -30.4483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Roxby Downs",
+        "state": "South Australia",
+        "population": 3884
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          136.9,
+          -30.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Vincentia",
+        "state": "New South Wales",
+        "population": 3870
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6742,
+          -35.0758
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Pearcedale",
+        "state": "Victoria",
+        "population": 3867
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.231,
+          -38.203
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bay View",
+        "state": "New South Wales",
+        "population": 3807
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.2861,
+          -33.6592
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Buninyong",
+        "state": "Victoria",
+        "population": 3797
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.8839,
+          -37.6503
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sawtell",
+        "state": "New South Wales",
+        "population": 3788
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1011,
+          -30.365
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Scarness",
+        "state": "Queensland",
+        "population": 3646
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.85,
+          -25.2833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Paynesville",
+        "state": "Victoria",
+        "population": 3636
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.7167,
+          -37.9167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Walkerston",
+        "state": "Queensland",
+        "population": 3615
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.067,
+          -21.1667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Proserpine",
+        "state": "Queensland",
+        "population": 3614
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.5833,
+          -20.4042
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hurstbridge",
+        "state": "Victoria",
+        "population": 3554
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.195,
+          -37.6389
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Robinvale",
+        "state": "New South Wales",
+        "population": 3497
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.7667,
+          -34.5833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Condobolin",
+        "state": "New South Wales",
+        "population": 3486
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.1511,
+          -33.065
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "North Wonthaggi",
+        "state": "Victoria",
+        "population": 3475
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.6,
+          -38.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Perth",
+        "state": "Tasmania",
+        "population": 3472
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.1714,
+          -41.5731
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Harvey",
+        "state": "Western Australia",
+        "population": 3462
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.89,
+          -33.08
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Blayney",
+        "state": "New South Wales",
+        "population": 3448
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.2511,
+          -33.5317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tura Beach",
+        "state": "New South Wales",
+        "population": 3405
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.9261,
+          -36.8483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Narooma",
+        "state": "New South Wales",
+        "population": 3395
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.1344,
+          -36.215
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Camperdown",
+        "state": "Victoria",
+        "population": 3369
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          143.145,
+          -38.236
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Terranora",
+        "state": "New South Wales",
+        "population": 3365
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5025,
+          -28.2456
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Marcoola",
+        "state": "Queensland",
+        "population": 3355
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.083,
+          -26.5833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Eden",
+        "state": "New South Wales",
+        "population": 3350
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.9011,
+          -37.065
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Greta",
+        "state": "New South Wales",
+        "population": 3349
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.3844,
+          -32.6872
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bogangar",
+        "state": "New South Wales",
+        "population": 3313
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5594,
+          -28.3317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Pittsworth",
+        "state": "Queensland",
+        "population": 3300
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.633,
+          -27.7167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tea Gardens",
+        "state": "New South Wales",
+        "population": 3288
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.17,
+          -32.6272
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Shoalhaven Heads",
+        "state": "New South Wales",
+        "population": 3264
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.7417,
+          -34.85
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Saint Georges Basin",
+        "state": "New South Wales",
+        "population": 3215
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6267,
+          -35.13
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Urunga",
+        "state": "New South Wales",
+        "population": 3185
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.0178,
+          -30.4983
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "West Wyalong",
+        "state": "New South Wales",
+        "population": 3141
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.2011,
+          -33.9317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gilgandra",
+        "state": "New South Wales",
+        "population": 3126
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.6678,
+          -31.7067
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Longreach",
+        "state": "Queensland",
+        "population": 3124
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.25,
+          -23.45
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bonny Hills",
+        "state": "New South Wales",
+        "population": 3045
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8344,
+          -31.5817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yarra Glen",
+        "state": "Victoria",
+        "population": 3012
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.3719,
+          -37.6489
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Beaconsfield Upper",
+        "state": "Victoria",
+        "population": 2997
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.415,
+          -37.996
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Howlong",
+        "state": "New South Wales",
+        "population": 2997
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.6333,
+          -35.9667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Jindabyne",
+        "state": "New South Wales",
+        "population": 2986
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          148.6178,
+          -36.415
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "The Oaks",
+        "state": "New South Wales",
+        "population": 2982
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.5678,
+          -34.0817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Williamstown",
+        "state": "South Australia",
+        "population": 2981
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.883,
+          -34.6667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Stirling",
+        "state": "South Australia",
+        "population": 2966
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.706,
+          -35.0022
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Woori Yallock",
+        "state": "Victoria",
+        "population": 2964
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.528,
+          -37.778
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Home Hill",
+        "state": "Queensland",
+        "population": 2954
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.4122,
+          -19.6592
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Kapunda",
+        "state": "South Australia",
+        "population": 2947
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.916,
+          -34.337
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Culburra",
+        "state": "New South Wales",
+        "population": 2946
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.7539,
+          -34.9347
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sandy Beach",
+        "state": "New South Wales",
+        "population": 2913
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.2011,
+          -30.1483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Deloraine",
+        "state": "Tasmania",
+        "population": 2848
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.6667,
+          -41.5333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Heddon Greta",
+        "state": "New South Wales",
+        "population": 2838
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.5133,
+          -32.8019
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hahndorf",
+        "state": "South Australia",
+        "population": 2814
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.8167,
+          -35.0167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Thursday Island",
+        "state": "Queensland",
+        "population": 2805
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          142.22,
+          -10.579
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hill Top",
+        "state": "New South Wales",
+        "population": 2792
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.4917,
+          -34.3525
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Daylesford",
+        "state": "Victoria",
+        "population": 2781
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.15,
+          -37.35
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Woodside",
+        "state": "South Australia",
+        "population": 2701
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.883,
+          -34.95
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Freeling",
+        "state": "South Australia",
+        "population": 2688
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.81,
+          -34.454
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lawson",
+        "state": "New South Wales",
+        "population": 2651
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.4322,
+          -33.7178
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dodges Ferry",
+        "state": "Tasmania",
+        "population": 2646
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.6194,
+          -42.8539
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Aberdare",
+        "state": "New South Wales",
+        "population": 2542
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.3803,
+          -32.8428
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Launching Place",
+        "state": "Victoria",
+        "population": 2495
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.5683,
+          -37.7806
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Willunga",
+        "state": "South Australia",
+        "population": 2445
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.55,
+          -35.2833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hadspen",
+        "state": "Tasmania",
+        "population": 2429
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.067,
+          -41.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Holloway Beach",
+        "state": "Queensland",
+        "population": 2398
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.7333,
+          -16.8333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Drummond Cove",
+        "state": "Western Australia",
+        "population": 2219
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          114.613,
+          -28.673
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "South Golden Beach",
+        "state": "New South Wales",
+        "population": 2219
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5469,
+          -28.4978
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Lyndoch",
+        "state": "South Australia",
+        "population": 2151
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.891,
+          -34.601
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Freshwater",
+        "state": "Queensland",
+        "population": 2142
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.717,
+          -16.8833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yarram",
+        "state": "Victoria",
+        "population": 2136
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.6667,
+          -38.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wallerawang",
+        "state": "New South Wales",
+        "population": 2079
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.0678,
+          -33.4067
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yaroomba",
+        "state": "Queensland",
+        "population": 2043
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.1,
+          -26.55
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Oakdale",
+        "state": "New South Wales",
+        "population": 2028
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.5011,
+          -34.0817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Camden Haven",
+        "state": "New South Wales",
+        "population": 2012
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8011,
+          -31.6483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wattleglen",
+        "state": "Victoria",
+        "population": 1961
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.1833,
+          -37.6667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mossman",
+        "state": "Queensland",
+        "population": 1937
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.3667,
+          -16.45
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Windsor",
+        "state": "New South Wales",
+        "population": 1915
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.8117,
+          -33.6136
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Batehaven",
+        "state": "New South Wales",
+        "population": 1911
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.2011,
+          -35.7317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bourke",
+        "state": "New South Wales",
+        "population": 1909
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.9511,
+          -30.0817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Brunswick Heads",
+        "state": "New South Wales",
+        "population": 1905
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.5447,
+          -28.5586
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mulwala",
+        "state": "New South Wales",
+        "population": 1904
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.0011,
+          -35.9817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Woorim",
+        "state": "Queensland",
+        "population": 1843
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.203,
+          -27.0677
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Denman",
+        "state": "New South Wales",
+        "population": 1821
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.6844,
+          -32.3817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tathra",
+        "state": "New South Wales",
+        "population": 1675
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.9844,
+          -36.7317
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yallourn North",
+        "state": "Victoria",
+        "population": 1545
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          146.367,
+          -38.1667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Seven Mile Beach",
+        "state": "Tasmania",
+        "population": 1467
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.5053,
+          -42.8586
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Surfside",
+        "state": "New South Wales",
+        "population": 1456
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.1997,
+          -35.695
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Evandale",
+        "state": "Tasmania",
+        "population": 1345
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          147.2333,
+          -41.5833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Fyansford",
+        "state": "Victoria",
+        "population": 1206
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.3167,
+          -38.1333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tinonee",
+        "state": "New South Wales",
+        "population": 1202
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.4178,
+          -31.9483
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mollymook",
+        "state": "New South Wales",
+        "population": 1195
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.4667,
+          -35.3372
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hope Vale",
+        "state": "Queensland",
+        "population": 1015
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          145.11,
+          -15.297
+        ]
+      }
+    }
+  ]
+}

@@ -21,6 +21,7 @@ export const MAP_SETTINGS = [
   { id: "lightningBolts", label: "Lightning bolt icons" },
   { id: "stationColorValues", label: "Colour station values" },
   { id: "cityLabels", label: "City labels" },
+  { id: "townLabels", label: "Town labels (dense)" },
   { id: "stateOutlines", label: "State outlines" },
   { id: "stateLabels", label: "State labels" },
   { id: "outlines", label: "Outlines" },
@@ -39,6 +40,8 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Thermal / pressure colour coding on station-model numbers */
   stationColorValues: false,
   cityLabels: false,
+  /** Hundreds of regional towns (decluttered by zoom / region) */
+  townLabels: false,
   stateOutlines: false,
   stateLabels: false,
   /** Australia coastline is on by default */

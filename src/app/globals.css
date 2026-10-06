@@ -314,6 +314,13 @@
   border: 1px solid #fff;
 }
 
+.skywatch-city-dot__mark--town {
+  width: 5px;
+  height: 5px;
+  background: #67e8f9;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
 .leaflet-div-icon.skywatch-station-model {
   background: transparent !important;
   border: none !important;
@@ -328,6 +335,12 @@
   font-weight: 600;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   padding: 0;
+}
+
+.leaflet-tooltip.skywatch-town-tooltip {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .skywatch-lightning-crosshair {

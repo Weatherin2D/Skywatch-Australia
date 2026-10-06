@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { GeoJSON, Marker, Tooltip } from "react-leaflet";
+import { useEffect, useMemo, useState } from "react";
+import { GeoJSON, Marker, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import type { MapSettingsState } from "@/components/home/mock-data";
 import { CITY_MARKERS } from "@/components/home/mock-data";
+import {
+  AU_TOWNS,
+  declutterTowns,
+  townDensityForLeafletZoom,
+} from "@/lib/weather/au-towns";
 
 type GeoJsonObject = GeoJSON.GeoJsonObject;
 
@@ -28,7 +33,17 @@ function useGeoJson(url: string, enabled: boolean) {
   return data;
 }
 
-const labelIcon = (text: string, kind: "state" | "ocean" | "city") =>
+function useMapZoom() {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useMapEvents({
+    zoomend: () => setZoom(map.getZoom()),
+    zoom: () => setZoom(map.getZoom()),
+  });
+  return zoom;
+}
+
+const labelIcon = (text: string, kind: "state" | "ocean" | "city" | "town") =>
   L.divIcon({
     className: "skywatch-map-label",
     html: `<span class="skywatch-map-label__text skywatch-map-label__text--${kind}">${text}</span>`,
@@ -43,12 +58,20 @@ const cityDot = L.divIcon({
   iconAnchor: [4, 4],
 });
 
+const townDot = L.divIcon({
+  className: "skywatch-city-dot skywatch-city-dot--town",
+  html: `<span class="skywatch-city-dot__mark skywatch-city-dot__mark--town"></span>`,
+  iconSize: [6, 6],
+  iconAnchor: [3, 3],
+});
+
 /** Leaflet annotation layers for Map / Radar views. */
 export function LeafletMapAnnotations({
   settings,
 }: {
   settings: MapSettingsState;
 }) {
+  const zoom = useMapZoom();
   const outline = useGeoJson(
     "/geo/australia-outline.geojson",
     settings.outlines,
@@ -62,6 +85,11 @@ export function LeafletMapAnnotations({
     settings.stateLabels,
   );
   const oceans = useGeoJson("/geo/ocean-labels.geojson", settings.oceanNames);
+
+  const visibleTowns = useMemo(() => {
+    if (!settings.townLabels) return [];
+    return declutterTowns(AU_TOWNS, townDensityForLeafletZoom(zoom));
+  }, [settings.townLabels, zoom]);
 
   return (
     <>
@@ -134,25 +162,45 @@ export function LeafletMapAnnotations({
           })
         : null}
 
-      {CITY_MARKERS.map((city) => (
-        <Marker
-          key={city.name}
-          position={[city.lat, city.lon]}
-          icon={cityDot}
-          interactive={false}
-        >
-          {settings.cityLabels ? (
-            <Tooltip
-              permanent
-              direction="right"
-              offset={[6, 0]}
-              className="skywatch-city-tooltip"
+      {/* Dense towns replace the sparse capital dots while enabled. */}
+      {settings.townLabels
+        ? visibleTowns.map((town) => (
+            <Marker
+              key={`town-${town.name}-${town.lat}`}
+              position={[town.lat, town.lon]}
+              icon={townDot}
+              interactive={false}
+              zIndexOffset={200}
             >
-              {city.name}
-            </Tooltip>
-          ) : null}
-        </Marker>
-      ))}
+              <Tooltip
+                permanent
+                direction="right"
+                offset={[5, 0]}
+                className="skywatch-city-tooltip skywatch-town-tooltip"
+              >
+                {town.name}
+              </Tooltip>
+            </Marker>
+          ))
+        : CITY_MARKERS.map((city) => (
+            <Marker
+              key={city.name}
+              position={[city.lat, city.lon]}
+              icon={cityDot}
+              interactive={false}
+            >
+              {settings.cityLabels ? (
+                <Tooltip
+                  permanent
+                  direction="right"
+                  offset={[6, 0]}
+                  className="skywatch-city-tooltip"
+                >
+                  {city.name}
+                </Tooltip>
+              ) : null}
+            </Marker>
+          ))}
     </>
   );
 }
