@@ -311,12 +311,51 @@ function drawTendency(
   ctx.restore();
 }
 
+const DEFAULT_VALUE_COLOR = "#f4f8ff";
+
+/** Thermal scale for air / dew-point temperatures (°C). */
+export function colorForTemperatureC(c: number | null): string {
+  if (c == null || !Number.isFinite(c)) return DEFAULT_VALUE_COLOR;
+  if (c <= 0) return "#7dd3fc"; // icy blue
+  if (c <= 8) return "#67e8f9"; // cool cyan
+  if (c <= 14) return "#a7f3d0"; // mild green
+  if (c <= 20) return "#fde68a"; // warm yellow
+  if (c <= 26) return "#fdba74"; // orange
+  if (c <= 32) return "#fb7185"; // hot rose
+  return "#f43f5e"; // very hot
+}
+
+/** MSLP colour — cooler blues for high pressure, warmer for low. */
+export function colorForPressureHpa(hpa: number | null): string {
+  if (hpa == null || !Number.isFinite(hpa)) return DEFAULT_VALUE_COLOR;
+  if (hpa >= 1024) return "#93c5fd";
+  if (hpa >= 1016) return "#bfdbfe";
+  if (hpa >= 1008) return DEFAULT_VALUE_COLOR;
+  if (hpa >= 1000) return "#fde68a";
+  if (hpa >= 992) return "#fdba74";
+  return "#fb7185";
+}
+
+/** 3-hour pressure change (tenths of hPa): green rising, red falling. */
+export function colorForPressureChangeTenths(tenths: number | null): string {
+  if (tenths == null || !Number.isFinite(tenths)) return DEFAULT_VALUE_COLOR;
+  if (tenths > 2) return "#4ade80";
+  if (tenths < -2) return "#f87171";
+  return DEFAULT_VALUE_COLOR;
+}
+
+export type StationModelDrawOptions = {
+  /** Colour-code numeric values (temp / dewpoint / pressure / tendency). */
+  colorCoded?: boolean;
+};
+
 function drawLabel(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
   y: number,
   align: CanvasTextAlign = "left",
+  fill: string = DEFAULT_VALUE_COLOR,
 ) {
   if (!text) return;
   ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
@@ -325,23 +364,46 @@ function drawLabel(
   ctx.lineWidth = 3;
   ctx.strokeStyle = "rgba(7,11,22,0.85)";
   ctx.strokeText(text, x, y);
-  ctx.fillStyle = "#f4f8ff";
+  ctx.fillStyle = fill;
   ctx.fillText(text, x, y);
 }
 
 export function drawStationModel(
   ctx: CanvasRenderingContext2D,
   station: WeatherStation,
+  options: StationModelDrawOptions = {},
 ) {
+  const colorCoded = Boolean(options.colorCoded);
   ctx.clearRect(0, 0, SIZE, SIZE);
   drawWind(ctx, station.windDirDeg, station.windSpeedKmh);
   drawCloudCover(ctx, station.cloudCoverPct);
   drawPresentWeather(ctx, station.presentWeather);
   drawTendency(ctx, station.pressureTendency);
 
-  drawLabel(ctx, formatStationTemp(station.temperatureC), CX - 14, CY - 16, "right");
-  drawLabel(ctx, formatStationTemp(station.dewpointC), CX - 14, CY + 16, "right");
-  drawLabel(ctx, formatStationPressure(station.pressureHpa), CX + 14, CY - 16, "left");
+  drawLabel(
+    ctx,
+    formatStationTemp(station.temperatureC),
+    CX - 14,
+    CY - 16,
+    "right",
+    colorCoded ? colorForTemperatureC(station.temperatureC) : DEFAULT_VALUE_COLOR,
+  );
+  drawLabel(
+    ctx,
+    formatStationTemp(station.dewpointC),
+    CX - 14,
+    CY + 16,
+    "right",
+    colorCoded ? colorForTemperatureC(station.dewpointC) : DEFAULT_VALUE_COLOR,
+  );
+  drawLabel(
+    ctx,
+    formatStationPressure(station.pressureHpa),
+    CX + 14,
+    CY - 16,
+    "left",
+    colorCoded ? colorForPressureHpa(station.pressureHpa) : DEFAULT_VALUE_COLOR,
+  );
   if (station.pressureChangeTenths != null) {
     drawLabel(
       ctx,
@@ -349,18 +411,24 @@ export function drawStationModel(
       CX + 14,
       CY + 1,
       "left",
+      colorCoded
+        ? colorForPressureChangeTenths(station.pressureChangeTenths)
+        : DEFAULT_VALUE_COLOR,
     );
   }
 }
 
 export const STATION_MODEL_SIZE = SIZE;
 
-export function stationModelDataUrl(station: WeatherStation): string {
+export function stationModelDataUrl(
+  station: WeatherStation,
+  options: StationModelDrawOptions = {},
+): string {
   const canvas = document.createElement("canvas");
   canvas.width = SIZE;
   canvas.height = SIZE;
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
-  drawStationModel(ctx, station);
+  drawStationModel(ctx, station, options);
   return canvas.toDataURL("image/png");
 }

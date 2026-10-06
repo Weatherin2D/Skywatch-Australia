@@ -19,6 +19,7 @@ export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
 export const MAP_SETTINGS = [
   { id: "satelliteBasemap", label: "Satellite imagery" },
   { id: "lightningBolts", label: "Lightning bolt icons" },
+  { id: "stationColorValues", label: "Colour station values" },
   { id: "cityLabels", label: "City labels" },
   { id: "stateOutlines", label: "State outlines" },
   { id: "stateLabels", label: "State labels" },
@@ -35,6 +36,8 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   satelliteBasemap: false,
   /** Bolt glyphs instead of crosshair markers */
   lightningBolts: false,
+  /** Thermal / pressure colour coding on station-model numbers */
+  stationColorValues: false,
   cityLabels: false,
   stateOutlines: false,
   stateLabels: false,

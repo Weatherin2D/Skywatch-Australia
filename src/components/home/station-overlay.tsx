@@ -16,8 +16,12 @@ import {
 } from "@/lib/weather/stations";
 import { lonLatToBoundsPct, type LonLatBounds } from "@/lib/weather/maps";
 
-function stationIcon(station: WeatherStation, scale: number): L.DivIcon {
-  const url = stationModelDataUrl(station);
+function stationIcon(
+  station: WeatherStation,
+  scale: number,
+  colorCoded: boolean,
+): L.DivIcon {
+  const url = stationModelDataUrl(station, { colorCoded });
   const size = Math.round(STATION_MODEL_SIZE * scale);
   return L.divIcon({
     className: "skywatch-station-model",
@@ -41,9 +45,11 @@ function useMapZoom() {
 export function LeafletStationOverlay({
   stations,
   enabled,
+  colorCoded = false,
 }: {
   stations: WeatherStation[];
   enabled: boolean;
+  colorCoded?: boolean;
 }) {
   const zoom = useMapZoom();
   const density = useMemo(() => densityForLeafletZoom(zoom), [zoom]);
@@ -55,9 +61,9 @@ export function LeafletStationOverlay({
   const icons = useMemo(() => {
     return visibleStations.map((s) => ({
       station: s,
-      icon: stationIcon(s, density.scale),
+      icon: stationIcon(s, density.scale, colorCoded),
     }));
-  }, [visibleStations, density.scale]);
+  }, [visibleStations, density.scale, colorCoded]);
 
   if (!enabled || icons.length === 0) return null;
 
@@ -81,10 +87,12 @@ export function SatelliteStationOverlay({
   stations,
   enabled,
   bounds,
+  colorCoded = false,
 }: {
   stations: WeatherStation[];
   enabled: boolean;
   bounds: LonLatBounds;
+  colorCoded?: boolean;
 }) {
   const canvasRefs = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const density = useMemo(() => densityForBounds(bounds), [bounds]);
@@ -104,9 +112,9 @@ export function SatelliteStationOverlay({
       if (!canvas) continue;
       const ctx = canvas.getContext("2d");
       if (!ctx) continue;
-      drawStationModel(ctx, station);
+      drawStationModel(ctx, station, { colorCoded });
     }
-  }, [visibleStations, enabled]);
+  }, [visibleStations, enabled, colorCoded]);
 
   if (!enabled || visibleStations.length === 0) return null;
 
@@ -118,14 +126,14 @@ export function SatelliteStationOverlay({
         const pct = lonLatToBoundsPct(station.lon, station.lat, bounds);
         return (
           <canvas
-            key={station.id}
+            key={`${station.id}-${colorCoded ? "c" : "w"}`}
             width={STATION_MODEL_SIZE}
             height={STATION_MODEL_SIZE}
             ref={(el) => {
               if (el) {
                 canvasRefs.current.set(station.id, el);
                 const ctx = el.getContext("2d");
-                if (ctx) drawStationModel(ctx, station);
+                if (ctx) drawStationModel(ctx, station, { colorCoded });
               } else {
                 canvasRefs.current.delete(station.id);
               }

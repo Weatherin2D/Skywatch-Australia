@@ -795,6 +795,16 @@ function ArchiveDashboardInner() {
               label="Weather stations"
             />
           </div>
+          <div className="flex items-center justify-between gap-2 text-sm text-white">
+            <span>Colour station values</span>
+            <Toggle
+              on={mapSettings.stationColorValues}
+              onChange={(on) =>
+                setMapSettings((s) => ({ ...s, stationColorValues: on }))
+              }
+              label="Colour station values"
+            />
+          </div>
           <p className="text-[11px] leading-relaxed text-white/45">
             {showLightning
               ? lightningLoading && lightning.length === 0

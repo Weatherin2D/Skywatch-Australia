@@ -559,6 +559,7 @@ export function HomeMap({
           stations={stations}
           enabled={showStations}
           bounds={bounds}
+          colorCoded={mapSettings.stationColorValues}
         />
       </div>
     );
@@ -651,6 +652,7 @@ export function HomeMap({
         <LeafletStationOverlay
           stations={stations}
           enabled={showStations}
+          colorCoded={mapSettings.stationColorValues}
         />
         {probePoint ? (
           <CircleMarker
