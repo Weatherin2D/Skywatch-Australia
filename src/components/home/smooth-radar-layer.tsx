@@ -5,25 +5,13 @@ import { useMap } from "react-leaflet";
 import L from "leaflet";
 import {
   RADAR_NATIVE_MAX_ZOOM,
+  RAINVIEWER_TILE_SIZE,
   radarWarmupTileUrls,
 } from "@/lib/weather/radar-palette";
 import type { WeatherFrame } from "@/lib/weather/maps";
 
-/** BoM WMTS native max (keep in sync with bom-radar.ts — do not import that here). */
-const BOM_RADAR_NATIVE_MAX_ZOOM = 8;
-
 const TRANSPARENT_TILE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-
-function isBomRadarUrl(url: string | null | undefined): boolean {
-  return Boolean(url && /[?&]source=bom\b/.test(url));
-}
-
-function nativeZoomForUrl(url: string | null | undefined): number {
-  return isBomRadarUrl(url)
-    ? BOM_RADAR_NATIVE_MAX_ZOOM
-    : RADAR_NATIVE_MAX_ZOOM;
-}
 
 function createBufferLayer(zIndex: number, maxNativeZoom: number): L.TileLayer {
   return L.tileLayer("", {
@@ -36,7 +24,8 @@ function createBufferLayer(zIndex: number, maxNativeZoom: number): L.TileLayer {
     updateWhenZooming: false,
     updateInterval: 120,
     zIndex,
-    // BoM native through z8; RainViewer through z7. Overzoom keeps paint.
+    // RainViewer 512² unsmoothed tiles; native useful data through z7.
+    tileSize: RAINVIEWER_TILE_SIZE,
     maxZoom: 22,
     maxNativeZoom,
     minZoom: 0,
@@ -144,13 +133,12 @@ export function SmoothRadarLayer({
     const gen = ++loadGenRef.current;
     pendingUrlRef.current = url;
     const hasPaintedFrame = Boolean(displayedUrlRef.current && frontUrl);
-    const nativeZ = nativeZoomForUrl(url);
+    const nativeZ = RADAR_NATIVE_MAX_ZOOM;
     front.options.maxNativeZoom = nativeZ;
     back.options.maxNativeZoom = nativeZ;
-    const bom = isBomRadarUrl(url);
     for (const layer of [front, back]) {
       const el = layer.getContainer();
-      if (el) el.classList.toggle("skywatch-radar-tiles--bom", bom);
+      if (el) el.classList.remove("skywatch-radar-tiles--bom");
     }
 
     const reveal = (layer: L.TileLayer, hide: L.TileLayer, newFront: number) => {
@@ -248,7 +236,7 @@ export function useRadarFramePreloader(
       } catch {
         /* map may be tearing down */
       }
-      const maxNative = nativeZoomForUrl(tpl);
+      const maxNative = RADAR_NATIVE_MAX_ZOOM;
       const native = Math.max(3, Math.min(maxNative, z));
       if (z > maxNative) {
         const coarser = Math.max(3, maxNative - 1);
@@ -267,7 +255,7 @@ export function useRadarFramePreloader(
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      const maxNative = nativeZoomForUrl(tpl);
+      const maxNative = RADAR_NATIVE_MAX_ZOOM;
       const cap = zooms.includes(maxNative) ? 48 : 32;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);

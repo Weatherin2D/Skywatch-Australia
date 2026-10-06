@@ -190,7 +190,7 @@ export function transparentRadarTilePng(): Buffer {
 
 /**
  * Crop a child tile out of a recoloured native parent and nearest-neighbour
- * upscale to 256². Used when the client requests z > RADAR_NATIVE_MAX_ZOOM.
+ * upscale to the parent tile size. Used when z > RADAR_NATIVE_MAX_ZOOM.
  */
 export function extractOverzoomTile(
   parentPng: Buffer,
@@ -201,25 +201,26 @@ export function extractOverzoomTile(
   if (scale <= 1) return parentPng;
   const parent = PNG.sync.read(parentPng);
   const srcSize = parent.width;
+  const outSize = srcSize;
   const childSize = srcSize / scale;
   if (!Number.isFinite(childSize) || childSize < 1) {
     return transparentRadarTilePng();
   }
   const ox = (childX % scale) * childSize;
   const oy = (childY % scale) * childSize;
-  const out = new PNG({ width: 256, height: 256 });
-  for (let y = 0; y < 256; y++) {
+  const out = new PNG({ width: outSize, height: outSize });
+  for (let y = 0; y < outSize; y++) {
     const sy = Math.min(
       srcSize - 1,
-      Math.floor(oy + (y * childSize) / 256),
+      Math.floor(oy + (y * childSize) / outSize),
     );
-    for (let x = 0; x < 256; x++) {
+    for (let x = 0; x < outSize; x++) {
       const sx = Math.min(
         srcSize - 1,
-        Math.floor(ox + (x * childSize) / 256),
+        Math.floor(ox + (x * childSize) / outSize),
       );
       const si = (sy * srcSize + sx) << 2;
-      const di = (y * 256 + x) << 2;
+      const di = (y * outSize + x) << 2;
       out.data[di] = parent.data[si]!;
       out.data[di + 1] = parent.data[si + 1]!;
       out.data[di + 2] = parent.data[si + 2]!;
@@ -235,16 +236,20 @@ export function extractOverzoomTile(
  */
 export const RADAR_NATIVE_MAX_ZOOM = 7;
 
-/** Upstream RainViewer tile URL — Universal Blue, unsmoothed, no snow. */
+/** RainViewer 512² tiles — highest public size, same geographic coverage as 256. */
+export const RAINVIEWER_TILE_SIZE = 512 as const;
+
+/** Upstream RainViewer tile URL — Universal Blue, unsmoothed (`0_0`), no snow. */
 export function rainviewerRawTileUrl(
   host: string,
   path: string,
   z: number | string,
   x: number | string,
   y: number | string,
-  size: 256 | 512 = 256,
+  size: 256 | 512 = RAINVIEWER_TILE_SIZE,
 ): string {
   const base = `${host.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+  // colour=2 Universal Blue; options=0_0 = no smooth, no snow
   return `${base}/${size}/${z}/${x}/${y}/2/0_0.png`;
 }
 
@@ -305,10 +310,7 @@ export function radarWarmupTileUrls(
   maxTilesPerZoom = 64,
 ): string[] {
   const urls: string[] = [];
-  // BoM WMTS native max is z8; RainViewer is z7.
-  const maxNative = /[?&]source=bom\b/.test(template)
-    ? 8
-    : RADAR_NATIVE_MAX_ZOOM;
+  const maxNative = RADAR_NATIVE_MAX_ZOOM;
   for (const z of zooms) {
     if (z < 0 || z > maxNative) continue;
     const n = 2 ** z;

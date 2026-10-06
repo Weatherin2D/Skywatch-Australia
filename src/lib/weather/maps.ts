@@ -1,4 +1,4 @@
-export type RadarFrameSource = "bom";
+export type RadarFrameSource = "rainviewer";
 
 export type WeatherFrame = {
   /** Unix time in seconds */
@@ -126,7 +126,7 @@ export type WeatherMapsPayload = {
   };
   radar: {
     past: WeatherFrame[];
-    source: "bom";
+    source: "rainviewer";
     attribution?: string;
   };
 };

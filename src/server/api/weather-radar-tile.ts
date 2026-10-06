@@ -138,6 +138,8 @@ export async function GET(req: NextRequest) {
       "X-Radar-Cache": "HIT",
       "X-Radar-Source": "rainviewer-raw",
       "X-Radar-Palette": "skywatch-dbz",
+      "X-Radar-Tile-Size": "512",
+      "X-Radar-Smooth": "0",
       "X-Radar-Native-Z": String(fetchZ),
     });
   }
@@ -190,6 +192,8 @@ export async function GET(req: NextRequest) {
     "X-Radar-Cache": "MISS",
     "X-Radar-Source": "rainviewer-raw",
     "X-Radar-Palette": "skywatch-dbz",
+    "X-Radar-Tile-Size": "512",
+    "X-Radar-Smooth": "0",
     "X-Radar-Native-Z": String(fetchZ),
     "X-Radar-Overzoom": overzoom ? String(scale) : "1",
   });

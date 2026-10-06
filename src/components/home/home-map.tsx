@@ -42,15 +42,10 @@ import {
   RadarFramePreloader,
   SmoothRadarLayer,
 } from "@/components/home/smooth-radar-layer";
-import { BomSiteRadarLayer } from "@/components/home/bom-site-radar-layer";
 import { RiskPolygonLayer } from "@/components/risk/risk-polygon-layer";
 import { StormCellOverlay } from "@/components/home/storm-cell-overlay";
 import type { DisplayFeature } from "@/lib/forecast/types";
 import type { LightningStrike } from "@/lib/weather/lightning";
-import type {
-  BomRadarRangeKm,
-  RadarViewMode,
-} from "@/lib/weather/bom-radar-types";
 import type { StormCell } from "@/lib/weather/storm-cell-types";
 import type { SynopticFrame } from "@/lib/weather/synoptic";
 import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
@@ -65,11 +60,7 @@ type Props = {
   mode: MapMode;
   regionId?: MapRegionId;
   showRadarOverlay?: boolean;
-  /** Composite = national WMTS; Site = high-res IDR overlay + fitBounds. */
-  radarMode?: RadarViewMode;
-  radarSiteCode?: string | null;
-  radarRangeKm?: BomRadarRangeKm;
-  /** Leaflet tile URL template for BoM WMTS frames (composite mode) */
+  /** Leaflet tile URL template for RainViewer frames */
   frameTileUrl?: string | null;
   /** Full-frame IR image (GIBS WMS via proxy) */
   frameImageUrl?: string | null;
@@ -448,9 +439,6 @@ export function HomeMap({
   mode,
   regionId = DEFAULT_MAP_REGION,
   showRadarOverlay = false,
-  radarMode = "composite",
-  radarSiteCode = null,
-  radarRangeKm = 64,
   frameTileUrl = null,
   frameOpacity = 1,
   frameAlt = "Satellite loop frame",
@@ -496,9 +484,7 @@ export function HomeMap({
   const bounds = region.bounds;
   const isNational = regionId === "national";
   const satelliteLoop = mode === "Satellite";
-  const useSiteRadar = showRadarOverlay && radarMode === "site";
-  const useCompositeRadar = showRadarOverlay && radarMode !== "site";
-  const radarTiles = frameTileUrl && useCompositeRadar ? frameTileUrl : null;
+  const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
   const satAspect = isNational
     ? GIBS_AU_ASPECT
     : boundsMercatorAspect(bounds);
@@ -556,7 +542,7 @@ export function HomeMap({
           alt={frameAlt}
           opacity={frameOpacity}
         />
-        {useCompositeRadar && frameTileUrl ? (
+        {showRadarOverlay && frameTileUrl ? (
           <SatelliteRadarOverlay tileUrl={frameTileUrl} bounds={bounds} />
         ) : null}
         <SatelliteSynopticOverlay
@@ -614,9 +600,7 @@ export function HomeMap({
         <MapChromeFix />
         <MapModeEffect mode={mode} />
         <MapClickHandler onMapClick={onMapClick} />
-        {useSiteRadar ? null : (
-          <FitRegionBounds bounds={bounds} animate isNational={isNational} />
-        )}
+        <FitRegionBounds bounds={bounds} animate isNational={isNational} />
         <TileLayer
           key={useSatelliteBasemap ? "sat" : "esri-dark"}
           url={basemapUrl}
@@ -652,12 +636,7 @@ export function HomeMap({
           />
         ) : null}
         {radarTiles ? <SmoothRadarLayer url={radarTiles} opacity={0.95} /> : null}
-        <BomSiteRadarLayer
-          mode={useSiteRadar ? "site" : "composite"}
-          siteCode={radarSiteCode}
-          rangeKm={radarRangeKm}
-        />
-        {useCompositeRadar && radarLoopFrames.length > 0 ? (
+        {showRadarOverlay && radarLoopFrames.length > 0 ? (
           <RadarFramePreloader
             frames={radarLoopFrames}
             activeIndex={radarFrameIndex}

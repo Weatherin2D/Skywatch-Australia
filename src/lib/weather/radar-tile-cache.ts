@@ -24,7 +24,7 @@ export function radarTileCacheKey(
   x: number,
   y: number,
 ): string {
-  return `${host}|${path}|${z}/${x}/${y}|v3`;
+  return `${host}|${path}|${z}/${x}/${y}|v4-512`;
 }
 
 export function getCachedRadarTile(key: string): Buffer | null {

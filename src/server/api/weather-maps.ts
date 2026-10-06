@@ -10,6 +10,7 @@ import {
   getSatelliteProduct,
   isSatelliteProductId,
   parseRealEarthTimeToken,
+  rainviewerTileUrl,
   satelliteFrameProxyUrl,
   toIsoZ,
   type SatelliteProductId,
@@ -18,21 +19,26 @@ import {
   type WeatherMapsPayload,
 } from "@/lib/weather/maps";
 import { warmFramesInBackground } from "@/lib/weather/fetch-frame";
-import {
-  BOM_RADAR_ATTRIBUTION,
-  bomRadarTileUrl,
-  getBomRadarFrameTimes,
-  isoTimeFromUnix,
-} from "@/lib/weather/bom-radar";
+import { warmRadarFramesInBackground } from "@/lib/weather/warm-radar-tiles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const RAINVIEWER_URL = "https://api.rainviewer.com/public/weather-maps.json";
 const GIBS_STEP_MS = HIMAWARI_STEP_SEC * 1000;
 const GIBS_PROBE_MAX = 18;
 const GIBS_PROBE_BATCH = 4;
 const GIBS_PROBE_WIDTH = 96;
 const FRAME_COUNT = SATELLITE_FRAME_COUNT;
+
+type RainViewerMaps = {
+  generated?: number;
+  host?: string;
+  radar?: {
+    past?: Array<{ time: number; path: string }>;
+    nowcast?: Array<{ time: number; path: string }>;
+  };
+};
 
 function emptyProductFrames(): WeatherMapsPayload["satellite"]["products"] {
   return Object.fromEntries(
@@ -152,18 +158,18 @@ function buildFramesAtLatest(
   );
 }
 
-async function buildBomRadarFrames(): Promise<WeatherFrame[]> {
-  try {
-    const times = await getBomRadarFrameTimes();
-    return times.map((time) => ({
-      time,
-      tileUrlTemplate: bomRadarTileUrl(isoTimeFromUnix(time)),
-      radarSource: "bom" as const,
-    }));
-  } catch (err) {
-    console.error("[weather/maps] BoM radar frames failed", err);
-    return [];
-  }
+function normalizeRainviewerFrames(
+  host: string,
+  frames: Array<{ time: number; path: string }> | undefined,
+  kind: "satellite" | "radar",
+): WeatherFrame[] {
+  if (!frames?.length) return [];
+  return frames.map((f) => ({
+    time: f.time,
+    path: f.path,
+    tileUrlTemplate: rainviewerTileUrl(host, f.path, kind),
+    radarSource: kind === "radar" ? ("rainviewer" as const) : undefined,
+  }));
 }
 
 async function buildProductFrames(
@@ -263,9 +269,28 @@ export async function GET(request: NextRequest) {
       ? rawProduct
       : DEFAULT_SATELLITE_PRODUCT;
 
-    const bomFrames = await buildBomRadarFrames();
-    const radarAll = bomFrames;
-    const host = "https://api.bom.gov.au";
+    const rvPromise = fetch(RAINVIEWER_URL, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    })
+      .then(async (rvRes) => {
+        if (!rvRes.ok) throw new Error(`RainViewer HTTP ${rvRes.status}`);
+        return (await rvRes.json()) as RainViewerMaps;
+      })
+      .catch(() => null);
+
+    const rv = await rvPromise;
+    const host = rv?.host ?? "https://tilecache.rainviewer.com";
+    const radarPast = normalizeRainviewerFrames(host, rv?.radar?.past, "radar");
+    const radarNowcast = normalizeRainviewerFrames(
+      host,
+      rv?.radar?.nowcast,
+      "radar",
+    );
+    const radarAll = [...radarPast, ...radarNowcast].sort(
+      (a, b) => a.time - b.time,
+    );
 
     const satellite = wantAll
       ? await buildAllSatelliteProducts()
@@ -301,10 +326,16 @@ export async function GET(request: NextRequest) {
           };
         })();
 
-    const generated = Math.floor(Date.now() / 1000);
+    const generated = rv?.generated ?? Math.floor(Date.now() / 1000);
     const activeProduct = wantAll ? DEFAULT_SATELLITE_PRODUCT : product;
     const frames = satellite.products[activeProduct].frames;
     const activeMeta = getSatelliteProduct(activeProduct);
+
+    warmRadarFramesInBackground(
+      radarAll.slice(-2).flatMap((f) =>
+        f.path ? [{ host, path: f.path }] : [],
+      ),
+    );
 
     const payload: WeatherMapsPayload = {
       generated,
@@ -317,8 +348,8 @@ export async function GET(request: NextRequest) {
       },
       radar: {
         past: radarAll,
-        source: "bom",
-        attribution: BOM_RADAR_ATTRIBUTION,
+        source: "rainviewer",
+        attribution: "Radar © RainViewer / LightningMaps.org",
       },
     };
 
@@ -334,8 +365,9 @@ export async function GET(request: NextRequest) {
           ? String(frames[frames.length - 1]!.time)
           : "",
         "X-Satellite-Frame-Count": String(frames.length),
-        "X-Radar-Source": "bom",
-        "X-Radar-Bom-Frames": String(radarAll.length),
+        "X-Radar-Source": "rainviewer",
+        "X-Radar-Tile-Size": "512",
+        "X-Radar-Smooth": "0",
         "X-Radar-Frame-Count": String(radarAll.length),
       },
     });
