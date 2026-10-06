@@ -24,8 +24,8 @@ export function radarTileCacheKey(
   x: number,
   y: number,
 ): string {
-  // v4: 512px upstream + bilinear overzoom
-  return `${host}|${path}|${z}/${x}/${y}|v4`;
+  // v5: 512px upstream + nearest-neighbour overzoom (locked SkyWatch dBZ)
+  return `${host}|${path}|${z}/${x}/${y}|v5`;
 }
 
 export function getCachedRadarTile(key: string): Buffer | null {

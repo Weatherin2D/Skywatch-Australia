@@ -36,16 +36,14 @@ function createBufferLayer(zIndex: number): L.TileLayer {
 }
 
 /**
- * Dual-buffer radar tiles: keep the current frame fully visible until the next
- * frame's visible tiles have loaded (or a short failsafe), then snap.
+ * Dual-buffer radar tiles with instant hard cuts on frame change.
  *
- * Failsafe MUST stay well under the playback interval (~650ms at 1×). A longer
- * wait meant every new frame cancelled the previous reveal and the loop froze
- * on the first painted frame.
+ * Playback must not wait for the next frame to finish loading — set the new
+ * URL and reveal immediately so the animation snaps frame-to-frame.
  */
 export function SmoothRadarLayer({
   url,
-  opacity = 0.92,
+  opacity = 0.88,
 }: {
   url: string | null;
   opacity?: number;
@@ -54,8 +52,6 @@ export function SmoothRadarLayer({
   const buffersRef = useRef<[L.TileLayer, L.TileLayer] | null>(null);
   const frontRef = useRef(0);
   const displayedUrlRef = useRef<string | null>(null);
-  const pendingUrlRef = useRef<string | null>(null);
-  const loadGenRef = useRef(0);
   const opacityRef = useRef(opacity);
   opacityRef.current = opacity;
 
@@ -65,7 +61,6 @@ export function SmoothRadarLayer({
     buffersRef.current = [a, b];
     frontRef.current = 0;
     displayedUrlRef.current = null;
-    pendingUrlRef.current = null;
     a.addTo(map);
     b.addTo(map);
 
@@ -80,7 +75,6 @@ export function SmoothRadarLayer({
     map.on("moveend", refreshFront);
 
     return () => {
-      loadGenRef.current += 1;
       map.off("zoomend", refreshFront);
       map.off("moveend", refreshFront);
       a.off();
@@ -89,7 +83,6 @@ export function SmoothRadarLayer({
       map.removeLayer(b);
       buffersRef.current = null;
       displayedUrlRef.current = null;
-      pendingUrlRef.current = null;
     };
   }, [map]);
 
@@ -104,11 +97,14 @@ export function SmoothRadarLayer({
     if (!buffers) return;
 
     if (!url) {
-      loadGenRef.current += 1;
-      pendingUrlRef.current = null;
       displayedUrlRef.current = null;
       buffers[0]!.setOpacity(0);
       buffers[1]!.setOpacity(0);
+      return;
+    }
+
+    if (url === displayedUrlRef.current) {
+      buffers[frontRef.current]!.setOpacity(opacityRef.current);
       return;
     }
 
@@ -116,68 +112,29 @@ export function SmoothRadarLayer({
     const backIdx = 1 - frontIdx;
     const front = buffers[frontIdx]!;
     const back = buffers[backIdx]!;
-    const frontUrl = String(
-      (front as L.TileLayer & { _url?: string })._url || "",
-    );
+    const hasPaintedFrame = Boolean(displayedUrlRef.current);
 
-    if (url === displayedUrlRef.current && frontUrl === url) {
-      if (pendingUrlRef.current && pendingUrlRef.current !== url) {
-        loadGenRef.current += 1;
-        pendingUrlRef.current = null;
-      }
-      front.setOpacity(opacityRef.current);
-      return;
-    }
-
-    if (url === pendingUrlRef.current && frontUrl === url) return;
-
-    const gen = ++loadGenRef.current;
-    pendingUrlRef.current = url;
-    const hasPaintedFrame = Boolean(displayedUrlRef.current && frontUrl);
-
-    const reveal = (layer: L.TileLayer, hide: L.TileLayer, newFront: number) => {
-      if (gen !== loadGenRef.current) return;
-      if (pendingUrlRef.current !== url) return;
-      layer.setOpacity(opacityRef.current);
-      layer.setZIndex(451);
-      hide.setOpacity(0);
-      hide.setZIndex(450);
-      frontRef.current = newFront;
+    if (hasPaintedFrame) {
+      // Instant cut: load into the back buffer and reveal immediately — do not
+      // wait for the Leaflet "load" event or any failsafe timeout.
+      back.setUrl(url, false);
+      back.setOpacity(opacityRef.current);
+      back.setZIndex(451);
+      front.setOpacity(0);
+      front.setZIndex(450);
+      frontRef.current = backIdx;
       displayedUrlRef.current = url;
-      pendingUrlRef.current = null;
-    };
-
-    const loadInto = (
-      layer: L.TileLayer,
-      onReady: () => void,
-      failSafeMs: number,
-    ) => {
-      layer.off("load");
-      layer.off("tileerror");
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(failSafe);
-        onReady();
-      };
-      // Show partial tiles quickly — must beat the animation interval so the
-      // next frame doesn't cancel this reveal forever.
-      const failSafe = window.setTimeout(finish, failSafeMs);
-      layer.once("load", finish);
-      layer.setOpacity(0);
-      layer.setUrl(url, false);
-    };
-
-    // Subsequent frames: swap via back buffer with a short failsafe so 1×/2×
-    // playback (~650/360ms) never outruns the reveal.
-    if (hasPaintedFrame && frontUrl !== url) {
-      loadInto(back, () => reveal(back, front, backIdx), 160);
       return;
     }
 
-    // First paint / remount.
-    loadInto(front, () => reveal(front, back, frontIdx), 400);
+    // First paint — show as soon as the URL is set (no load wait).
+    front.setUrl(url, false);
+    front.setOpacity(opacityRef.current);
+    front.setZIndex(451);
+    back.setOpacity(0);
+    back.setZIndex(450);
+    frontRef.current = frontIdx;
+    displayedUrlRef.current = url;
   }, [url, map]);
 
   return null;

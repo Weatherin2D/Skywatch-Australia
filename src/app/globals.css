@@ -228,11 +228,11 @@
   min-height: 100% !important;
 }
 
-/* 512px RainViewer tiles + server bilinear overzoom — let the browser
-   interpolate smoothly instead of forcing blocky nearest-neighbour. */
+/* Keep SkyWatch dBZ colours exact — no browser blending between stops. */
 .skywatch-radar-tiles img,
 .leaflet-tile-pane .skywatch-radar-tiles img {
-  image-rendering: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* BoM risk bands — keep carved edges smooth when Leaflet scales the overlay. */

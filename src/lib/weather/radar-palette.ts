@@ -4,8 +4,8 @@ import universalBlueDbz from "../../../data/rainviewer-universal-blue.json";
 export type Rgba = readonly [number, number, number, number];
 
 /**
- * SkyWatch dBZ colour stops — raw RainViewer reflectivity remapped to this
- * ladder (value, [r,g,b,a]).
+ * Locked SkyWatch dBZ colour stops (since 94e5deb) — do not swap for
+ * RadarScope-style or other ladders. RainViewer Universal Blue remaps here.
  */
 export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
   { dbz: 0, rgba: [0, 0, 0, 255] },
@@ -208,61 +208,10 @@ export const RADAR_NATIVE_MAX_ZOOM = 7;
  */
 export const RADAR_TILE_SIZE: 512 = 512;
 
-/** Premultiplied-alpha bilinear sample (keeps storm edges from fringing). */
-function sampleBilinear(
-  data: Uint8Array,
-  width: number,
-  height: number,
-  fx: number,
-  fy: number,
-): [number, number, number, number] {
-  const x0 = Math.max(0, Math.min(width - 1, Math.floor(fx)));
-  const y0 = Math.max(0, Math.min(height - 1, Math.floor(fy)));
-  const x1 = Math.min(width - 1, x0 + 1);
-  const y1 = Math.min(height - 1, y0 + 1);
-  const tx = Math.min(1, Math.max(0, fx - Math.floor(fx)));
-  const ty = Math.min(1, Math.max(0, fy - Math.floor(fy)));
-
-  const read = (x: number, y: number) => {
-    const i = (y * width + x) << 2;
-    const a = data[i + 3]! / 255;
-    return [
-      data[i]! * a,
-      data[i + 1]! * a,
-      data[i + 2]! * a,
-      a,
-    ] as const;
-  };
-
-  const c00 = read(x0, y0);
-  const c10 = read(x1, y0);
-  const c01 = read(x0, y1);
-  const c11 = read(x1, y1);
-  const top = [
-    c00[0] + (c10[0] - c00[0]) * tx,
-    c00[1] + (c10[1] - c00[1]) * tx,
-    c00[2] + (c10[2] - c00[2]) * tx,
-    c00[3] + (c10[3] - c00[3]) * tx,
-  ] as const;
-  const bot = [
-    c01[0] + (c11[0] - c01[0]) * tx,
-    c01[1] + (c11[1] - c01[1]) * tx,
-    c01[2] + (c11[2] - c01[2]) * tx,
-    c01[3] + (c11[3] - c01[3]) * tx,
-  ] as const;
-  const a = top[3] + (bot[3] - top[3]) * ty;
-  if (a <= 0.004) return [0, 0, 0, 0];
-  return [
-    clampByte((top[0] + (bot[0] - top[0]) * ty) / a),
-    clampByte((top[1] + (bot[1] - top[1]) * ty) / a),
-    clampByte((top[2] + (bot[2] - top[2]) * ty) / a),
-    clampByte(a * 255),
-  ];
-}
-
 /**
- * Crop a child tile out of a recoloured native parent and bilinear-upscale
- * to RADAR_TILE_SIZE². Used when the client requests z > RADAR_NATIVE_MAX_ZOOM.
+ * Crop a child tile out of a recoloured native parent and nearest-neighbour
+ * upscale to RADAR_TILE_SIZE². NN preserves the exact SkyWatch dBZ palette
+ * colours (no blended intermediate shades).
  */
 export function extractOverzoomTile(
   parentPng: Buffer,
@@ -282,21 +231,21 @@ export function extractOverzoomTile(
   const outSize = RADAR_TILE_SIZE;
   const out = new PNG({ width: outSize, height: outSize });
   for (let y = 0; y < outSize; y++) {
-    const fy = oy + ((y + 0.5) * childSize) / outSize - 0.5;
+    const sy = Math.min(
+      srcSize - 1,
+      Math.floor(oy + (y * childSize) / outSize),
+    );
     for (let x = 0; x < outSize; x++) {
-      const fx = ox + ((x + 0.5) * childSize) / outSize - 0.5;
-      const [r, g, b, a] = sampleBilinear(
-        parent.data,
-        srcSize,
-        parent.height,
-        fx,
-        fy,
+      const sx = Math.min(
+        srcSize - 1,
+        Math.floor(ox + (x * childSize) / outSize),
       );
+      const si = (sy * srcSize + sx) << 2;
       const di = (y * outSize + x) << 2;
-      out.data[di] = r;
-      out.data[di + 1] = g;
-      out.data[di + 2] = b;
-      out.data[di + 3] = a;
+      out.data[di] = parent.data[si]!;
+      out.data[di + 1] = parent.data[si + 1]!;
+      out.data[di + 2] = parent.data[si + 2]!;
+      out.data[di + 3] = parent.data[si + 3]!;
     }
   }
   return PNG.sync.write(out);

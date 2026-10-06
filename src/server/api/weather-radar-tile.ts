@@ -40,8 +40,9 @@ function pngResponse(
  * GET /api/weather/radar-tile?host=&path=&z=&x=&y=
  *
  * RainViewer only has real reflectivity through ~z7. Requests above that are
- * served by cropping + bilinear-upscaling the native 512 parent so zoomed-in
- * views keep paint instead of empty z8–12 placeholders.
+ * served by cropping + nearest-neighbour upscaling the native 512 parent so
+ * zoomed-in views keep paint (and the locked SkyWatch dBZ colours) instead of
+ * empty z8–12 placeholders.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
