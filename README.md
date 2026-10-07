@@ -4,29 +4,25 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
-**Production host:** Railway (Vercel is paused for this team). Deploy from the private GitHub repo `Weatherin2D/Skywatch-Australia`.
+**Production host:** [Fly.io](https://fly.io) (Vercel paused; Railway trial expired). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
 
-### Deploy on Railway
+### Deploy on Fly.io
 
-1. Create a project at [railway.app](https://railway.app) → **Deploy from GitHub** → select `Weatherin2D/Skywatch-Australia` (keep the repo private).
-2. Railway detects the `Dockerfile` (or uses `npm run build` / `npm start`).
-3. **Settings → Networking → Generate Domain** for a public URL.
-4. **Variables** (from your local `.env.local` / Upstash):
-   - `KV_REST_API_URL`
-   - `KV_REST_API_TOKEN`
-   - `COMMUNITY_ADMIN_SECRET` (optional)
-   - Do **not** set `PORT` (Railway injects it).
-5. Archive daily ingest: Vercel Cron does not run here. Add a Railway cron / external ping to  
-   `GET /api/weather/archive/ingest` once per day, or rely on lazy ingest when `/archive` is opened.
-
-CLI alternative (with a [Railway API token](https://railway.app/account/tokens)):
+Config is in `fly.toml` + `Dockerfile` (`output: "standalone"`). App name: `skywatch-australia`, region: `syd`.
 
 ```bash
-npx @railway/cli login
-npx @railway/cli init
-npx @railway/cli up
-npx @railway/cli domain
+# Install CLI: https://fly.io/docs/flyctl/install/
+fly auth login
+fly apps create skywatch-australia   # once
+fly secrets set KV_REST_API_URL=... KV_REST_API_TOKEN=... COMMUNITY_ADMIN_SECRET=...
+fly deploy
 ```
+
+Public URL: `https://skywatch-australia.fly.dev` (or attach a custom domain in the Fly dashboard).
+
+Archive ingest: no Vercel Cron here — ping `GET /api/weather/archive/ingest` daily (e.g. cron-job.org) or rely on lazy ingest when `/archive` is opened.
+
+Machines auto-stop when idle (`min_machines_running = 0`) to stay within free allowance; first request after idle may take a few seconds to wake.
 
 ## Current product surface
 
