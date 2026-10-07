@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Self-hosted (Railway / Docker) — smaller runtime image.
+  output: "standalone",
   async redirects() {
     return [
       { source: "/about", destination: "/", permanent: false },

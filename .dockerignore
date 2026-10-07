@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.vercel
+.agents
+ausrisk-screenshots
+tmp-scaffold
+agent-tools
+data/current-forecast.json
+data/bom-risk
+.env*
+!.env.example
+*.tsbuildinfo
+README.md
+skills-lock.json
