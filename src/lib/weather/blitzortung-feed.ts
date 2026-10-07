@@ -29,6 +29,7 @@ import {
 } from "@/lib/weather/blitzortung-parse";
 import { fetchLightningMapsBackfill } from "@/lib/weather/lightningmaps-backfill";
 import { fetchBlitzortungGeoJsonBackfill } from "@/lib/weather/blitzortung-geojson-backfill";
+import { useHobbyBudget } from "@/lib/runtime-budget";
 
 /** Prefer hosts that reliably accept the public subscribe handshake. */
 const WS_HOSTS = [
@@ -340,6 +341,15 @@ export function ensureLightningFeed() {
   state.started = true;
   state.status = "connecting";
   void loadPersisted(state).then(() => prune(state));
+
+  // Hobby / Vercel: skip long-lived WS/MQTT + interval backfills. Serverless
+  // instances die quickly; timers only burn Active CPU. Request path awaits
+  // a single HTTP backfill instead (see getLiveLightningSnapshot).
+  if (useHobbyBudget()) {
+    state.pruneTimer = setInterval(() => prune(state), 60_000);
+    return;
+  }
+
   for (const host of WS_HOSTS) {
     connectWs(state, host);
   }
@@ -433,20 +443,25 @@ function westernStrikeCount(state: GlobalFeed) {
 export async function getLiveLightningSnapshot(): Promise<LiveLightningSnapshot> {
   ensureLightningFeed();
   const state = getState();
+  const hobby = useHobbyBudget();
   const needsAwait =
     state.strikes.size < 25 || westernStrikeCount(state) < 3;
   if (needsAwait) {
     try {
+      // Hobby: GeoJSON only (cheap). Full PNG decode waits for non-Hobby hosts.
+      const fill = hobby
+        ? runGeoJsonBackfill(state)
+        : runAllBackfills(state);
       await Promise.race([
-        runAllBackfills(state),
+        fill,
         new Promise<void>((resolve) => {
-          setTimeout(resolve, 14_000);
+          setTimeout(resolve, hobby ? 6_000 : 14_000);
         }),
       ]);
     } catch (err) {
       console.error("[lightning] awaited backfill failed", err);
     }
-  } else {
+  } else if (!hobby) {
     // Keep warm in the background when we already have a trail.
     void runAllBackfills(state);
   }

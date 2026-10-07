@@ -378,9 +378,14 @@ export function rainviewerTileUrl(
   host: string,
   path: string,
   kind: "satellite" | "radar" = "satellite",
+  options?: { directRadar?: boolean },
 ): string {
   const base = `${host.replace(/\/$/, "")}${path}`;
   if (kind === "radar") {
+    // `directRadar`: RainViewer CDN (Hobby) — skips pngjs recolour proxy CPU.
+    if (options?.directRadar) {
+      return `${base}/256/{z}/{x}/{y}/0/0_0.png`;
+    }
     // Same-origin proxy: RainViewer pixels remapped to SkyWatch dBZ.
     // pal/r must stay in the URL so immutable CDN entries from older palettes
     // cannot mix into playback. `smooth` is flipped client-side by map settings.

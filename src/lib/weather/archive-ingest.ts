@@ -38,12 +38,12 @@ import {
 } from "@/lib/weather/synoptic";
 
 /** Keep each cron invocation under Vercel maxDuration (~60s). */
-const BUDGET_MS = 45_000;
+const BUDGET_MS = 30_000;
 const MAX_BACKFILL_IR_STAMPS = 2;
 const MAX_TIP_EXTRA_PRODUCTS = 2;
 const MAX_PRODUCTS_PARALLEL = 3;
 /** Hobby plan: cron is daily; fill gaps when the archive UI/API is hit. */
-export const ARCHIVE_LAZY_INGEST_MIN_INTERVAL_MS = 10 * 60 * 1000;
+export const ARCHIVE_LAZY_INGEST_MIN_INTERVAL_MS = 60 * 60 * 1000;
 
 export type IngestResult = {
   ok: true;

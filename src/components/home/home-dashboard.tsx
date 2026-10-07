@@ -314,7 +314,7 @@ function HomeDashboardInner({
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const showCells = layers.cells;
   const { data: stormCellsData, loading: stormCellsLoading } =
-    useStormCells(45_000, showCells);
+    useStormCells(90_000, showCells);
   const stormCells = stormCellsData?.cells ?? [];
 
   // Rehydrate this page's localStorage slot (SSR can't), then URL overrides.

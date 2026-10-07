@@ -8,7 +8,7 @@ import {
 } from "@/lib/weather/auto-risk-outlook";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 /**
  * GET /api/weather/risk?source=bom|pulse|access|ifs|ukmo|auto&product=risk|tstorm|hail|wind|rain|tornado

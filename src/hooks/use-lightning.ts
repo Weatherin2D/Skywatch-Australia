@@ -30,9 +30,9 @@ const EMPTY: State = {
 };
 
 /** HTTP backfill only — live strikes come from the browser WebSocket feed. */
-const POLL_MS = 20_000;
+const POLL_MS = 60_000;
 /** Even slower once the live client socket is delivering strikes. */
-const POLL_MS_WHEN_LIVE = 60_000;
+const POLL_MS_WHEN_LIVE = 120_000;
 const WINDOW_MIN = 24 * 60;
 
 function mergeStrike(

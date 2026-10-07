@@ -14,6 +14,7 @@ import {
   radarTileCacheKey,
   setCachedRadarTile,
 } from "@/lib/weather/radar-tile-cache";
+import { allowBackgroundWarm } from "@/lib/runtime-budget";
 
 const AU_BOUNDS: RadarWarmupBounds = {
   south: -45,
@@ -105,7 +106,7 @@ export function warmRadarFramesInBackground(
   frames: { host: string; path: string }[],
   zooms: number[] = [4, 5, 6, 7],
 ): void {
-  if (!frames.length) return;
+  if (!frames.length || !allowBackgroundWarm()) return;
   void Promise.resolve().then(async () => {
     const jobs: { host: string; path: string; z: number; x: number; y: number }[] =
       [];

@@ -20,14 +20,19 @@ import {
 } from "@/lib/weather/maps";
 import { warmFramesInBackground } from "@/lib/weather/fetch-frame";
 import { warmRadarFramesInBackground } from "@/lib/weather/warm-radar-tiles";
+import {
+  allowBackgroundWarm,
+  useDirectRadarTiles,
+  useHobbyBudget,
+} from "@/lib/runtime-budget";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const RAINVIEWER_URL = "https://api.rainviewer.com/public/weather-maps.json";
 const GIBS_STEP_MS = HIMAWARI_STEP_SEC * 1000;
-const GIBS_PROBE_MAX = 18;
-const GIBS_PROBE_BATCH = 4;
+const GIBS_PROBE_MAX = useHobbyBudget() ? 8 : 18;
+const GIBS_PROBE_BATCH = useHobbyBudget() ? 2 : 4;
 const GIBS_PROBE_WIDTH = 96;
 const FRAME_COUNT = SATELLITE_FRAME_COUNT;
 
@@ -167,10 +172,13 @@ function normalizeRainviewerFrames(
   kind: "satellite" | "radar",
 ): WeatherFrame[] {
   if (!frames?.length) return [];
+  const directRadar = kind === "radar" && useDirectRadarTiles();
   return frames.map((f) => ({
     time: f.time,
     path: f.path,
-    tileUrlTemplate: rainviewerTileUrl(host, f.path, kind),
+    tileUrlTemplate: rainviewerTileUrl(host, f.path, kind, {
+      directRadar,
+    }),
   }));
 }
 
@@ -247,7 +255,7 @@ async function buildAllSatelliteProducts(): Promise<{
   }
 
   // Warm only the newest few IR frames — full-loop warm burned Fluid CPU.
-  if (products.infrared.frames.length) {
+  if (allowBackgroundWarm() && products.infrared.frames.length) {
     const tipTimes = products.infrared.frames
       .map((f) => f.time)
       .slice(-3);
@@ -336,13 +344,15 @@ export async function GET(request: NextRequest) {
     const frames = satellite.products[activeProduct].frames;
     const activeMeta = getSatelliteProduct(activeProduct);
 
-    // Prime the radar tile cache for the newest frames so the first map paint
-    // hits memory instead of waiting on RainViewer + recolour.
-    warmRadarFramesInBackground(
-      radarAll.slice(-2).flatMap((f) =>
-        f.path ? [{ host, path: f.path }] : [],
-      ),
-    );
+    // Hobby: never warm radar tiles server-side (recolour × hundreds of tiles
+    // was the main Active CPU burn). Full compute can opt in via SKYWATCH_WARM.
+    if (allowBackgroundWarm() && !useDirectRadarTiles()) {
+      warmRadarFramesInBackground(
+        radarAll.slice(-2).flatMap((f) =>
+          f.path ? [{ host, path: f.path }] : [],
+        ),
+      );
+    }
 
     const payload: WeatherMapsPayload = {
       generated,
@@ -359,10 +369,14 @@ export async function GET(request: NextRequest) {
       },
     };
 
+    const mapsCache = useHobbyBudget()
+      ? "public, s-maxage=120, stale-while-revalidate=300"
+      : "public, s-maxage=60, stale-while-revalidate=120";
+
     return NextResponse.json(payload, {
       headers: {
-        // Tip advances every ~10 min — 60s CDN still feels live, cuts origin hits.
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+        // Tip advances every ~10 min — longer CDN on Hobby cuts origin hits.
+        "Cache-Control": mapsCache,
         "X-Satellite-Product": wantAll ? "all" : product,
         "X-Satellite-Layer":
           activeMeta.realearthProduct ?? activeMeta.gibsLayer ?? activeProduct,

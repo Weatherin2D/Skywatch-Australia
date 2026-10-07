@@ -4,9 +4,43 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local (full Next.js app):** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
+**Public host (free Hobby):** Vercel — see [Vercel Hobby](#vercel-hobby-recommended) below.
+
 **Public host (free, no Docker):** GitHub Pages lite — see below.
 
 **Full app host (when you have budget / working Docker):** Node host or home PC + Cloudflare Tunnel.
+
+## Vercel Hobby (recommended)
+
+The app auto-enables a **Hobby budget** on any Vercel deploy (`VERCEL=1`):
+
+| Cut | Why |
+|-----|-----|
+| Radar tiles from RainViewer CDN directly | Skips `/api/weather/radar-tile` pngjs recolour (main Active CPU burn) |
+| No server-side radar/satellite warm | Background warm kept functions alive after the response |
+| Lightning: no WS/MQTT timers; GeoJSON backfill only | Serverless sockets + PNG decode burned CPU |
+| `maxDuration` 60s, daily archive cron only | Matches Hobby cron + Fluid limits |
+| Slower client polls / lighter tile prefetch | Fewer invocations per open tab |
+
+**Deploy on a fresh Hobby account**
+
+1. [vercel.com](https://vercel.com) → new account → Import `Weatherin2D/Skywatch-Australia`.
+2. Framework: Next.js. Leave build defaults (`npm run build`).
+3. Env vars (Project → Settings → Environment Variables):
+
+| Name | Value |
+|------|--------|
+| `KV_REST_API_URL` | Upstash Redis REST URL (free tier) |
+| `KV_REST_API_TOKEN` | Upstash Redis REST token |
+| `COMMUNITY_ADMIN_SECRET` | optional private admin delete secret |
+
+Hobby mode is automatic — do **not** set `SKYWATCH_FULL_COMPUTE=1` unless you accept fair-use risk.
+
+4. Deploy. Open the `*.vercel.app` URL. Check **Usage** after a day of light traffic (Active CPU should stay well under 4h).
+
+**Trade-offs on Hobby:** radar uses RainViewer Universal Blue (not the custom SkyWatch dBZ ladder); lightning trail is thinner until the browser live socket fills it; archive grows once per day via cron plus sparse lazy ingest.
+
+To restore full recolour/warm on a paid plan or self-host: set `SKYWATCH_FULL_COMPUTE=1` (or `SKYWATCH_RADAR_DIRECT=0` + `SKYWATCH_WARM=1`).
 
 ## GitHub Pages lite (no Docker, free)
 

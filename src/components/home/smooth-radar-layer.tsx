@@ -18,8 +18,8 @@ function createBufferLayer(zIndex: number, smoothed: boolean): L.TileLayer {
     className: smoothed
       ? "skywatch-radar-tiles skywatch-radar-tiles--smooth"
       : "skywatch-radar-tiles",
-    // Keep the standard 256 CSS tile grid (matches basemap).
-    keepBuffer: 24,
+    // Modest buffer — large values flooded /api/weather/radar-tile on pan.
+    keepBuffer: 4,
     // Hold painted tiles through the gesture — updating mid-zoom was blanking
     // the radar so it looked like it "vanished" on pinch/scroll.
     updateWhenIdle: true,
@@ -209,22 +209,22 @@ export function useRadarFramePreloader(
       if (!force && warmed.current.has(cacheKey)) return;
       warmed.current.add(cacheKey);
       const bounds = viewportBounds();
-      // Viewport-sized warm — enough tiles for the playhead without flooding.
-      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 64 : 48;
+      // Viewport-sized warm — keep caps low for Hobby invoke budget.
+      const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 24 : 16;
       for (const url of radarWarmupTileUrls(tpl, zooms, bounds, cap)) {
         queue.push(url);
       }
     };
 
     const n = templates.length;
-    // Warm the whole loop (current first) so instant cuts never wait on net.
+    // Warm current + a few ahead — full-loop × 28 concurrency burned Hobby.
     pushFrame(activeIndex % n, true);
-    for (let step = 1; step < n; step++) {
+    for (let step = 1; step <= Math.min(3, n - 1); step++) {
       pushFrame((activeIndex + step) % n);
     }
 
     let active = 0;
-    const CONCURRENCY = 28;
+    const CONCURRENCY = 6;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -247,12 +247,12 @@ export function useRadarFramePreloader(
       if (moveTimer != null) window.clearTimeout(moveTimer);
       moveTimer = window.setTimeout(() => {
         if (cancelled) return;
-        // Re-warm the next few frames for the new viewport immediately.
-        for (const step of [0, 1, 2, 3]) {
+        // Re-warm the playhead + next frame only after pan/zoom settles.
+        for (const step of [0, 1]) {
           pushFrame((activeIndex + step) % n, true);
         }
         pump();
-      }, 60);
+      }, 200);
     };
     map.on("moveend", onViewChange);
     map.on("zoomend", onViewChange);

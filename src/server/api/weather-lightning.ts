@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 /** Allow LightningMaps PNG backfill on cold start. */
-export const maxDuration = 30;
+export const maxDuration = 15;
 
 export async function GET() {
   const snap = await getLiveLightningSnapshot();

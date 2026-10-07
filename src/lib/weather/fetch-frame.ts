@@ -815,6 +815,8 @@ export function warmFramesInBackground(
   times: number[],
   concurrency = 2,
 ): void {
+  // Dynamic import avoided — callers gate with allowBackgroundWarm().
+  if (!times.length) return;
   let cursor = 0;
   let active = 0;
 

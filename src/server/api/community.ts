@@ -22,7 +22,7 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 /**
  * GET /api/community — list weather photo posts (newest first).

@@ -39,7 +39,8 @@ import * as weatherStations from "@/server/api/weather-stations";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export const maxDuration = 120;
+/** Hobby Fluid max is 60s — keep every catch-all handler under that. */
+export const maxDuration = 60;
 
 type Handler = (req: NextRequest, ctx?: unknown) => Promise<Response> | Response;
 

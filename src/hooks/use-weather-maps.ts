@@ -23,13 +23,13 @@ type State = {
 /** Stable empty list — avoid `?? []` allocating a new array every render. */
 const EMPTY_FRAMES: WeatherFrame[] = [];
 
-/** Himawari tips land ~10 min apart — polling every 45s burned Fluid CPU. */
-const LIVE_POLL_MS = 90_000;
+/** Himawari tips land ~10 min apart — keep polls sparse for Hobby CPU/invokes. */
+const LIVE_POLL_MS = 180_000;
 /**
  * RealEarth tips land ~15–30 min after the wall-clock slot. Nudge after each
  * 10-minute boundary, but with enough delay that we don't stack on the poll.
  */
-const BOUNDARY_OFFSET_MS = 90_000;
+const BOUNDARY_OFFSET_MS = 120_000;
 
 function msUntilNextTenMinuteBoundary(now = Date.now()): number {
   const stepMs = HIMAWARI_STEP_SEC * 1000;
@@ -94,20 +94,19 @@ export function useWeatherMaps(
         tipSeenAtMs: tipAdvanced || s.tipSeenAtMs == null ? Date.now() : s.tipSeenAtMs,
       }));
 
-      // Eager-warm national radar tiles for recent frames so the first play
-      // through the loop hits the browser HTTP cache.
-      const radarTip = (data.radar?.past ?? []).slice(-6);
+      // Light tip warm only — heavy national prefetches burned Hobby invokes.
+      const radarTip = (data.radar?.past ?? []).slice(-2);
       let warmActive = 0;
       const warmQueue: string[] = [];
       for (const frame of radarTip) {
         const tpl = frame.tileUrlTemplate;
         if (!tpl) continue;
-        for (const url of radarWarmupTileUrls(tpl, [4, 5, 6, 7], undefined, 48)) {
+        for (const url of radarWarmupTileUrls(tpl, [5, 6], undefined, 16)) {
           warmQueue.push(url);
         }
       }
       const pumpWarm = () => {
-        while (warmActive < 20 && warmQueue.length > 0) {
+        while (warmActive < 4 && warmQueue.length > 0) {
           const url = warmQueue.shift()!;
           warmActive += 1;
           const img = new window.Image();
