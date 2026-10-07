@@ -4,49 +4,25 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
-**Production host:** Oracle Cloud Always Free (Docker + Caddy on a VM). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
+**Production host:** [Render](https://render.com) (Docker web service). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
 
-### Deploy on Oracle Cloud (Always Free)
+### Deploy on Render
 
-Use an **Always Free** compute instance in your **home region**:
+Blueprint: `render.yaml` (free plan, Singapore, Docker).
 
-| Shape | Notes |
-|-------|--------|
-| `VM.Standard.A1.Flex` (Ampere ARM) | Best — up to 2 OCPU / 12 GB total Always Free |
-| `VM.Standard.E2.1.Micro` (AMD) | Backup if ARM capacity is full |
+1. Push this repo to GitHub (private is fine).
+2. Open [dashboard.render.com](https://dashboard.render.com) → **New → Blueprint** → connect `Weatherin2D/Skywatch-Australia`.
+3. When prompted, set secrets:
+   - `KV_REST_API_URL`
+   - `KV_REST_API_TOKEN`
+   - `COMMUNITY_ADMIN_SECRET` (optional)
+4. Deploy. URL will look like `https://skywatch-australia.onrender.com`.
 
-**1. Create the instance** (OCI Console → Compute → Instances):
-
-- Image: **Canonical Ubuntu 22.04/24.04**
-- Shape: Always Free eligible (prefer A1.Flex: 2 OCPU / 12 GB for one box)
-- Networking: assign a **public IPv4**
-- Add your SSH public key
-- After create: **Networking → Security List** — ingress TCP **22, 80, 443** from `0.0.0.0/0` (or lock 22 to your IP)
-
-**2. On the VM:**
-
-```bash
-ssh ubuntu@YOUR_PUBLIC_IP   # Oracle Linux images often use opc@
-
-# Install Docker
-curl -fsSL https://raw.githubusercontent.com/Weatherin2D/Skywatch-Australia/main/scripts/oci-bootstrap.sh | sudo bash
-# (or copy scripts/oci-bootstrap.sh from this repo)
-
-# Clone (private repo: use a GitHub deploy key or PAT)
-git clone https://github.com/Weatherin2D/Skywatch-Australia.git skywatch
-cd skywatch
-cp .env.example .env
-nano .env   # set KV_REST_API_URL, KV_REST_API_TOKEN, COMMUNITY_ADMIN_SECRET
-
-# Optional HTTPS: set SKYWATCH_DOMAIN=your.domain and CADDY_EMAIL=you@email
-# and point DNS A record at the VM public IP.
-
-docker compose up -d --build
-```
-
-Site: `http://YOUR_PUBLIC_IP` (or `https://your.domain` once DNS + `SKYWATCH_DOMAIN` are set).
+**Note:** Free web services **spin down** after ~15 minutes idle; the first request after that can take 30–60s. Upgrade to a paid starter instance if you need always-on.
 
 Archive ingest: ping `GET /api/weather/archive/ingest` daily (e.g. cron-job.org), or open `/archive` to trigger lazy ingest.
+
+**Manual (no Blueprint):** New → Web Service → this repo → Language **Docker** → Dockerfile path `./Dockerfile` → create.
 
 ## Current product surface
 

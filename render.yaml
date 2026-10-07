@@ -1,0 +1,23 @@
+# SkyWatch Australia — Render Blueprint
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: skywatch-australia
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOSTNAME
+        value: "0.0.0.0"
+      # Set these in the Render Dashboard (Values → Sync: false prompts on deploy)
+      - key: KV_REST_API_URL
+        sync: false
+      - key: KV_REST_API_TOKEN
+        sync: false
+      - key: COMMUNITY_ADMIN_SECRET
+        sync: false
