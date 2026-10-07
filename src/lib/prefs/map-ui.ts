@@ -59,25 +59,27 @@ const PAGE_IDS: MapPageId[] = ["home", "radar", "satellite"];
 
 export function defaultsForMapPage(page: MapPageId): MapUiPrefs {
   if (page === "radar") {
+    const layers = { ...DEFAULT_RADAR_WEATHER_LAYERS };
     return {
-      layers: { ...DEFAULT_RADAR_WEATHER_LAYERS },
+      layers,
       mapSettings: { ...DEFAULT_RADAR_MAP_SETTINGS },
       mode: "Map",
       regionId: DEFAULT_MAP_REGION,
       satProduct: DEFAULT_SATELLITE_PRODUCT,
       playbackSpeed: DEFAULT_PLAYBACK_SPEED,
-      chaseEnabled: true,
+      chaseEnabled: layers.cells,
     };
   }
   // Home + Satellite share the same starting defaults, then diverge in storage.
+  const layers = { ...DEFAULT_WEATHER_LAYERS };
   return {
-    layers: { ...DEFAULT_WEATHER_LAYERS },
+    layers,
     mapSettings: { ...DEFAULT_MAP_SETTINGS },
     mode: "Satellite",
     regionId: DEFAULT_MAP_REGION,
     satProduct: DEFAULT_SATELLITE_PRODUCT,
     playbackSpeed: DEFAULT_PLAYBACK_SPEED,
-    chaseEnabled: false,
+    chaseEnabled: layers.cells,
   };
 }
 
@@ -137,17 +139,28 @@ function parsePagePrefs(
     typeof raw.playbackSpeed === "string" && SPEED_IDS.has(raw.playbackSpeed)
       ? (raw.playbackSpeed as PlaybackSpeedId)
       : defaults.playbackSpeed;
+  const layers = parseLayers(raw.layers, defaults.layers);
+  // Older prefs only had chaseEnabled — seed the Cell tracking overlay from it.
+  const rawLayers =
+    raw.layers && typeof raw.layers === "object"
+      ? (raw.layers as Record<string, unknown>)
+      : null;
+  if (
+    rawLayers &&
+    typeof rawLayers.cells !== "boolean" &&
+    typeof raw.chaseEnabled === "boolean"
+  ) {
+    layers.cells = raw.chaseEnabled;
+  }
+  const chaseEnabled = layers.cells;
   return {
-    layers: parseLayers(raw.layers, defaults.layers),
+    layers,
     mapSettings: parseMapSettings(raw.mapSettings, defaults.mapSettings),
     mode: page === "radar" ? "Map" : page === "satellite" ? "Satellite" : mode,
     regionId,
     satProduct,
     playbackSpeed,
-    chaseEnabled:
-      typeof raw.chaseEnabled === "boolean"
-        ? raw.chaseEnabled
-        : defaults.chaseEnabled,
+    chaseEnabled,
   };
 }
 

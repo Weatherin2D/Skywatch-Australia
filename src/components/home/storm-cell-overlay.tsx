@@ -1,13 +1,7 @@
 "use client";
 
-import { Fragment, useEffect } from "react";
-import {
-  CircleMarker,
-  Marker,
-  Polyline,
-  Tooltip,
-  useMap,
-} from "react-leaflet";
+import { Fragment } from "react";
+import { CircleMarker, Marker, Polyline, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import type { StormCell } from "@/lib/weather/storm-cell-types";
 
@@ -39,27 +33,15 @@ export function StormCellOverlay({
   cells,
   enabled,
   selectedId,
-  focusId,
   onSelect,
 }: {
   cells: StormCell[];
   enabled: boolean;
   selectedId?: string | null;
+  /** Ignored — map no longer auto-zooms to cells. */
   focusId?: string | null;
   onSelect?: (id: string | null) => void;
 }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!enabled || !focusId) return;
-    const cell = cells.find((c) => c.id === focusId);
-    if (!cell) return;
-    map.flyTo([cell.lat, cell.lon], Math.max(map.getZoom(), 6), {
-      animate: true,
-      duration: 0.8,
-    });
-  }, [enabled, focusId, cells, map]);
-
   if (!enabled || !cells.length) return null;
 
   return (

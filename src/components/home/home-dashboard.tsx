@@ -151,9 +151,9 @@ function OverlayControls({
     <>
       <Panel title="Map overlays">
         <p className="mb-2 text-[11px] text-[var(--ink)]/70">
-          Live layers on Map and Satellite — rain radar and lightning sync to
-          the loop timeline when available. Turn on Satellite imagery in Map
-          settings for optical basemap + Himawari IR on the open map.
+          Live layers on Map and Satellite — rain radar, lightning, and cell
+          tracks sync to the loop when available. Cell tracking never zooms the
+          map for you.
         </p>
         <ul className="space-y-2.5">
           {WEATHER_LAYERS.map((layer) => (
@@ -308,15 +308,13 @@ function HomeDashboardInner({
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     () => savedUi.satProduct,
   );
-  const [chaseEnabled, setChaseEnabled] = useState(() => savedUi.chaseEnabled);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
     () => savedUi.playbackSpeed,
   );
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
-  const [focusCellId, setFocusCellId] = useState<string | null>(null);
-  const stormCellsEnabled = chaseEnabled || page === "radar";
+  const showCells = layers.cells;
   const { data: stormCellsData, loading: stormCellsLoading } =
-    useStormCells(45_000, stormCellsEnabled);
+    useStormCells(45_000, showCells);
   const stormCells = stormCellsData?.cells ?? [];
 
   // Rehydrate this page's localStorage slot (SSR can't), then URL overrides.
@@ -330,7 +328,6 @@ function HomeDashboardInner({
     setPlaybackSpeed(saved.playbackSpeed);
     setSatProduct(saved.satProduct);
     setRegionId(saved.regionId);
-    setChaseEnabled(saved.chaseEnabled);
     if (page === "radar") setMode("Map");
     else if (page === "satellite") setMode("Satellite");
     else setMode(saved.mode);
@@ -351,11 +348,13 @@ function HomeDashboardInner({
     const lightning = parseBoolParam(searchParams.get("lightning"));
     const synoptic = parseBoolParam(searchParams.get("synoptic"));
     const stations = parseBoolParam(searchParams.get("stations"));
+    const cells = parseBoolParam(searchParams.get("cells"));
     if (
       radar != null ||
       lightning != null ||
       synoptic != null ||
-      stations != null
+      stations != null ||
+      cells != null
     ) {
       setLayers((prev) => ({
         ...prev,
@@ -363,6 +362,7 @@ function HomeDashboardInner({
         ...(lightning != null ? { lightning } : {}),
         ...(synoptic != null ? { synoptic } : {}),
         ...(stations != null ? { stations } : {}),
+        ...(cells != null ? { cells } : {}),
       }));
     }
     const product = searchParams.get("product");
@@ -372,15 +372,19 @@ function HomeDashboardInner({
     ) {
       setSatProduct(product as SatelliteProductId);
     }
+    // Legacy chase=1 → cell tracking overlay (no auto-zoom).
     if (searchParams.get("chase") === "1") {
-      setChaseEnabled(true);
-      setLayers((prev) => ({ ...prev, radar: true, lightning: true }));
+      setLayers((prev) => ({
+        ...prev,
+        cells: true,
+        radar: true,
+        lightning: true,
+      }));
     }
     const cell = searchParams.get("cell");
     if (cell) {
       setSelectedCellId(cell);
-      setFocusCellId(cell);
-      setChaseEnabled(true);
+      setLayers((prev) => ({ ...prev, cells: true }));
     }
     setUrlReady(true);
   }, [searchParams, urlReady, page]);
@@ -410,7 +414,7 @@ function HomeDashboardInner({
       regionId,
       satProduct,
       playbackSpeed,
-      chaseEnabled,
+      chaseEnabled: layers.cells,
     });
   }, [
     urlReady,
@@ -421,7 +425,6 @@ function HomeDashboardInner({
     regionId,
     satProduct,
     playbackSpeed,
-    chaseEnabled,
   ]);
 
   // Sync shareable map query params on the current dashboard route only.
@@ -444,12 +447,12 @@ function HomeDashboardInner({
     if (!layers.lightning) params.set("lightning", "0");
     if (layers.synoptic) params.set("synoptic", "1");
     if (layers.stations) params.set("stations", "1");
+    if (layers.cells) params.set("cells", "1");
     // Always publish product on Satellite so region deep-links stay stable and
     // we never re-hydrate into a different product after a replace.
     if (mode === "Satellite" || satProduct !== DEFAULT_SATELLITE_PRODUCT) {
       params.set("product", satProduct);
     }
-    if (chaseEnabled) params.set("chase", "1");
     if (selectedCellId) params.set("cell", selectedCellId);
     const qs = params.toString();
     const next = qs ? `${path}?${qs}` : path;
@@ -463,7 +466,6 @@ function HomeDashboardInner({
     layers,
     satProduct,
     focus,
-    chaseEnabled,
     selectedCellId,
   ]);
 
@@ -927,6 +929,9 @@ function HomeDashboardInner({
 
   function setLayer(id: LayerId, on: boolean) {
     setLayers((prev) => ({ ...prev, [id]: on }));
+    if (id === "cells" && !on) {
+      setSelectedCellId(null);
+    }
   }
 
   function setMapSetting(id: MapSettingId, on: boolean) {
@@ -1207,13 +1212,15 @@ function HomeDashboardInner({
                     )
               }
               stormCells={stormCells}
-              showStormCells={chaseEnabled}
+              showStormCells={showCells}
               selectedStormCellId={selectedCellId}
-              focusStormCellId={focusCellId}
               onSelectStormCell={(id) => {
                 setSelectedCellId(id);
-                setFocusCellId(id);
-                if (id) setChaseEnabled(true);
+                if (id) {
+                  setLayers((prev) =>
+                    prev.cells ? prev : { ...prev, cells: true },
+                  );
+                }
               }}
               mapSettings={mapSettings}
               showLightning={showLightning}
@@ -1427,40 +1434,37 @@ function HomeDashboardInner({
 
           <HomeMomentCard />
 
-          {(focus === "radar" || chaseEnabled) && (
+          {(focus === "radar" || showCells) && (
             <ChaseHud
               cells={stormCells}
               loading={stormCellsLoading}
               selectedId={selectedCellId}
-              enabled={chaseEnabled}
+              enabled={showCells}
               onToggle={(next) => {
-                setChaseEnabled(next);
                 if (next) {
                   setLayers((prev) => ({
                     ...prev,
+                    cells: true,
                     radar: true,
                     lightning: true,
                   }));
                 } else {
-                  setSelectedCellId(null);
-                  setFocusCellId(null);
+                  setLayer("cells", false);
                 }
               }}
               onSelect={(id) => {
                 setSelectedCellId(id);
-                setFocusCellId(id);
               }}
             />
           )}
 
-          {chaseEnabled && selectedCellId ? (
+          {showCells && selectedCellId ? (
             <CellDetailsPanel
               cell={
                 stormCells.find((c) => c.id === selectedCellId) ?? null
               }
               onClose={() => {
                 setSelectedCellId(null);
-                setFocusCellId(null);
               }}
             />
           ) : null}

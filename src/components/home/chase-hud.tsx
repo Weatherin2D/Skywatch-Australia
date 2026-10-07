@@ -186,8 +186,8 @@ export function ChaseHud({
         </>
       ) : (
         <p className="text-sm text-white/60">
-          Turn Active cells on to show scores, projected paths, and cell
-          details on the map.
+          Turn Cell tracking on (here or under Map overlays) to show scores,
+          projected paths, and cell details — without moving the map.
         </p>
       )}
     </section>

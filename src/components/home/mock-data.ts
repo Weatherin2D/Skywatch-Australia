@@ -4,6 +4,7 @@ export const WEATHER_LAYERS = [
   { id: "synoptic", label: "Synoptic MSLP" },
   { id: "radar", label: "Rain radar" },
   { id: "stations", label: "Weather stations" },
+  { id: "cells", label: "Cell tracking" },
 ] as const;
 
 export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
@@ -14,6 +15,7 @@ export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
   synoptic: true,
   radar: false,
   stations: false,
+  cells: false,
 };
 
 /** /radar page defaults (rain radar + stations first). */
@@ -22,6 +24,7 @@ export const DEFAULT_RADAR_WEATHER_LAYERS: Record<LayerId, boolean> = {
   synoptic: false,
   radar: true,
   stations: true,
+  cells: true,
 };
 
 /** Cartographic toggles for the national map (below weather overlays). */
