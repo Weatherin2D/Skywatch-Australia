@@ -49,3 +49,5 @@ next-env.d.ts
 # local agent / QA artifacts
 /ausrisk-screenshots/
 /tmp-scaffold/
+.agents/
+skills-lock.json
