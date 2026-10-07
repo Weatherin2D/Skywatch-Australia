@@ -59,3 +59,5 @@ skywatch-ai/.venv/
 skywatch-ai/**/__pycache__/
 skywatch-ai/**/*.pyc
 skywatch-ai/**/.pytest_cache/
+skywatch-ai/runs/
+skywatch-ai/data/etl/

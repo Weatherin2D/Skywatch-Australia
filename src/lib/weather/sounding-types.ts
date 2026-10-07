@@ -84,7 +84,7 @@ export type SoundingPayload = {
   attribution: string;
   message?: string;
   /** Which diagnostics engine produced `params` parcel/shear/moisture fields. */
-  engine?: "skywatch-ai" | "legacy";
+  engine?: "skywatch-ai" | "skywatch-ai-v1" | "legacy";
   engineHemisphere?: string;
   engineMessage?: string;
   /** Raw SkyWatch AI diagnostic keys when engine === skywatch-ai. */

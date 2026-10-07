@@ -9,8 +9,8 @@ import type {
   SoundingPayload,
 } from "@/lib/weather/sounding-types";
 
-export type SoundingEngineId = "skywatch-ai" | "legacy";
-export type SoundingEngineMode = "auto" | "skywatch" | "legacy";
+export type SoundingEngineId = "skywatch-ai" | "skywatch-ai-v1" | "legacy";
+export type SoundingEngineMode = "auto" | "skywatch" | "legacy" | "predict";
 
 export type SkywatchAiDiagnostics = Record<string, number>;
 
@@ -19,6 +19,24 @@ export type SkywatchAiResult = {
   hemisphere: string;
   diagnostics: SkywatchAiDiagnostics;
   meta: Record<string, unknown>;
+};
+
+export type SkywatchAiPredictResult = {
+  engine: string;
+  dataset_version?: string;
+  disclaimer?: string;
+  levels: Array<{
+    p: number;
+    t: number;
+    td: number;
+    z: number;
+    windDir: number;
+    windSpd: number;
+    u?: number;
+    v?: number;
+  }>;
+  diagnostics: SkywatchAiDiagnostics;
+  hemisphere: string;
 };
 
 const MS_TO_KT = 1 / 0.514444;
@@ -49,6 +67,7 @@ export function skywatchAiBaseUrl(): string | null {
 export function parseEngineMode(raw: string | null): SoundingEngineMode {
   const v = (raw || "auto").toLowerCase();
   if (v === "skywatch" || v === "skywatch-ai" || v === "ai") return "skywatch";
+  if (v === "predict" || v === "ai-v1" || v === "v1") return "predict";
   if (v === "legacy" || v === "ts") return "legacy";
   return "auto";
 }
@@ -191,6 +210,94 @@ export function mergeAiIntoParams(
   };
 }
 
+/**
+ * V1 neural predict — returns corrected levels + engine diagnostics.
+ * Synthetic-trained demo until real ETL training is live.
+ */
+export async function fetchSkywatchAiPredict(
+  levels: SoundingLevel[],
+  options?: {
+    lat?: number;
+    lon?: number;
+    hemisphere?: "N" | "S";
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  },
+): Promise<SkywatchAiPredictResult | null> {
+  const base = skywatchAiBaseUrl();
+  if (!base || levels.length < 3) return null;
+
+  const timeoutMs = options?.timeoutMs ?? 20_000;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  const onAbort = () => ac.abort();
+  options?.signal?.addEventListener("abort", onAbort);
+
+  try {
+    const res = await fetch(`${base}/v1/predict`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        levels: levels.map((L) => ({
+          p: L.p,
+          t: L.t,
+          td: L.td,
+          z: L.z,
+          windDir: L.windDir,
+          windSpd: L.windSpd,
+        })),
+        lat: options?.lat ?? -31.95,
+        lon: options?.lon ?? 115.86,
+        hemisphere: options?.hemisphere ?? "S",
+        tempUnit: "C",
+        windUnit: "ms",
+      }),
+      signal: ac.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as SkywatchAiPredictResult;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    options?.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function levelsFromPredict(
+  pred: SkywatchAiPredictResult,
+): SoundingLevel[] {
+  return pred.levels.map((L) => {
+    const rh =
+      L.t != null && L.td != null
+        ? Math.max(
+            0,
+            Math.min(
+              100,
+              100 *
+                Math.exp(
+                  (17.625 * L.td) / (243.04 + L.td) -
+                    (17.625 * L.t) / (243.04 + L.t),
+                ),
+            ),
+          )
+        : null;
+    return {
+      p: L.p,
+      z: L.z,
+      t: L.t,
+      td: L.td,
+      rh,
+      windDir: L.windDir,
+      windSpd: L.windSpd,
+    };
+  });
+}
+
 export async function attachSkywatchAiEngine(
   payload: SoundingPayload,
   mode: SoundingEngineMode,
@@ -204,6 +311,35 @@ export async function attachSkywatchAiEngine(
   }
   if (mode === "auto" && !skywatchAiBaseUrl()) {
     return { ...payload, engine: "legacy" };
+  }
+
+  // Neural V1 demo path
+  if (mode === "predict") {
+    const pred = await fetchSkywatchAiPredict(payload.levels, {
+      lat: payload.latitude,
+      lon: payload.longitude,
+      hemisphere: "S",
+      signal,
+    });
+    if (!pred?.levels?.length) {
+      return {
+        ...payload,
+        engine: "legacy",
+        engineMessage:
+          "SkyWatch AI V1 predict unavailable — using legacy thermo",
+      };
+    }
+    const levels = levelsFromPredict(pred);
+    return {
+      ...payload,
+      levels,
+      params: mergeAiIntoParams(payload.params, pred.diagnostics),
+      engine: "skywatch-ai-v1",
+      engineHemisphere: pred.hemisphere,
+      engineMessage: pred.disclaimer,
+      aiDiagnostics: pred.diagnostics,
+      attribution: `${payload.attribution} · SkyWatch AI V1 (synthetic demo)`,
+    };
   }
 
   const ai = await fetchSkywatchAiDiagnostics(payload.levels, {

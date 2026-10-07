@@ -3,46 +3,53 @@
 Implements `01_ARCHITECTURE`, `02_DATA_PIPELINE`, `03_V1_SOUNDING_MODEL`.
 Contract: **neural net → atmospheric state · deterministic engine → diagnostics · evaluation through the engine.**
 
-## Site integration (this slice)
+## Site integration
 
-The **deterministic diagnostics engine** is served to SkyWatch `/soundings` via a FastAPI sidecar:
+Served to SkyWatch `/soundings` via FastAPI sidecar (`serve.py`):
 
 ```bash
-# From repo root
-docker compose up -d skywatch-ai
-# or locally:
-pip install -r requirements.txt
+# Train stack (torch) + run sidecar
+pip install -r requirements-train.txt
+python scripts/smoke_test.py --out-dir runs/synthetic-smoke
+cp runs/synthetic-smoke/ckpt.pt checkpoints/v1-synthetic.pt
 uvicorn serve:app --host 0.0.0.0 --port 43137
+
+# Or from repo root
+docker compose up -d --build skywatch-ai
 ```
 
-- `GET /health`
-- `POST /v1/diagnostics` — JSON levels → CAPE/CIN/LCL/SRH/…
-- Next.js reads `SKYWATCH_AI_URL` (Compose sets `http://skywatch-ai:43137`). On Vercel Hobby leave it unset → legacy TypeScript thermo.
-- Neural training is **not** in the runtime path (`requirements.txt` has no torch; use `requirements-train.txt` later).
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Engine + ML readiness |
+| `POST /v1/diagnostics` | Deterministic CAPE/SRH (numpy) |
+| `POST /v1/predict` | V1 neural sounding demo (torch + checkpoint) |
+
+Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **Engine** / **AI V1** / **Legacy**. Vercel Hobby: leave unset.
+
+**AI V1 is a synthetic-trained demo** — not calibrated on real weather. Real skill needs the ETL path below.
 
 ## What is verified and what is not
 
 | Component | Milestone | Status |
 |---|---|---|
-| Engine wired to SkyWatch `/soundings` via sidecar | site | **Done** (fallback to legacy when sidecar offline) |
-| Deterministic diagnostics engine (`skywatch/diagnostics.py`, `thermo.py`) | 7 | **Tested** — 38 tests incl. randomised stress tests and an independent height-space re-derivation |
-| Vertical grid, normaliser, observation tokens, data contract (`grid`, `normalizer`, `obs_tokens`, `contract`) | 1–2 | **Tested** (numpy) |
-| Baselines A–D, evaluation metrics, coherent ensemble sampling, engine bridge | 3, 5 | **Tested** (numpy) |
-| Loss mathematics (CRPS, gradient, hydrostatic, supersaturation, superadiabatic) — numpy reference | 6 | **Tested** (CRPS vs numerical integration; proper-scoring property; physics terms) |
-| Loss schedule | 6 | **Tested** |
-| PyTorch network, torch losses, trainer (`skywatch/nn/`) | 4–6 | **Written, syntax- and API-checked, NEVER EXECUTED** (authoring environment had no torch) |
-| Real-data ETL (BARRA2 / ERA5 / radiosondes → samples) | 1 | **Not written** — needs your data layout; target format is `skywatch/contract.py` |
+| Engine wired to `/soundings` | site | **Done** |
+| V1 torch smoke + synthetic checkpoint + `/v1/predict` | 4–6 | **Done** (`SMOKE TEST PASSED`, ckpt in `checkpoints/v1-synthetic.pt`) |
+| Deterministic diagnostics engine | 7 | **Tested** |
+| Grid / normaliser / tokens / contract | 1–2 | **Tested** |
+| Baselines + evaluation through engine | 3, 5 | **Tested** |
+| Loss math + schedule | 6 | **Tested** |
+| Real-data ETL scaffold (Open-Meteo teacher + UWYO sonde → contract samples) | 1 | **Scaffolded** — `skywatch/etl/`, `scripts/build_etl_sample.py` |
 | Training on real data, skill claims | 8–9 | **Not done** |
+| BARRA2 / ERA5 archive ETL | 1 | **Not done** — swap teacher source when you have local NetCDF |
 
 ## First things to run
-    pip install -r requirements.txt
-    python -m unittest discover -s tests -v          # 62 tests; 4 torch tests skip without torch
-    python scripts/smoke_test.py                     # FIRST execution of the torch code (1-3 min on CPU)
-    python scripts/smoke_test.py --steps 3000 --n-train 3000 --d-model 128 --strict   # real learning check on synthetic data
-    python scripts/compare_sounding.py sonde.csv --hemisphere S                       # engine on a REAL radiosonde
+    pip install -r requirements-train.txt
+    python -m unittest discover -s tests -v
+    python scripts/smoke_test.py --out-dir runs/synthetic-smoke
+    python scripts/build_etl_sample.py --wmo 94610 --lat -31.95 --lon 115.86 --validate-only
+    python scripts/compare_sounding.py sonde.csv --hemisphere S
 
-If `smoke_test.py` fails, send me the traceback — the torch code is untested and small fixes are expected.
-Synthetic data validates plumbing and learnability only; it says nothing about skill on real weather.
+Synthetic smoke validates plumbing/learnability only. ETL samples validate the *contract*; they do not yet train a skillful model.
 
 ## Engine conventions (SRH convention confirmed)
 * **SRH:** `hemisphere="S"` = Bunkers left-mover with sign flipped → positive = favourable for cyclonic supercells (exact mirror of the NH definition; tested).

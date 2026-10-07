@@ -40,7 +40,7 @@ const BOX_SPACING = new Set<SoundingBoxSpacingDeg>([0.25, 0.5, 1]);
  *   &model=pulse|ukmo|ifs|access
  *   &spacing=0.25|0.5|1     (box mode, degrees)
  *   &time=ISO
- *   &engine=auto|skywatch|legacy  (auto = sidecar when SKYWATCH_AI_URL is set)
+ *   &engine=auto|skywatch|legacy|predict  (predict = V1 neural demo)
  *   &meta=1                 → station list only
  *   &archive=1              → observed UWYO inventory slots for station/year(s)
  *   &year=2026              → single year for archive (default: current+previous)
@@ -59,8 +59,9 @@ export async function GET(req: NextRequest) {
             { id: "access", label: "ACCESS-G" },
           ],
           engines: [
-            { id: "auto", label: "Auto" },
-            { id: "skywatch", label: "SkyWatch AI" },
+            { id: "auto", label: "Auto (engine)" },
+            { id: "skywatch", label: "SkyWatch AI engine" },
+            { id: "predict", label: "SkyWatch AI V1 (demo)" },
             { id: "legacy", label: "Legacy" },
           ],
           skywatchAiConfigured: Boolean(skywatchAiBaseUrl()),
@@ -209,8 +210,12 @@ async function attachEngineToBox(
       if (cell === centre || (cell.row === centre.row && cell.col === centre.col)) {
         return { ...cell, sounding: centreSounding };
       }
-      // Box grid: legacy thermo for off-centre cells unless skywatch forced.
-      if (engineMode === "legacy" || engineMode === "auto") {
+      // Box grid: only centre gets engine/predict (keeps latency bounded).
+      if (
+        engineMode === "legacy" ||
+        engineMode === "auto" ||
+        engineMode === "predict"
+      ) {
         return {
           ...cell,
           sounding: { ...cell.sounding, engine: "legacy" as const },

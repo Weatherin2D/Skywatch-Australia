@@ -67,23 +67,30 @@ export function SoundingParamsTables({
   engineMessage,
 }: {
   params: SoundingParams;
-  engine?: "skywatch-ai" | "legacy";
+  engine?: "skywatch-ai" | "skywatch-ai-v1" | "legacy";
   engineHemisphere?: string;
   engineMessage?: string;
 }) {
-  const ai = engine === "skywatch-ai";
+  const neural = engine === "skywatch-ai-v1";
+  const ai = engine === "skywatch-ai" || neural;
   return (
     <div className="space-y-4">
       <div
         className={cn(
           "rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug",
-          ai
-            ? "border-cyan-400/35 bg-cyan-400/10 text-cyan-100"
-            : "border-white/12 bg-white/[0.04] text-white/55",
+          neural
+            ? "border-amber-400/40 bg-amber-400/10 text-amber-100"
+            : ai
+              ? "border-cyan-400/35 bg-cyan-400/10 text-cyan-100"
+              : "border-white/12 bg-white/[0.04] text-white/55",
         )}
       >
         <span className="font-semibold tracking-wide">
-          {ai ? "SkyWatch AI engine" : "Legacy thermo"}
+          {neural
+            ? "SkyWatch AI V1 (synthetic demo)"
+            : ai
+              ? "SkyWatch AI engine"
+              : "Legacy thermo"}
         </span>
         {ai && engineHemisphere ? (
           <span className="text-white/50">

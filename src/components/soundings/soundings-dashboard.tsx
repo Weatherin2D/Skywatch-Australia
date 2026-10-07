@@ -64,9 +64,12 @@ function formatHourChip(hour: number): string {
   return `${String(hour).padStart(2, "0")}Z`;
 }
 
+type EngineUiMode = "auto" | "predict" | "legacy";
+
 export function SoundingsDashboard() {
   const { place: saved, saveFromBomLocation } = useSavedPlace();
   const [mode, setMode] = useState<SoundingMode>("observed");
+  const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
   const [station, setStation] = useState("94610"); // Perth — often available
   const [model, setModel] = useState<SoundingModelId>("pulse");
   const [place, setPlace] = useState<Place>({
@@ -218,7 +221,7 @@ export function SoundingsDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({ mode, engine: "auto" });
+        const params = new URLSearchParams({ mode, engine: engineMode });
         if (mode === "observed") {
           params.set("station", station);
           if (observedTime) params.set("time", observedTime);
@@ -266,7 +269,7 @@ export function SoundingsDashboard() {
         setError(err instanceof Error ? err.message : "Unavailable");
       }
     },
-    [mode, station, place, model, modelHour, observedTime, boxSpacing],
+    [mode, engineMode, station, place, model, modelHour, observedTime, boxSpacing],
   );
 
   useEffect(() => {
@@ -304,9 +307,8 @@ export function SoundingsDashboard() {
             </h1>
             <p className="mt-1 max-w-xl text-sm text-white/55">
               Observed radiosondes, single-point model Skew-Ts, and 3×3 model
-              sounding boxes — thermo, shear, and storm-relative diagnostics.
-              When the SkyWatch AI sidecar is running, parcel/shear numbers use
-              the deterministic AI engine (S-hemisphere SRH).
+              sounding boxes. Sidecar engines: deterministic CAPE/SRH, or V1
+              neural demo (synthetic-trained — not real skill yet).
             </p>
           </div>
 
@@ -327,6 +329,36 @@ export function SoundingsDashboard() {
                     "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
                     mode === id
                       ? "bg-[var(--cyan)] text-[#070b16]"
+                      : "text-white/65 hover:text-white",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
+              {(
+                [
+                  ["auto", "Engine"],
+                  ["predict", "AI V1"],
+                  ["legacy", "Legacy"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setEngineMode(id)}
+                  title={
+                    id === "predict"
+                      ? "Synthetic-trained neural demo — not calibrated on real weather"
+                      : undefined
+                  }
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                    engineMode === id
+                      ? id === "predict"
+                        ? "bg-amber-400 text-[#070b16]"
+                        : "bg-[var(--cyan)] text-[#070b16]"
                       : "text-white/65 hover:text-white",
                   )}
                 >

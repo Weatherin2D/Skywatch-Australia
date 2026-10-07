@@ -1,14 +1,17 @@
-"""SkyWatch AI diagnostics sidecar — deterministic engine only (no torch).
+"""SkyWatch AI sidecar — diagnostics engine + optional V1 neural predict.
 
   uvicorn serve:app --host 0.0.0.0 --port 43137
 
 Endpoints:
   GET  /health
-  POST /v1/diagnostics  — JSON profile → CAPE/SRH/… diagnostics
+  POST /v1/diagnostics  — JSON profile → CAPE/SRH/… (numpy only)
+  POST /v1/predict      — V1 sounding net (requires torch + checkpoint)
 """
 from __future__ import annotations
 
 import math
+import os
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -19,7 +22,38 @@ from skywatch import Profile, compute_diagnostics
 from skywatch import thermo as th
 from skywatch.constants import EPS
 
-app = FastAPI(title="SkyWatch AI", version="0.1.0", docs_url="/docs")
+_SPEED = {"kt": 0.514444, "ms": 1.0, "kmh": 1 / 3.6, "mph": 0.44704}
+_ML_STATUS: Dict[str, Any] = {"ready": False, "error": None, "checkpoint": None}
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Eager-load V1 checkpoint when torch + file are available.
+    try:
+        import torch  # noqa: F401
+        from skywatch.infer import default_checkpoint_path, load_model
+
+        path = default_checkpoint_path()
+        if os.path.isfile(path):
+            load_model(path, device=os.environ.get("SKYWATCH_AI_DEVICE", "cpu"))
+            _ML_STATUS.update(ready=True, checkpoint=path, error=None)
+        else:
+            _ML_STATUS.update(
+                ready=False,
+                checkpoint=path,
+                error="checkpoint missing — run scripts/smoke_test.py",
+            )
+    except Exception as exc:  # noqa: BLE001 — report in /health
+        _ML_STATUS.update(ready=False, error=str(exc))
+    yield
+
+
+app = FastAPI(
+    title="SkyWatch AI",
+    version="0.2.0",
+    docs_url="/docs",
+    lifespan=lifespan,
+)
 
 
 class LevelIn(BaseModel):
@@ -38,8 +72,8 @@ class LevelIn(BaseModel):
 class DiagnosticsRequest(BaseModel):
     levels: List[LevelIn]
     hemisphere: str = "S"
-    tempUnit: str = "C"  # C | K
-    windUnit: str = "ms"  # ms | kt
+    tempUnit: str = "C"
+    windUnit: str = "ms"
     virtual: bool = True
 
 
@@ -50,7 +84,13 @@ class DiagnosticsResponse(BaseModel):
     meta: Dict[str, Any]
 
 
-_SPEED = {"kt": 0.514444, "ms": 1.0, "kmh": 1 / 3.6, "mph": 0.44704}
+class PredictRequest(BaseModel):
+    levels: List[LevelIn]
+    lat: float = -31.95
+    lon: float = 115.86
+    hemisphere: str = "S"
+    tempUnit: str = "C"
+    windUnit: str = "ms"
 
 
 def _finite(x: Optional[float]) -> bool:
@@ -68,7 +108,6 @@ def _profile_from_levels(
 
     rows = sorted(levels, key=lambda L: L.p, reverse=True)
     p = np.array([L.p for L in rows], dtype=float)
-    # Drop duplicate pressures (keep first = highest in sort = surface-ward)
     _, uniq = np.unique(p, return_index=True)
     uniq = np.sort(uniq)
     rows = [rows[i] for i in uniq]
@@ -145,7 +184,12 @@ def _sanitize(d: Dict[str, float]) -> Dict[str, float]:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "skywatch-ai", "engine": "diagnostics"}
+    return {
+        "ok": True,
+        "service": "skywatch-ai",
+        "engine": "diagnostics",
+        "ml": _ML_STATUS,
+    }
 
 
 @app.post("/v1/diagnostics", response_model=DiagnosticsResponse)
@@ -165,3 +209,35 @@ def diagnostics(body: DiagnosticsRequest):
         diagnostics=_sanitize(raw),
         meta=meta,
     )
+
+
+@app.post("/v1/predict")
+def predict(body: PredictRequest):
+    if not _ML_STATUS.get("ready"):
+        raise HTTPException(
+            503,
+            f"V1 model unavailable: {_ML_STATUS.get('error') or 'not loaded'}",
+        )
+    hem = body.hemisphere.upper()
+    if hem not in ("N", "S"):
+        raise HTTPException(400, "hemisphere must be N or S")
+    if len(body.levels) < 3:
+        raise HTTPException(400, "profile needs at least 3 levels")
+    try:
+        from skywatch.infer import predict_from_levels
+
+        levels = [L.model_dump() for L in body.levels]
+        return predict_from_levels(
+            levels,
+            lat=body.lat,
+            lon=body.lon,
+            temp_unit=body.tempUnit,
+            wind_unit=body.windUnit,
+            hemisphere=hem,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"predict failed: {exc}") from exc
