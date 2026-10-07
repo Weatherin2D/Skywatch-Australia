@@ -4,44 +4,49 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
-**Production host:** Google Cloud Always Free `e2-micro` (Docker + Caddy). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
+**Production host (interim):** home PC + Cloudflare Tunnel (no credit card). Move to a paid host when you have budget.
 
-### Deploy on Google Cloud (Always Free)
+### Run on a home PC (Windows / Mac / Linux)
 
-**1. Create the project / VM** ([console.cloud.google.com](https://console.cloud.google.com)):
+**Requirements:** Docker Desktop, ~4 GB free RAM for the build, PC left on while the site should be public.
 
-- Sign in with a Google account (signup may still ask for a card for identity — Always Free `e2-micro` stays $0 if you stay in free limits).
-- Enable **Compute Engine**.
-- **VM instances → Create instance**:
-  - Name: `skywatch`
-  - Region: **`us-west1`**, **`us-central1`**, or **`us-east1`** (Always Free regions only)
-  - Machine type: **`e2-micro`** (shared-core, ~1 GB RAM)
-  - Boot disk: **Ubuntu 22.04 LTS**, 30 GB Standard persistent disk
-  - Firewall: allow **HTTP** and **HTTPS**
-  - Networking: ensure it gets an **external IP**
-- Create → note the external IP.
-
-**2. On the VM:**
+**1. Get the code**
 
 ```bash
-ssh USERNAME@EXTERNAL_IP
-
-# Install Docker + 2 GB swap (needed on 1 GB RAM)
-curl -fsSL https://raw.githubusercontent.com/Weatherin2D/Skywatch-Australia/main/scripts/gcp-bootstrap.sh | sudo bash
-# or: sudo bash scripts/gcp-bootstrap.sh from a cloned copy
-
-git clone https://github.com/Weatherin2D/Skywatch-Australia.git skywatch
-cd skywatch
-cp .env.example .env
-nano .env   # KV_REST_API_URL, KV_REST_API_TOKEN, COMMUNITY_ADMIN_SECRET
-
-# Optional HTTPS: SKYWATCH_DOMAIN=your.domain + DNS A record → this IP
-docker compose up -d --build
+git clone https://github.com/Weatherin2D/Skywatch-Australia.git
+cd Skywatch-Australia
 ```
 
-Site: `http://EXTERNAL_IP` (or `https://your.domain` with `SKYWATCH_DOMAIN` set).
+**2. Secrets**
 
-**Notes:** `e2-micro` is tight on RAM — the bootstrap adds swap. First `docker compose build` can be slow; if it OOMs, say so and we’ll switch to a pre-built image. Archive ingest: ping `/api/weather/archive/ingest` daily or open `/archive`.
+```bash
+cp .env.example .env
+# Edit .env — set at least:
+#   KV_REST_API_URL=
+#   KV_REST_API_TOKEN=
+#   COMMUNITY_ADMIN_SECRET=   (optional)
+```
+
+**3. Start the site**
+
+- Windows (PowerShell): `.\scripts\home-start.ps1`
+- Mac / Linux: `bash scripts/home-start.sh`
+
+Or: `docker compose up -d --build`  
+Local URL: [http://127.0.0.1](http://127.0.0.1)
+
+**4. Public URL (Cloudflare quick tunnel — free, no card)**
+
+```bash
+# Install: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+# Windows: winget install --id Cloudflare.cloudflared
+
+cloudflared tunnel --url http://127.0.0.1:80
+```
+
+Copy the `https://….trycloudflare.com` link it prints. Keep that terminal open.
+
+**Tips:** disable sleep while hosting; first Docker build can take several minutes; stop with `docker compose down`. For a stable hostname later (still free), create a Cloudflare account and a named tunnel pointed at `http://127.0.0.1:80`.
 
 ## Current product surface
 
