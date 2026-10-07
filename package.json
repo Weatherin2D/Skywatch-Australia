@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "npx next dev --hostname 127.0.0.1 --port 43127",
+    "dev:pages": "npm --prefix pages-site run dev",
     "build": "next build && node scripts/prepare-standalone.mjs",
+    "build:pages": "npm --prefix pages-site run build",
     "start": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
     "start:local": "next start --hostname 127.0.0.1 --port 43127",
     "lint": "eslint"

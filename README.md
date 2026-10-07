@@ -2,11 +2,32 @@
 
 Professional Australian weather site — radar, forecasts, severe weather, and deeper insight.
 
-**Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
+**Local (full Next.js app):** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
-**Production host (interim):** home PC + Cloudflare Tunnel (no credit card). Move to a paid host when you have budget.
+**Public host (free, no Docker):** GitHub Pages lite — see below.
 
-### Run on a home PC (Windows / Mac / Linux)
+**Full app host (when you have budget / working Docker):** Node host or home PC + Cloudflare Tunnel.
+
+## GitHub Pages lite (no Docker, free)
+
+Static map + RainViewer radar + Open-Meteo capitals. Lives in `pages-site/`.
+
+| | |
+|---|---|
+| Local | `npm run dev:pages` → [http://127.0.0.1:43147](http://127.0.0.1:43147) |
+| Public URL | `https://weatherin2d.github.io/Skywatch-Australia/` |
+
+**Enable once on GitHub**
+
+1. Make the repo **public** (required for free Pages).
+2. **Settings → Pages** → Source: **GitHub Actions**.
+3. Push to `main` (or Actions → **Deploy GitHub Pages** → Run workflow).
+
+Proprietary licence still applies; a public repo only means the source is visible so Pages can serve it.
+
+Details: [`pages-site/README.md`](pages-site/README.md).
+
+### Run the full app on a home PC (Windows / Mac / Linux)
 
 **Requirements:** Docker Desktop, ~4 GB free RAM for the build, PC left on while the site should be public.
 

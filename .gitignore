@@ -19,6 +19,8 @@
 
 # production
 /build
+/pages-site/dist
+/pages-site/node_modules
 
 # misc
 .DS_Store
