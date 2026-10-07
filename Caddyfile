@@ -1,0 +1,12 @@
+# Reverse proxy for SkyWatch on Oracle Cloud / VPS.
+# - With a domain pointed at this VM: set SKYWATCH_DOMAIN (see docker-compose notes)
+# - IP-only / first boot: serve on :80 without TLS
+
+{
+	email {$CADDY_EMAIL:admin@localhost}
+}
+
+{$SKYWATCH_DOMAIN::80} {
+	encode gzip zstd
+	reverse_proxy app:3000
+}

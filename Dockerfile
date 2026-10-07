@@ -1,4 +1,5 @@
-# SkyWatch Australia — production image for Railway / Docker hosts.
+# SkyWatch Australia — production image (Oracle Cloud / Fly / any Docker host).
+# Builds natively on OCI Ampere (arm64) or AMD micro (amd64).
 FROM node:22-alpine AS base
 
 FROM base AS deps

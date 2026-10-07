@@ -4,25 +4,49 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
-**Production host:** [Fly.io](https://fly.io) (Vercel paused; Railway trial expired). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
+**Production host:** Oracle Cloud Always Free (Docker + Caddy on a VM). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
 
-### Deploy on Fly.io
+### Deploy on Oracle Cloud (Always Free)
 
-Config is in `fly.toml` + `Dockerfile` (`output: "standalone"`). App name: `skywatch-australia`, region: `syd`.
+Use an **Always Free** compute instance in your **home region**:
+
+| Shape | Notes |
+|-------|--------|
+| `VM.Standard.A1.Flex` (Ampere ARM) | Best — up to 2 OCPU / 12 GB total Always Free |
+| `VM.Standard.E2.1.Micro` (AMD) | Backup if ARM capacity is full |
+
+**1. Create the instance** (OCI Console → Compute → Instances):
+
+- Image: **Canonical Ubuntu 22.04/24.04**
+- Shape: Always Free eligible (prefer A1.Flex: 2 OCPU / 12 GB for one box)
+- Networking: assign a **public IPv4**
+- Add your SSH public key
+- After create: **Networking → Security List** — ingress TCP **22, 80, 443** from `0.0.0.0/0` (or lock 22 to your IP)
+
+**2. On the VM:**
 
 ```bash
-# Install CLI: https://fly.io/docs/flyctl/install/
-fly auth login
-fly apps create skywatch-australia   # once
-fly secrets set KV_REST_API_URL=... KV_REST_API_TOKEN=... COMMUNITY_ADMIN_SECRET=...
-fly deploy
+ssh ubuntu@YOUR_PUBLIC_IP   # Oracle Linux images often use opc@
+
+# Install Docker
+curl -fsSL https://raw.githubusercontent.com/Weatherin2D/Skywatch-Australia/main/scripts/oci-bootstrap.sh | sudo bash
+# (or copy scripts/oci-bootstrap.sh from this repo)
+
+# Clone (private repo: use a GitHub deploy key or PAT)
+git clone https://github.com/Weatherin2D/Skywatch-Australia.git skywatch
+cd skywatch
+cp .env.example .env
+nano .env   # set KV_REST_API_URL, KV_REST_API_TOKEN, COMMUNITY_ADMIN_SECRET
+
+# Optional HTTPS: set SKYWATCH_DOMAIN=your.domain and CADDY_EMAIL=you@email
+# and point DNS A record at the VM public IP.
+
+docker compose up -d --build
 ```
 
-Public URL: `https://skywatch-australia.fly.dev` (or attach a custom domain in the Fly dashboard).
+Site: `http://YOUR_PUBLIC_IP` (or `https://your.domain` once DNS + `SKYWATCH_DOMAIN` are set).
 
-Archive ingest: no Vercel Cron here — ping `GET /api/weather/archive/ingest` daily (e.g. cron-job.org) or rely on lazy ingest when `/archive` is opened.
-
-Machines auto-stop when idle (`min_machines_running = 0`) to stay within free allowance; first request after idle may take a few seconds to wake.
+Archive ingest: ping `GET /api/weather/archive/ingest` daily (e.g. cron-job.org), or open `/archive` to trigger lazy ingest.
 
 ## Current product surface
 
