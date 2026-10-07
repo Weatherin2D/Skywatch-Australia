@@ -8,7 +8,16 @@ export const WEATHER_LAYERS = [
 
 export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
 
+/** Home + Satellite defaults. */
 export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
+  lightning: true,
+  synoptic: true,
+  radar: false,
+  stations: false,
+};
+
+/** /radar page defaults (rain radar + stations first). */
+export const DEFAULT_RADAR_WEATHER_LAYERS: Record<LayerId, boolean> = {
   lightning: true,
   synoptic: false,
   radar: true,
@@ -54,6 +63,7 @@ export type MapSettingsState = {
   lightningIconScale: number;
 };
 
+/** Home + Satellite cartography defaults. */
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Esri World Imagery under the open Map (pan/zoom) */
   satelliteBasemap: false,
@@ -63,9 +73,9 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
    */
   radarSmoothing: false,
   /** Bolt glyphs instead of crosshair markers */
-  lightningBolts: true,
+  lightningBolts: false,
   /** Thermal / pressure colour coding on station-model numbers */
-  stationColorValues: true,
+  stationColorValues: false,
   cityLabels: true,
   /** Hundreds of regional towns (decluttered by zoom / region) */
   townLabels: true,
@@ -75,6 +85,13 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   outlines: true,
   oceanNames: true,
   lightningIconScale: DEFAULT_LIGHTNING_ICON_SCALE,
+};
+
+/** /radar page cartography — bolts + coloured stations on. */
+export const DEFAULT_RADAR_MAP_SETTINGS: MapSettingsState = {
+  ...DEFAULT_MAP_SETTINGS,
+  lightningBolts: true,
+  stationColorValues: true,
 };
 
 /** Primary map view — not the same as overlay layers. */

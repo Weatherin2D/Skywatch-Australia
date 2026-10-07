@@ -29,6 +29,8 @@ import {
 import {
   clampLightningIconScale,
   DEFAULT_MAP_REGION,
+  DEFAULT_RADAR_MAP_SETTINGS,
+  DEFAULT_RADAR_WEATHER_LAYERS,
   LIGHTNING_ICON_SCALE_MAX,
   LIGHTNING_ICON_SCALE_MIN,
   LIGHTNING_ICON_SCALE_STEP,
@@ -282,12 +284,12 @@ function HomeDashboardInner({
 
   const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
     if (focus === "radar") {
-      return { ...savedUi.layers, radar: true, lightning: true };
+      return { ...DEFAULT_RADAR_WEATHER_LAYERS };
     }
     return savedUi.layers;
   });
-  const [mapSettings, setMapSettings] = useState<MapSettingsState>(
-    () => savedUi.mapSettings,
+  const [mapSettings, setMapSettings] = useState<MapSettingsState>(() =>
+    focus === "radar" ? DEFAULT_RADAR_MAP_SETTINGS : savedUi.mapSettings,
   );
   const [mode, setMode] = useState<MapMode>(() => {
     if (focus === "radar") return "Map";
@@ -317,22 +319,25 @@ function HomeDashboardInner({
   useEffect(() => {
     if (urlReady) return;
     const saved = readMapUiPrefs();
-    setMapSettings(saved.mapSettings);
     setPlaybackSpeed(saved.playbackSpeed);
     setSatProduct(saved.satProduct);
     setRegionId(saved.regionId);
     if (focus === "radar") {
+      // Radar page keeps its own defaults so home/satellite prefs stay intact.
       setMode("Map");
       setChaseEnabled(true);
-      setLayers({ ...saved.layers, radar: true, lightning: true });
+      setLayers({ ...DEFAULT_RADAR_WEATHER_LAYERS });
+      setMapSettings({ ...DEFAULT_RADAR_MAP_SETTINGS });
     } else if (focus === "satellite") {
       setMode("Satellite");
       setChaseEnabled(saved.chaseEnabled);
       setLayers(saved.layers);
+      setMapSettings(saved.mapSettings);
     } else {
       setMode(saved.mode);
       setChaseEnabled(saved.chaseEnabled);
       setLayers(saved.layers);
+      setMapSettings(saved.mapSettings);
     }
 
     const region = searchParams.get("region");
@@ -400,19 +405,28 @@ function HomeDashboardInner({
     }
   }, [focus]);
 
-  // Persist overlays / cartography / view prefs across visits. Dedicated
-  // /radar and /satellite pages force mode + chase — keep home prefs intact.
+  // Persist home/satellite overlays & settings. /radar uses its own defaults
+  // and must not overwrite the home Satellite prefs.
   useEffect(() => {
     if (!urlReady) return;
+    if (focus === "radar") {
+      const prev = readMapUiPrefs();
+      writeMapUiPrefs({
+        ...prev,
+        regionId,
+        playbackSpeed,
+      });
+      return;
+    }
     const prev = readMapUiPrefs();
     writeMapUiPrefs({
       layers,
       mapSettings,
-      mode: focus ? prev.mode : mode,
+      mode: focus === "satellite" ? prev.mode : mode,
       regionId,
       satProduct,
       playbackSpeed,
-      chaseEnabled: focus ? prev.chaseEnabled : chaseEnabled,
+      chaseEnabled: focus === "satellite" ? prev.chaseEnabled : chaseEnabled,
     });
   }, [
     urlReady,

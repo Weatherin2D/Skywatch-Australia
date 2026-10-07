@@ -100,7 +100,7 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
   },
 ] as const;
 
-export const DEFAULT_SATELLITE_PRODUCT: SatelliteProductId = "infrared";
+export const DEFAULT_SATELLITE_PRODUCT: SatelliteProductId = "visible";
 
 export function isSatelliteProductId(value: string): value is SatelliteProductId {
   return SATELLITE_PRODUCTS.some((p) => p.id === value);
