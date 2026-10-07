@@ -29,8 +29,6 @@ import {
 import {
   clampLightningIconScale,
   DEFAULT_MAP_REGION,
-  DEFAULT_RADAR_MAP_SETTINGS,
-  DEFAULT_RADAR_WEATHER_LAYERS,
   LIGHTNING_ICON_SCALE_MAX,
   LIGHTNING_ICON_SCALE_MIN,
   LIGHTNING_ICON_SCALE_STEP,
@@ -52,7 +50,11 @@ import { useStations } from "@/hooks/use-stations";
 import { useSynoptic } from "@/hooks/use-synoptic";
 import { pickSynopticFrame } from "@/lib/weather/synoptic";
 import { prefetchSynopticGeoJson } from "@/lib/weather/synoptic-geojson-cache";
-import { readMapUiPrefs, writeMapUiPrefs } from "@/lib/prefs/map-ui";
+import {
+  readMapUiPrefs,
+  writeMapUiPrefs,
+  type MapPageId,
+} from "@/lib/prefs/map-ui";
 import {
   DEFAULT_SATELLITE_PRODUCT,
   PLAYBACK_SPEEDS,
@@ -72,6 +74,12 @@ import {
 import { cn } from "@/lib/utils";
 
 export type HomeDashboardFocus = "radar" | "satellite";
+
+function mapPageId(focus?: HomeDashboardFocus): MapPageId {
+  if (focus === "radar") return "radar";
+  if (focus === "satellite") return "satellite";
+  return "home";
+}
 
 function Toggle({
   on,
@@ -263,9 +271,11 @@ export function HomeDashboard({
 }: {
   focus?: HomeDashboardFocus;
 } = {}) {
+  const page = mapPageId(focus);
   return (
     <Suspense fallback={<div className="px-4 py-6 text-sm text-white/60">Loading map…</div>}>
-      <HomeDashboardInner focus={focus} />
+      {/* Remount per page so each map slot gets a fresh prefs bind. */}
+      <HomeDashboardInner key={page} focus={focus} />
     </Suspense>
   );
 }
@@ -277,73 +287,58 @@ function HomeDashboardInner({
 } = {}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const page = mapPageId(focus);
   /** False until URL params have been applied — sync must wait for this render. */
   const [urlReady, setUrlReady] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const savedUi = useMemo(() => readMapUiPrefs(), []);
+  const savedUi = useMemo(() => readMapUiPrefs(page), [page]);
 
-  const [layers, setLayers] = useState<Record<LayerId, boolean>>(() => {
-    if (focus === "radar") {
-      return { ...DEFAULT_RADAR_WEATHER_LAYERS };
-    }
-    return savedUi.layers;
-  });
-  const [mapSettings, setMapSettings] = useState<MapSettingsState>(() =>
-    focus === "radar" ? DEFAULT_RADAR_MAP_SETTINGS : savedUi.mapSettings,
+  const [layers, setLayers] = useState<Record<LayerId, boolean>>(
+    () => savedUi.layers,
+  );
+  const [mapSettings, setMapSettings] = useState<MapSettingsState>(
+    () => savedUi.mapSettings,
   );
   const [mode, setMode] = useState<MapMode>(() => {
-    if (focus === "radar") return "Map";
-    if (focus === "satellite") return "Satellite";
+    if (page === "radar") return "Map";
+    if (page === "satellite") return "Satellite";
     return savedUi.mode;
   });
   const [regionId, setRegionId] = useState<MapRegionId>(() => savedUi.regionId);
   const [satProduct, setSatProduct] = useState<SatelliteProductId>(
     () => savedUi.satProduct,
   );
-  const [chaseEnabled, setChaseEnabled] = useState(
-    () => focus === "radar" || savedUi.chaseEnabled,
-  );
+  const [chaseEnabled, setChaseEnabled] = useState(() => savedUi.chaseEnabled);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeedId>(
     () => savedUi.playbackSpeed,
   );
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [focusCellId, setFocusCellId] = useState<string | null>(null);
-  const stormCellsEnabled = chaseEnabled || focus === "radar";
+  const stormCellsEnabled = chaseEnabled || page === "radar";
   const { data: stormCellsData, loading: stormCellsLoading } =
     useStormCells(45_000, stormCellsEnabled);
   const stormCells = stormCellsData?.cells ?? [];
 
-  // Rehydrate from localStorage (SSR can't), then apply shareable URL params.
+  // Rehydrate this page's localStorage slot (SSR can't), then URL overrides.
   // Sync must not run in the same effect flush with stale regionId — that was
   // stripping ?region= and yanking the map back to national framing.
   useEffect(() => {
     if (urlReady) return;
-    const saved = readMapUiPrefs();
+    const saved = readMapUiPrefs(page);
+    setLayers(saved.layers);
+    setMapSettings(saved.mapSettings);
     setPlaybackSpeed(saved.playbackSpeed);
     setSatProduct(saved.satProduct);
     setRegionId(saved.regionId);
-    if (focus === "radar") {
-      // Radar page keeps its own defaults so home/satellite prefs stay intact.
-      setMode("Map");
-      setChaseEnabled(true);
-      setLayers({ ...DEFAULT_RADAR_WEATHER_LAYERS });
-      setMapSettings({ ...DEFAULT_RADAR_MAP_SETTINGS });
-    } else if (focus === "satellite") {
-      setMode("Satellite");
-      setChaseEnabled(saved.chaseEnabled);
-      setLayers(saved.layers);
-      setMapSettings(saved.mapSettings);
-    } else {
-      setMode(saved.mode);
-      setChaseEnabled(saved.chaseEnabled);
-      setLayers(saved.layers);
-      setMapSettings(saved.mapSettings);
-    }
+    setChaseEnabled(saved.chaseEnabled);
+    if (page === "radar") setMode("Map");
+    else if (page === "satellite") setMode("Satellite");
+    else setMode(saved.mode);
 
     const region = searchParams.get("region");
     if (region && isMapRegionId(region)) setRegionId(region);
     const modeParam = searchParams.get("mode");
-    if (modeParam) {
+    if (modeParam && page === "home") {
       const normalized =
         modeParam.toLowerCase() === "map"
           ? "Map"
@@ -377,7 +372,7 @@ function HomeDashboardInner({
     ) {
       setSatProduct(product as SatelliteProductId);
     }
-    if (searchParams.get("chase") === "1" || focus === "radar") {
+    if (searchParams.get("chase") === "1") {
       setChaseEnabled(true);
       setLayers((prev) => ({ ...prev, radar: true, lightning: true }));
     }
@@ -388,49 +383,38 @@ function HomeDashboardInner({
       setChaseEnabled(true);
     }
     setUrlReady(true);
-  }, [searchParams, urlReady, focus]);
+  }, [searchParams, urlReady, page]);
 
-  // Prefer saved place region when URL did not specify one.
+  // Prefer saved place region when URL did not specify one (Home only).
   usePreferSavedRegion(
     setRegionId,
-    urlReady && !searchParams.get("region") && !focus,
+    urlReady && !searchParams.get("region") && page === "home",
   );
 
   useEffect(() => {
-    if (focus === "radar") {
+    if (page === "radar") {
       setMode("Map");
       setLayers((prev) => (prev.radar ? prev : { ...prev, radar: true }));
-    } else if (focus === "satellite") {
+    } else if (page === "satellite") {
       setMode("Satellite");
     }
-  }, [focus]);
+  }, [page]);
 
-  // Persist home/satellite overlays & settings. /radar uses its own defaults
-  // and must not overwrite the home Satellite prefs.
+  // Persist this page's overlays / cartography / view prefs only.
   useEffect(() => {
     if (!urlReady) return;
-    if (focus === "radar") {
-      const prev = readMapUiPrefs();
-      writeMapUiPrefs({
-        ...prev,
-        regionId,
-        playbackSpeed,
-      });
-      return;
-    }
-    const prev = readMapUiPrefs();
-    writeMapUiPrefs({
+    writeMapUiPrefs(page, {
       layers,
       mapSettings,
-      mode: focus === "satellite" ? prev.mode : mode,
+      mode: page === "radar" ? "Map" : page === "satellite" ? "Satellite" : mode,
       regionId,
       satProduct,
       playbackSpeed,
-      chaseEnabled: focus === "satellite" ? prev.chaseEnabled : chaseEnabled,
+      chaseEnabled,
     });
   }, [
     urlReady,
-    focus,
+    page,
     layers,
     mapSettings,
     mode,
