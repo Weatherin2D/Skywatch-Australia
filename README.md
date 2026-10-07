@@ -4,25 +4,44 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Local:** `npm run dev` → [http://127.0.0.1:43127](http://127.0.0.1:43127)
 
-**Production host:** [Render](https://render.com) (Docker web service). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
+**Production host:** Google Cloud Always Free `e2-micro` (Docker + Caddy). Source: private GitHub repo `Weatherin2D/Skywatch-Australia`.
 
-### Deploy on Render
+### Deploy on Google Cloud (Always Free)
 
-Blueprint: `render.yaml` (free plan, Singapore, Docker).
+**1. Create the project / VM** ([console.cloud.google.com](https://console.cloud.google.com)):
 
-1. Push this repo to GitHub (private is fine).
-2. Open [dashboard.render.com](https://dashboard.render.com) → **New → Blueprint** → connect `Weatherin2D/Skywatch-Australia`.
-3. When prompted, set secrets:
-   - `KV_REST_API_URL`
-   - `KV_REST_API_TOKEN`
-   - `COMMUNITY_ADMIN_SECRET` (optional)
-4. Deploy. URL will look like `https://skywatch-australia.onrender.com`.
+- Sign in with a Google account (signup may still ask for a card for identity — Always Free `e2-micro` stays $0 if you stay in free limits).
+- Enable **Compute Engine**.
+- **VM instances → Create instance**:
+  - Name: `skywatch`
+  - Region: **`us-west1`**, **`us-central1`**, or **`us-east1`** (Always Free regions only)
+  - Machine type: **`e2-micro`** (shared-core, ~1 GB RAM)
+  - Boot disk: **Ubuntu 22.04 LTS**, 30 GB Standard persistent disk
+  - Firewall: allow **HTTP** and **HTTPS**
+  - Networking: ensure it gets an **external IP**
+- Create → note the external IP.
 
-**Note:** Free web services **spin down** after ~15 minutes idle; the first request after that can take 30–60s. Upgrade to a paid starter instance if you need always-on.
+**2. On the VM:**
 
-Archive ingest: ping `GET /api/weather/archive/ingest` daily (e.g. cron-job.org), or open `/archive` to trigger lazy ingest.
+```bash
+ssh USERNAME@EXTERNAL_IP
 
-**Manual (no Blueprint):** New → Web Service → this repo → Language **Docker** → Dockerfile path `./Dockerfile` → create.
+# Install Docker + 2 GB swap (needed on 1 GB RAM)
+curl -fsSL https://raw.githubusercontent.com/Weatherin2D/Skywatch-Australia/main/scripts/gcp-bootstrap.sh | sudo bash
+# or: sudo bash scripts/gcp-bootstrap.sh from a cloned copy
+
+git clone https://github.com/Weatherin2D/Skywatch-Australia.git skywatch
+cd skywatch
+cp .env.example .env
+nano .env   # KV_REST_API_URL, KV_REST_API_TOKEN, COMMUNITY_ADMIN_SECRET
+
+# Optional HTTPS: SKYWATCH_DOMAIN=your.domain + DNS A record → this IP
+docker compose up -d --build
+```
+
+Site: `http://EXTERNAL_IP` (or `https://your.domain` with `SKYWATCH_DOMAIN` set).
+
+**Notes:** `e2-micro` is tight on RAM — the bootstrap adds swap. First `docker compose build` can be slow; if it OOMs, say so and we’ll switch to a pre-built image. Archive ingest: ping `/api/weather/archive/ingest` daily or open `/archive`.
 
 ## Current product surface
 
