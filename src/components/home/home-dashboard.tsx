@@ -761,6 +761,8 @@ function HomeDashboardInner({
 
   // Fixed-cadence playback. Readiness is read from refs so preload settle
   // updates do not restart the interval (that was freezing the loop mid-way).
+  // Never wrap to frame 0 while skipping unready mid-loop frames — that made
+  // the animation look like it kept restarting during the buffer warm-up.
   useEffect(() => {
     if (!playing || !useTimeline) return;
     if (loopLenRef.current === 0) return;
@@ -770,33 +772,47 @@ function HomeDashboardInner({
         const n = loopLenRef.current;
         if (n <= 0) return 0;
 
-        const pickReadyAhead = (from: number): number | null => {
-          for (let step = 1; step < n; step++) {
-            const candidate = (from + step) % n;
+        /** Next ready index strictly ahead of `from` (no wrap). */
+        const pickReadyForward = (from: number): number | null => {
+          for (let candidate = from + 1; candidate < n; candidate++) {
             if (isIndexReadyRef.current(candidate)) return candidate;
           }
           return null;
         };
 
-        const next = (prev + 1) % n;
+        const atEnd = prev >= n - 1;
+        const next = atEnd ? 0 : prev + 1;
+
         if (isIndexReadyRef.current(next) || allReadyRef.current) {
           playbackHoldMsRef.current = 0;
           return next;
         }
 
-        // Next stamp failed (404 / decode) — jump to the next ready frame.
+        // Next stamp failed (404 / decode) — skip forward only.
         if (isIndexSettledRef.current(next)) {
           playbackHoldMsRef.current = 0;
-          return pickReadyAhead(prev) ?? next;
+          if (atEnd) {
+            // Natural loop restart: first ready frame from the start.
+            for (let candidate = 0; candidate < n; candidate++) {
+              if (isIndexReadyRef.current(candidate)) return candidate;
+            }
+            return 0;
+          }
+          return pickReadyForward(prev) ?? prev;
         }
 
-        // Still loading — hold briefly, then skip so region stitches can't stall.
+        // Still loading — hold on the current frame. After a short stall,
+        // skip forward (never backwards) so a stuck stitch can't freeze play.
         playbackHoldMsRef.current += playback.msPerFrame;
-        if (playbackHoldMsRef.current < playback.msPerFrame) {
+        const stallBudget = playback.msPerFrame * 3;
+        if (playbackHoldMsRef.current < stallBudget) {
           return prev;
         }
         playbackHoldMsRef.current = 0;
-        return pickReadyAhead(prev) ?? (allSettledRef.current ? next : prev);
+        if (atEnd) {
+          return isIndexReadyRef.current(0) || allSettledRef.current ? 0 : prev;
+        }
+        return pickReadyForward(prev) ?? prev;
       });
     }, playback.msPerFrame);
     return () => window.clearInterval(id);
