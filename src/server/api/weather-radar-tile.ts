@@ -50,7 +50,10 @@ export async function GET(req: NextRequest) {
   const z = sp.get("z");
   const x = sp.get("x");
   const y = sp.get("y");
-  const smooth = sp.get("smooth") === "1";
+  // Always fetch RainViewer unsmoothed (`0_0`). Spatially smoothed `1_0`
+  // tiles blend palette colours and our dBZ recolour punches them transparent.
+  const smooth = false;
+  void sp.get("smooth");
   // Reject mismatched palette/rev so stale clients cannot poison the cache
   // with an older colour ladder under a shared process key.
   const pal = sp.get("pal") ?? "";

@@ -27,7 +27,8 @@ import {
   type SatelliteProductId,
 } from "@/lib/weather/maps";
 
-const STORAGE_KEY = "skywatch.map-ui.v1";
+/** Bump when default overlays/settings change so visitors pick up new defaults. */
+const STORAGE_KEY = "skywatch.map-ui.v2";
 
 export type MapUiPrefs = {
   layers: Record<LayerId, boolean>;

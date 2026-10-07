@@ -396,19 +396,20 @@ export function rainviewerTileUrl(
   return `${base}/256/{z}/{x}/{y}/0/0_0.png`;
 }
 
-/** Flip `smooth=0|1` on a radar tile template (map settings toggle). */
+/**
+ * Radar “smoothing” is CSS-only on the client (`skywatch-radar-tiles--smooth`).
+ * Never request RainViewer `1_0` — blended Universal Blue pixels fall out of
+ * our exact dBZ LUT and the radar looks broken / empty.
+ */
 export function withRadarSmooth(
   template: string | null | undefined,
-  smooth: boolean,
+  _smooth: boolean,
 ): string | null {
   if (!template) return null;
   if (/[?&]smooth=\d/.test(template)) {
-    return template.replace(/([?&]smooth=)\d/, `$1${smooth ? "1" : "0"}`);
+    return template.replace(/([?&]smooth=)\d/, "$10");
   }
-  if (template.includes("&z=")) {
-    return template.replace("&z=", `&smooth=${smooth ? "1" : "0"}&z=`);
-  }
-  return `${template}${template.includes("?") ? "&" : "?"}smooth=${smooth ? "1" : "0"}`;
+  return template;
 }
 
 export function toIsoZ(ms: number): string {

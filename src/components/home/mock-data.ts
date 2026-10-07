@@ -11,14 +11,14 @@ export type LayerId = (typeof WEATHER_LAYERS)[number]["id"];
 export const DEFAULT_WEATHER_LAYERS: Record<LayerId, boolean> = {
   lightning: true,
   synoptic: false,
-  radar: false,
-  stations: false,
+  radar: true,
+  stations: true,
 };
 
 /** Cartographic toggles for the national map (below weather overlays). */
 export const MAP_SETTINGS = [
   { id: "satelliteBasemap", label: "Satellite imagery" },
-  { id: "radarSmoothing", label: "Radar smoothing" },
+  { id: "radarSmoothing", label: "Radar soft edges" },
   { id: "lightningBolts", label: "Lightning bolt icons" },
   { id: "stationColorValues", label: "Colour station values" },
   { id: "cityLabels", label: "City labels" },
@@ -57,20 +57,23 @@ export type MapSettingsState = {
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Esri World Imagery under the open Map (pan/zoom) */
   satelliteBasemap: false,
-  /** RainViewer spatial smooth (1_0) vs crisp unsmoothed (0_0) */
+  /**
+   * Soft CSS upscale only — RainViewer spatial smooth (1_0) breaks our dBZ
+   * recolour (blended pixels fall out of the Universal Blue LUT).
+   */
   radarSmoothing: false,
   /** Bolt glyphs instead of crosshair markers */
-  lightningBolts: false,
+  lightningBolts: true,
   /** Thermal / pressure colour coding on station-model numbers */
-  stationColorValues: false,
-  cityLabels: false,
+  stationColorValues: true,
+  cityLabels: true,
   /** Hundreds of regional towns (decluttered by zoom / region) */
-  townLabels: false,
-  stateOutlines: false,
-  stateLabels: false,
+  townLabels: true,
+  stateOutlines: true,
+  stateLabels: true,
   /** Australia coastline is on by default */
   outlines: true,
-  oceanNames: false,
+  oceanNames: true,
   lightningIconScale: DEFAULT_LIGHTNING_ICON_SCALE,
 };
 
