@@ -53,3 +53,9 @@ next-env.d.ts
 /tmp-scaffold/
 .agents/
 skills-lock.json
+
+# SkyWatch AI Python venv / caches
+skywatch-ai/.venv/
+skywatch-ai/**/__pycache__/
+skywatch-ai/**/*.pyc
+skywatch-ai/**/.pytest_cache/

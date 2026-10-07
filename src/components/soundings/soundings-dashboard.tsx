@@ -218,7 +218,7 @@ export function SoundingsDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({ mode });
+        const params = new URLSearchParams({ mode, engine: "auto" });
         if (mode === "observed") {
           params.set("station", station);
           if (observedTime) params.set("time", observedTime);
@@ -305,6 +305,8 @@ export function SoundingsDashboard() {
             <p className="mt-1 max-w-xl text-sm text-white/55">
               Observed radiosondes, single-point model Skew-Ts, and 3×3 model
               sounding boxes — thermo, shear, and storm-relative diagnostics.
+              When the SkyWatch AI sidecar is running, parcel/shear numbers use
+              the deterministic AI engine (S-hemisphere SRH).
             </p>
           </div>
 
@@ -721,7 +723,12 @@ export function SoundingsDashboard() {
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto">
             {activeSounding ? (
-              <SoundingParamsTables params={activeSounding.params} />
+              <SoundingParamsTables
+                params={activeSounding.params}
+                engine={activeSounding.engine ?? "legacy"}
+                engineHemisphere={activeSounding.engineHemisphere}
+                engineMessage={activeSounding.engineMessage}
+              />
             ) : (
               <p className="text-sm text-white/45">Parameters load with the profile.</p>
             )}

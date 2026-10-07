@@ -1,0 +1,3 @@
+# Full training stack (optional — not needed for the diagnostics sidecar)
+-r requirements.txt
+torch>=2.0

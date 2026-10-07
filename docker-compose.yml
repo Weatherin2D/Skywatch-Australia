@@ -1,6 +1,29 @@
 # SkyWatch Australia — Oracle Cloud / any VPS
 # Build + run on the VM (native ARM Ampere or AMD micro).
 services:
+  skywatch-ai:
+    build:
+      context: ./skywatch-ai
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "43137"
+    # Optional host access for local Next.js (`SKYWATCH_AI_URL=http://127.0.0.1:43137`)
+    ports:
+      - "43137:43137"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:43137/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   app:
     build:
       context: .
@@ -12,9 +35,13 @@ services:
       NODE_ENV: production
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
+      SKYWATCH_AI_URL: http://skywatch-ai:43137
     # Not published publicly — Caddy proxies to this service.
     expose:
       - "3000"
+    depends_on:
+      skywatch-ai:
+        condition: service_healthy
     healthcheck:
       test:
         [

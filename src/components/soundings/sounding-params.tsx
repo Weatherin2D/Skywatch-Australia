@@ -60,9 +60,42 @@ const HAZARD_STYLE: Record<
   "HEAVY RAIN": "border-sky-400/40 bg-sky-400/10 text-sky-200",
 };
 
-export function SoundingParamsTables({ params }: { params: SoundingParams }) {
+export function SoundingParamsTables({
+  params,
+  engine = "legacy",
+  engineHemisphere,
+  engineMessage,
+}: {
+  params: SoundingParams;
+  engine?: "skywatch-ai" | "legacy";
+  engineHemisphere?: string;
+  engineMessage?: string;
+}) {
+  const ai = engine === "skywatch-ai";
   return (
     <div className="space-y-4">
+      <div
+        className={cn(
+          "rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug",
+          ai
+            ? "border-cyan-400/35 bg-cyan-400/10 text-cyan-100"
+            : "border-white/12 bg-white/[0.04] text-white/55",
+        )}
+      >
+        <span className="font-semibold tracking-wide">
+          {ai ? "SkyWatch AI engine" : "Legacy thermo"}
+        </span>
+        {ai && engineHemisphere ? (
+          <span className="text-white/50">
+            {" "}
+            · SRH {engineHemisphere}H convention
+          </span>
+        ) : null}
+        {engineMessage ? (
+          <p className="mt-0.5 text-white/45">{engineMessage}</p>
+        ) : null}
+      </div>
+
       <div
         className={cn(
           "rounded-xl border px-3 py-2 text-center font-[family-name:var(--font-display)] text-sm font-bold tracking-wide",

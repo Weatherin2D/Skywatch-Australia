@@ -1,0 +1,6 @@
+# Engine / sidecar runtime (no torch — neural training uses requirements-train.txt)
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+fastapi>=0.110
+uvicorn[standard]>=0.27

@@ -17,6 +17,12 @@ import {
   fetchObservedSounding,
   fetchObservedSoundingArchive,
 } from "@/lib/weather/uwyo-sounding";
+import {
+  attachSkywatchAiEngine,
+  parseEngineMode,
+  skywatchAiBaseUrl,
+} from "@/lib/weather/skywatch-ai-client";
+import type { SoundingBoxPayload } from "@/lib/weather/sounding-types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +40,7 @@ const BOX_SPACING = new Set<SoundingBoxSpacingDeg>([0.25, 0.5, 1]);
  *   &model=pulse|ukmo|ifs|access
  *   &spacing=0.25|0.5|1     (box mode, degrees)
  *   &time=ISO
+ *   &engine=auto|skywatch|legacy  (auto = sidecar when SKYWATCH_AI_URL is set)
  *   &meta=1                 → station list only
  *   &archive=1              → observed UWYO inventory slots for station/year(s)
  *   &year=2026              → single year for archive (default: current+previous)
@@ -51,6 +58,12 @@ export async function GET(req: NextRequest) {
             { id: "ifs", label: "IFS" },
             { id: "access", label: "ACCESS-G" },
           ],
+          engines: [
+            { id: "auto", label: "Auto" },
+            { id: "skywatch", label: "SkyWatch AI" },
+            { id: "legacy", label: "Legacy" },
+          ],
+          skywatchAiConfigured: Boolean(skywatchAiBaseUrl()),
         },
         {
           headers: {
@@ -61,6 +74,7 @@ export async function GET(req: NextRequest) {
     }
 
     const mode = (url.searchParams.get("mode") || "observed").toLowerCase() as SoundingMode;
+    const engineMode = parseEngineMode(url.searchParams.get("engine"));
     const time = url.searchParams.get("time");
     const lat = Number(url.searchParams.get("lat"));
     const lon = Number(url.searchParams.get("lon"));
@@ -119,10 +133,11 @@ export async function GET(req: NextRequest) {
           time,
           spacingDeg: spacing,
         });
-        return NextResponse.json(payload, {
+        const enriched = await attachEngineToBox(payload, engineMode);
+        return NextResponse.json(enriched, {
           headers: {
             "Cache-Control":
-              payload.status === "ok"
+              enriched.status === "ok"
                 ? "public, max-age=120, stale-while-revalidate=600"
                 : "no-store",
           },
@@ -135,10 +150,11 @@ export async function GET(req: NextRequest) {
         placeLabel: place,
         time,
       });
-      return NextResponse.json(payload, {
+      const enriched = await attachSkywatchAiEngine(payload, engineMode);
+      return NextResponse.json(enriched, {
         headers: {
           "Cache-Control":
-            payload.status === "ok"
+            enriched.status === "ok"
               ? "public, max-age=120, stale-while-revalidate=600"
               : "no-store",
         },
@@ -158,10 +174,11 @@ export async function GET(req: NextRequest) {
     }
 
     const payload = await fetchObservedSounding({ wmo, time });
-    return NextResponse.json(payload, {
+    const enriched = await attachSkywatchAiEngine(payload, engineMode);
+    return NextResponse.json(enriched, {
       headers: {
         "Cache-Control":
-          payload.status === "ok"
+          enriched.status === "ok"
             ? "public, max-age=300, stale-while-revalidate=1800"
             : "no-store",
       },
@@ -173,4 +190,37 @@ export async function GET(req: NextRequest) {
       { status: 502 },
     );
   }
+}
+
+async function attachEngineToBox(
+  payload: SoundingBoxPayload,
+  engineMode: ReturnType<typeof parseEngineMode>,
+): Promise<SoundingBoxPayload> {
+  if (payload.status !== "ok" || !payload.cells.length) return payload;
+  // Centre cell first (row=1,col=1), then the rest — keeps latency bounded.
+  const centre =
+    payload.cells.find((c) => c.row === 1 && c.col === 1) ?? payload.cells[0]!;
+  const centreSounding = await attachSkywatchAiEngine(
+    centre.sounding,
+    engineMode,
+  );
+  const cells = await Promise.all(
+    payload.cells.map(async (cell) => {
+      if (cell === centre || (cell.row === centre.row && cell.col === centre.col)) {
+        return { ...cell, sounding: centreSounding };
+      }
+      // Box grid: legacy thermo for off-centre cells unless skywatch forced.
+      if (engineMode === "legacy" || engineMode === "auto") {
+        return {
+          ...cell,
+          sounding: { ...cell.sounding, engine: "legacy" as const },
+        };
+      }
+      return {
+        ...cell,
+        sounding: await attachSkywatchAiEngine(cell.sounding, engineMode),
+      };
+    }),
+  );
+  return { ...payload, cells };
 }
