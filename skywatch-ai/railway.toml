@@ -1,0 +1,20 @@
+# Railway — SkyWatch AI FastAPI sidecar
+# https://docs.railway.com/guides/config-as-code
+#
+# Deploy from repo root with service root = skywatch-ai/, or:
+#   railway up --service skywatch-ai
+#
+# Required env (Railway dashboard):
+#   SKYWATCH_AI_CHECKPOINT=/app/checkpoints/v1-etl.pt   (Dockerfile default)
+#   SKYWATCH_AI_API_KEY=<shared secret>                 (optional but recommended)
+# Memory: ≥2 GB recommended (CPU torch).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

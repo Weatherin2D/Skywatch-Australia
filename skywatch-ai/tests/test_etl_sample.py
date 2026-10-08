@@ -73,6 +73,21 @@ class TestEtlSample(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "km/h"):
             _parse_hourly_column(hourly, times, 0, -33.0, 151.0, "ifs", "test")
 
+    def test_event_weight_rises_for_high_cape(self):
+        from skywatch.etl.build_sample import event_weight_from_sonde
+        from skywatch.synthetic import random_column
+
+        rng = np.random.default_rng(42)
+        # Search a handful of synthetic columns for one with elevated CAPE or inversion.
+        weights = []
+        for _ in range(40):
+            col = random_column(rng)
+            sonde = _col_dict(col)
+            sonde["p_sfc"] = float(sonde["p"][0])
+            weights.append(event_weight_from_sonde(sonde))
+        self.assertTrue(any(w > 1.0 for w in weights), f"weights={weights[:10]}")
+        self.assertTrue(all(w >= 1.0 for w in weights))
+
 
 if __name__ == "__main__":
     unittest.main()

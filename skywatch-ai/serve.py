@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import math
 import os
+import secrets
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from skywatch import Profile, compute_diagnostics
@@ -24,6 +26,7 @@ from skywatch.constants import EPS
 
 _SPEED = {"kt": 0.514444, "ms": 1.0, "kmh": 1 / 3.6, "mph": 0.44704}
 _ML_STATUS: Dict[str, Any] = {"ready": False, "error": None, "checkpoint": None}
+_API_KEY = os.environ.get("SKYWATCH_AI_API_KEY", "").strip()
 
 
 @asynccontextmanager
@@ -54,6 +57,22 @@ app = FastAPI(
     docs_url="/docs",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    """Optional bearer gate when SKYWATCH_AI_API_KEY is set. /health stays open."""
+    if not _API_KEY or request.url.path in ("/health", "/docs", "/openapi.json"):
+        return await call_next(request)
+    auth = request.headers.get("authorization") or ""
+    token = ""
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+    if not token:
+        token = (request.headers.get("x-api-key") or "").strip()
+    if not token or not secrets.compare_digest(token, _API_KEY):
+        return JSONResponse({"detail": "unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 class LevelIn(BaseModel):
@@ -191,6 +210,7 @@ def health():
         "service": "skywatch-ai",
         "engine": "diagnostics",
         "ml": _ML_STATUS,
+        "auth_required": bool(_API_KEY),
     }
 
 

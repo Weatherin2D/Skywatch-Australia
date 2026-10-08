@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -72,15 +72,16 @@ def recent_slots(
 ) -> List[datetime]:
     """Inventory-backed launch times within the last `days` (UTC)."""
     now = datetime.now(timezone.utc)
-    cutoff = now.timestamp() - days * 86400
-    years = sorted({now.year, (now.year - 1) if now.month == 1 else now.year})
+    cutoff_dt = now.timestamp() - days * 86400
+    # Include every calendar year the window touches (60d near Jan → prior year).
+    years = {now.year, (now - timedelta(days=max(days, 0))).year}
     slots: List[datetime] = []
-    for y in years:
+    for y in sorted(years):
         try:
             slots.extend(fetch_inventory(wmo, y))
         except Exception:  # noqa: BLE001 — empty year / network
             continue
-    slots = [t for t in slots if t.timestamp() >= cutoff and t <= now]
+    slots = [t for t in slots if t.timestamp() >= cutoff_dt and t <= now]
     slots.sort(reverse=True)
     if max_slots is not None:
         slots = slots[:max_slots]

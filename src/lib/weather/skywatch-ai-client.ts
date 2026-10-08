@@ -66,6 +66,16 @@ export function skywatchAiBaseUrl(): string | null {
   return raw.replace(/\/$/, "");
 }
 
+function skywatchAiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const key = process.env.SKYWATCH_AI_API_KEY?.trim();
+  if (key) headers.Authorization = `Bearer ${key}`;
+  return headers;
+}
+
 export function parseEngineMode(raw: string | null): SoundingEngineMode {
   const v = (raw || "auto").toLowerCase();
   if (v === "skywatch" || v === "skywatch-ai" || v === "ai") return "skywatch";
@@ -88,7 +98,7 @@ export async function fetchSkywatchAiDiagnostics(
   const base = skywatchAiBaseUrl();
   if (!base || levels.length < 3) return null;
 
-  const timeoutMs = options?.timeoutMs ?? 4_000;
+  const timeoutMs = options?.timeoutMs ?? 6_000;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   const onAbort = () => ac.abort();
@@ -97,10 +107,7 @@ export async function fetchSkywatchAiDiagnostics(
   try {
     const res = await fetch(`${base}/v1/diagnostics`, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
+      headers: skywatchAiHeaders(),
       body: JSON.stringify({
         levels: levels.map((L) => ({
           p: L.p,
@@ -213,8 +220,7 @@ export function mergeAiIntoParams(
 }
 
 /**
- * V1 neural predict — returns corrected levels + engine diagnostics.
- * Synthetic-trained demo until real ETL training is live.
+ * V1 neural predict — Open-Meteo teacher + radiosonde obs tokens.
  */
 export async function fetchSkywatchAiPredict(
   levels: SoundingLevel[],
@@ -230,6 +236,7 @@ export async function fetchSkywatchAiPredict(
   const base = skywatchAiBaseUrl();
   if (!base || levels.length < 3) return null;
 
+  // Allow cold-start on Railway; local GPU-less CPU predict is usually <10s.
   const timeoutMs = options?.timeoutMs ?? 45_000;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -239,10 +246,7 @@ export async function fetchSkywatchAiPredict(
   try {
     const res = await fetch(`${base}/v1/predict`, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
+      headers: skywatchAiHeaders(),
       body: JSON.stringify({
         levels: levels.map((L) => ({
           p: L.p,

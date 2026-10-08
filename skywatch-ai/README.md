@@ -13,8 +13,10 @@ pip install -r requirements-train.txt
 python scripts/smoke_test.py --out-dir runs/synthetic-smoke
 cp runs/synthetic-smoke/ckpt.pt checkpoints/v1-synthetic.pt   # fallback only
 # Prefer ETL-trained checkpoint when present:
-#   python scripts/batch_etl.py --days 7 --out data/etl/au_v1
-#   python scripts/train_etl.py --data data/etl/au_v1 --synthetic 800 --steps 1500 --promote
+#   python scripts/batch_etl.py --days 60 --fresh --out data/etl/au_v1
+#   python scripts/train_etl.py --data data/etl/au_v1 --synthetic 1500 --steps 2500 \
+#     --real-val-frac 0.2 --promote
+#   python scripts/eval_holdout.py --data data/etl/au_v1 --ckpt checkpoints/v1-etl.pt
 uvicorn serve:app --host 0.0.0.0 --port 43137
 # Loads checkpoints/v1-etl.pt if present, else v1-synthetic.pt
 
@@ -24,13 +26,23 @@ docker compose up -d --build skywatch-ai
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Engine + ML readiness |
+| `GET /health` | Engine + ML readiness (no auth) |
 | `POST /v1/diagnostics` | Deterministic CAPE/SRH (numpy) |
 | `POST /v1/predict` | V1 neural sounding (torch + checkpoint) |
 
-Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **Engine** / **AI V1** / **Legacy**. Vercel Hobby: leave unset.
+Next.js: set `SKYWATCH_AI_URL` (+ optional `SKYWATCH_AI_API_KEY`). On `/soundings`, use **Engine** / **AI V1** / **Legacy**.
 
-**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Current promoted weights: `checkpoints/v1-etl.pt` (52 AU UWYO samples + synthetic mix; winds in m/s). Not an official forecast — high-CAPE MAE and inversion hit-rate targets are still open.
+**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt`. Not an official forecast — high-CAPE MAE and inversion hit-rate targets may still be open (see `metrics/holdout-metrics.json`).
+
+### Railway deploy (public sidecar)
+
+```bash
+# From skywatch-ai/ (see railway.toml). Dockerfile serves :43137 with v1-etl.pt.
+# Set SKYWATCH_AI_API_KEY in Railway; mirror it on Vercel (server-only).
+# Vercel: SKYWATCH_AI_URL=https://<your-railway-host>
+```
+
+Memory ≥2 GB recommended (CPU torch). `/health` stays public; other routes require `Authorization: Bearer <key>` when the env is set.
 
 ## What is verified and what is not
 
@@ -42,20 +54,30 @@ Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **En
 | Grid / normaliser / tokens / contract | 1–2 | **Tested** |
 | Baselines + evaluation through engine | 3, 5 | **Tested** |
 | Loss math + schedule | 6 | **Tested** |
-| Real-data ETL (Open-Meteo hist-forecast teacher + UWYO BUFR inventory → contract samples) | 1 | **Done** — `scripts/batch_etl.py`, `skywatch/etl/` |
-| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **Done** (52 AU samples; T/wind/cape_corr green; high-CAPE + inversions still open) |
-| Skill claims / calibration | 9 | **Not done** — need more stations/days + BARRA2 |
+| Real-data ETL (Open-Meteo hist-forecast teacher + UWYO BUFR inventory → contract samples) | 1 | **Done** — `scripts/batch_etl.py`, event_weight for CAPE/inversions |
+| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **In progress** — expand ETL + real holdout |
+| Holdout eval on real AU sondes | 8b | **`scripts/eval_holdout.py`** → `metrics/holdout-metrics.json` |
+| Skill claims / calibration | 9 | **Not done** — need green high-CAPE + inversion gates |
 | BARRA2 / ERA5 archive ETL | 1 | **Not done** — free ERA5 archive returns null pressure levels; hist-forecast IFS used |
+| Public Railway sidecar | site | **Wired** — `railway.toml` + optional API key |
+
+## Holdout protocol
+
+1. Build ETL samples (`batch_etl.py`). Filenames are `{WMO}_{YYYYMMDD}_{HHMM}Z.npz`.
+2. Train with `--real-val-frac 0.2` (last 20% of real files by time held out) or `--holdout-stations 94767,94610`. Synthetic samples use `--val-frac` separately and mostly stay in train.
+3. After promote: `python scripts/eval_holdout.py --data data/etl/au_v1 --ckpt checkpoints/v1-etl.pt` writes `metrics/holdout-metrics.json`.
+4. If holdout T/wind regress vs `checkpoints/v1-etl-prev.pt`, restore the previous checkpoint.
 
 ## First things to run
     pip install -r requirements-train.txt
     python -m unittest discover -s tests -v
     python scripts/smoke_test.py --out-dir runs/synthetic-smoke
-    python scripts/batch_etl.py --days 5 --stations 94610,94767 --out data/etl/au_v1
-    python scripts/train_etl.py --data data/etl/au_v1 --synthetic 800 --steps 1500 --promote
+    python scripts/batch_etl.py --days 60 --fresh --out data/etl/au_v1
+    python scripts/train_etl.py --data data/etl/au_v1 --synthetic 1500 --steps 2500 --real-val-frac 0.2 --promote
+    python scripts/eval_holdout.py --data data/etl/au_v1 --ckpt checkpoints/v1-etl.pt
     python scripts/compare_sounding.py sonde.csv --hemisphere S
 
-Batch ETL uses UWYO **inventory** launch times (AU often 11/19/23Z, not 00/12). Teacher = Open-Meteo historical-forecast IFS with `wind_speed_unit=ms` (Open-Meteo defaults to km/h).
+Batch ETL uses UWYO **inventory** launch times (AU often 11/19/23Z, not 00/12). Teacher = Open-Meteo historical-forecast IFS with `wind_speed_unit=ms` (Open-Meteo defaults to km/h). `event_weight` is ×3 for SBCAPE>2000 and ×2 for inversion≥1.5 K (stage-6 oversampling).
 
 ## Engine conventions (SRH convention confirmed)
 * **SRH:** `hemisphere="S"` = Bunkers left-mover with sign flipped → positive = favourable for cyclonic supercells (exact mirror of the NH definition; tested).

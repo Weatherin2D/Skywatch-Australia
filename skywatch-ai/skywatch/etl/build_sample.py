@@ -9,11 +9,13 @@ Teacher (Open-Meteo) and radiosonde (UWYO) are independent:
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Optional
 
 import numpy as np
 
 from skywatch.contract import validate_sample
+from skywatch.evaluate import inversion_strength
 from skywatch.grid import (
     fill_below_ground,
     interp_lnp,
@@ -23,7 +25,35 @@ from skywatch.grid import (
 )
 from skywatch.normalizer import Normalizer, SURFACE_VARS
 from skywatch.obs_tokens import DEFAULT_UNC, encode_tokens, raw_from_sounding, raw_surface
+from skywatch.profile import Profile
 from skywatch.synthetic import IN_LEVELS, N_FIELD_CHANNELS, N_HIST, N_STATIC, WINDOW
+
+
+def event_weight_from_sonde(
+    sonde: Dict[str, Any],
+    *,
+    hemisphere: str = "S",
+    cape_hi: float = 2000.0,
+    inv_k: float = 1.5,
+) -> float:
+    """Stage-6 oversampling weight from truth-column CAPE / inversion strength."""
+    w = 1.0
+    try:
+        prof = Profile(
+            sonde["p"], sonde["T"], sonde["q"], sonde["u"], sonde["v"], z=sonde["z"]
+        )
+        from skywatch import compute_diagnostics
+
+        diag = compute_diagnostics(prof, hemisphere=hemisphere.upper())
+        sbcape = float(diag.get("SBCAPE") or 0.0)
+        if math.isfinite(sbcape) and sbcape > cape_hi:
+            w *= 3.0
+        strength, _ = inversion_strength(prof.T, prof.z_agl)
+        if math.isfinite(strength) and strength >= inv_k:
+            w *= 2.0
+    except Exception:  # noqa: BLE001 — keep baseline weight
+        return 1.0
+    return float(w)
 
 
 def _column_to_native(col: Dict[str, np.ndarray], grid_p, z_sfc: float):
@@ -212,7 +242,7 @@ def build_training_sample(
         surf_obs_target=f32(surf_t),
         surf_obs_mask=surf_m,
         surf_obs_sigma=f32(surf_s),
-        event_weight=np.float32(1.0),
+        event_weight=np.float32(event_weight_from_sonde(sonde)),
     )
     errs = validate_sample(sample, norm)
     if errs:
