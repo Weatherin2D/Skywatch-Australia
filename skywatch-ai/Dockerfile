@@ -12,7 +12,7 @@ COPY serve.py .
 COPY checkpoints ./checkpoints
 
 ENV PYTHONUNBUFFERED=1
-ENV SKYWATCH_AI_CHECKPOINT=/app/checkpoints/v1-synthetic.pt
+ENV SKYWATCH_AI_CHECKPOINT=/app/checkpoints/v1-etl.pt
 EXPOSE 43137
 
 CMD ["uvicorn", "serve:app", "--host", "0.0.0.0", "--port", "43137"]

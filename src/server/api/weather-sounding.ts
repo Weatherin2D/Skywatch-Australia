@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
           engines: [
             { id: "auto", label: "Auto (engine)" },
             { id: "skywatch", label: "SkyWatch AI engine" },
-            { id: "predict", label: "SkyWatch AI V1 (demo)" },
+            { id: "predict", label: "SkyWatch AI V1" },
             { id: "legacy", label: "Legacy" },
           ],
           skywatchAiConfigured: Boolean(skywatchAiBaseUrl()),

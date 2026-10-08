@@ -1,91 +1,57 @@
 """Fetch Open-Meteo pressure-level columns as a V1 *teacher prior*.
 
-Uses the free forecast API (best_match / ecmwf_ifs025 / bom_access_global_ensemble
-when available). Not a reanalysis — good enough to bootstrap ETL until BARRA2/ERA5
-archives are wired.
+Live predict → forecast API (`best_match`).
+Historical ETL → archive API (ERA5) when a past `time_iso` is given.
+
+Not BARRA2 — bootstrap until local reanalysis NetCDF is wired.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 import json
 import math
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import numpy as np
 
-# Open-Meteo pressure levels commonly available (hPa)
-OM_LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+# Lean level set — fewer vars = fewer timeouts on free API.
+OM_LEVELS = [1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100]
 
 MODEL_MAP = {
     "pulse": "best_match",
     "ifs": "ecmwf_ifs025",
     "access": "bom_access_global",
     "gfs": "gfs_seamless",
+    "era5": "era5",
 }
 
 
-def _get_json(url: str, timeout: float = 90.0) -> dict:
-    req = Request(url, headers={"User-Agent": "SkyWatchAI-ETL/0.2"})
-    with urlopen(req, timeout=timeout) as res:
-        return json.loads(res.read().decode("utf-8"))
+def _get_json(url: str, timeout: float = 60.0, retries: int = 3) -> dict:
+    last: Exception | None = None
+    for attempt in range(retries):
+        try:
+            req = Request(url, headers={"User-Agent": "SkyWatchAI-ETL/0.3"})
+            with urlopen(req, timeout=timeout) as res:
+                return json.loads(res.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last = exc
+            time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"Open-Meteo fetch failed after {retries} tries: {last}")
 
 
-def fetch_teacher_column(
+def _parse_hourly_column(
+    hourly: dict,
+    times: List[str],
+    idx: int,
     lat: float,
     lon: float,
-    *,
-    model: str = "pulse",
-    time_iso: Optional[str] = None,
+    model: str,
+    source: str,
 ) -> Dict[str, Any]:
-    """Return native arrays p,T,q,u,v,z plus meta for one column.
-
-    Temperatures Kelvin, q kg/kg, winds m/s, z geopotential m.
-    """
-    m = MODEL_MAP.get(model, model)
-    vars_ = []
-    for p in OM_LEVELS:
-        vars_.extend(
-            [
-                f"temperature_{p}hPa",
-                f"relative_humidity_{p}hPa",
-                f"wind_u_component_{p}hPa",
-                f"wind_v_component_{p}hPa",
-                f"geopotential_height_{p}hPa",
-            ]
-        )
-    params = {
-        "latitude": f"{lat:.4f}",
-        "longitude": f"{lon:.4f}",
-        "hourly": ",".join(vars_),
-        "models": m,
-        "timezone": "UTC",
-        "forecast_days": "2",
-    }
-    url = "https://api.open-meteo.com/v1/forecast?" + urlencode(params)
-    data = _get_json(url)
-    hourly = data.get("hourly") or {}
-    times = hourly.get("time") or []
-    if not times:
-        raise RuntimeError("Open-Meteo returned no hourly data")
-
-    if time_iso:
-        target = time_iso.replace("Z", "")[:16]
-        try:
-            idx = next(i for i, t in enumerate(times) if t[:16] == target[:16])
-        except StopIteration:
-            # nearest
-            idx = min(
-                range(len(times)),
-                key=lambda i: abs(
-                    datetime.fromisoformat(times[i]).replace(tzinfo=timezone.utc).timestamp()
-                    - datetime.fromisoformat(target).replace(tzinfo=timezone.utc).timestamp()
-                ),
-            )
-    else:
-        idx = 0
-
     from skywatch import thermo as th
     from skywatch.constants import EPS
 
@@ -96,12 +62,15 @@ def fetch_teacher_column(
     v_list: List[float] = []
     z_list: List[float] = []
     for p in OM_LEVELS:
-        tC = hourly.get(f"temperature_{p}hPa", [None])[idx]
-        rh = hourly.get(f"relative_humidity_{p}hPa", [None])[idx]
-        u = hourly.get(f"wind_u_component_{p}hPa", [None])[idx]
-        v = hourly.get(f"wind_v_component_{p}hPa", [None])[idx]
-        z = hourly.get(f"geopotential_height_{p}hPa", [None])[idx]
-        if any(x is None or (isinstance(x, float) and math.isnan(x)) for x in (tC, rh, u, v, z)):
+        tC = (hourly.get(f"temperature_{p}hPa") or [None])[idx]
+        rh = (hourly.get(f"relative_humidity_{p}hPa") or [None])[idx]
+        u = (hourly.get(f"wind_u_component_{p}hPa") or [None])[idx]
+        v = (hourly.get(f"wind_v_component_{p}hPa") or [None])[idx]
+        z = (hourly.get(f"geopotential_height_{p}hPa") or [None])[idx]
+        if any(
+            x is None or (isinstance(x, float) and math.isnan(x))
+            for x in (tC, rh, u, v, z)
+        ):
             continue
         Tk = float(tC) + 273.15
         es = float(th.sat_vapor_pressure(np.array([Tk]))[0])
@@ -118,7 +87,6 @@ def fetch_teacher_column(
     if len(p_list) < 5:
         raise RuntimeError("Open-Meteo column too short after NaN filter")
 
-    # surface → top
     order = np.argsort(-np.asarray(p_list))
     return {
         "p": np.asarray(p_list, float)[order],
@@ -128,9 +96,155 @@ def fetch_teacher_column(
         "v": np.asarray(v_list, float)[order],
         "z": np.asarray(z_list, float)[order],
         "p_sfc": float(np.asarray(p_list, float)[order][0]),
-        "valid_time": times[idx],
-        "model": m,
-        "source": "open-meteo",
+        "valid_time": times[idx] + ("Z" if "Z" not in times[idx] else ""),
+        "model": model,
+        "source": source,
         "lat": lat,
         "lon": lon,
     }
+
+
+def _pick_time_index(times: List[str], time_iso: Optional[str]) -> int:
+    if not time_iso:
+        return 0
+    target = time_iso.replace("Z", "")[:16]
+    for i, t in enumerate(times):
+        if t[:16] == target[:16]:
+            return i
+    try:
+        tgt = datetime.fromisoformat(target).replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return 0
+
+    def ts(t: str) -> float:
+        return datetime.fromisoformat(t.replace("Z", "")).replace(
+            tzinfo=timezone.utc
+        ).timestamp()
+
+    return min(range(len(times)), key=lambda i: abs(ts(times[i]) - tgt))
+
+
+def _hourly_vars() -> List[str]:
+    vars_: List[str] = []
+    for p in OM_LEVELS:
+        vars_.extend(
+            [
+                f"temperature_{p}hPa",
+                f"relative_humidity_{p}hPa",
+                f"wind_u_component_{p}hPa",
+                f"wind_v_component_{p}hPa",
+                f"geopotential_height_{p}hPa",
+            ]
+        )
+    return vars_
+
+
+def _try_parse(data: dict, lat: float, lon: float, model_name: str, source: str, time_iso: Optional[str]):
+    hourly = data.get("hourly") or {}
+    times = hourly.get("time") or []
+    if not times:
+        raise RuntimeError("Open-Meteo returned no hourly data")
+    idx = _pick_time_index(times, time_iso)
+    return _parse_hourly_column(hourly, times, idx, lat, lon, model_name, source)
+
+
+def fetch_teacher_column(
+    lat: float,
+    lon: float,
+    *,
+    model: str = "pulse",
+    time_iso: Optional[str] = None,
+    prefer_archive: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """Return native arrays p,T,q,u,v,z plus meta for one column.
+
+    Past times → historical-forecast API (IFS/GFS pressure levels work).
+    Free ERA5 archive often returns nulls for upper-air vars, so it is a
+    last resort only. Recent/live → forecast API with past_days.
+    """
+    vars_ = _hourly_vars()
+    m = MODEL_MAP.get(model, model)
+    # "era5" on archive is flaky for pressure levels — prefer IFS hist.
+    if m == "era5":
+        m = "ecmwf_ifs025"
+
+    use_hist = prefer_archive
+    if use_hist is None and time_iso:
+        try:
+            t = datetime.fromisoformat(time_iso.replace("Z", "+00:00")).astimezone(
+                timezone.utc
+            )
+            # Live forecast window is ~past_days+forecast_days; older → hist.
+            use_hist = t < datetime.now(timezone.utc) - timedelta(days=2)
+        except ValueError:
+            use_hist = False
+
+    errors: List[str] = []
+
+    if use_hist and time_iso:
+        t = datetime.fromisoformat(time_iso.replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        )
+        day = t.strftime("%Y-%m-%d")
+        params = {
+            "latitude": f"{lat:.4f}",
+            "longitude": f"{lon:.4f}",
+            "start_date": day,
+            "end_date": day,
+            "hourly": ",".join(vars_),
+            "timezone": "UTC",
+            "models": m,
+        }
+        url = (
+            "https://historical-forecast-api.open-meteo.com/v1/forecast?"
+            + urlencode(params)
+        )
+        try:
+            data = _get_json(url)
+            return _try_parse(
+                data, lat, lon, m, "open-meteo-historical-forecast", time_iso
+            )
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"hist:{exc}")
+
+    # Live / near-term forecast (covers past_days).
+    params = {
+        "latitude": f"{lat:.4f}",
+        "longitude": f"{lon:.4f}",
+        "hourly": ",".join(vars_),
+        "models": m if m != "era5" else "best_match",
+        "timezone": "UTC",
+        "forecast_days": "2",
+        "past_days": "8",
+    }
+    url = "https://api.open-meteo.com/v1/forecast?" + urlencode(params)
+    try:
+        data = _get_json(url)
+        return _try_parse(data, lat, lon, m, "open-meteo-forecast", time_iso)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"forecast:{exc}")
+
+    # Last resort: climate archive (often null for pressure levels).
+    if time_iso:
+        t = datetime.fromisoformat(time_iso.replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        )
+        day = t.strftime("%Y-%m-%d")
+        params = {
+            "latitude": f"{lat:.4f}",
+            "longitude": f"{lon:.4f}",
+            "start_date": day,
+            "end_date": day,
+            "hourly": ",".join(vars_),
+            "timezone": "UTC",
+        }
+        url = "https://archive-api.open-meteo.com/v1/archive?" + urlencode(params)
+        try:
+            data = _get_json(url)
+            return _try_parse(
+                data, lat, lon, "era5", "open-meteo-archive-era5", time_iso
+            )
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"archive:{exc}")
+
+    raise RuntimeError("Open-Meteo teacher failed: " + " | ".join(errors))

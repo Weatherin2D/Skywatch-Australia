@@ -11,8 +11,12 @@ Served to SkyWatch `/soundings` via FastAPI sidecar (`serve.py`):
 # Train stack (torch) + run sidecar
 pip install -r requirements-train.txt
 python scripts/smoke_test.py --out-dir runs/synthetic-smoke
-cp runs/synthetic-smoke/ckpt.pt checkpoints/v1-synthetic.pt
+cp runs/synthetic-smoke/ckpt.pt checkpoints/v1-synthetic.pt   # fallback only
+# Prefer ETL-trained checkpoint when present:
+#   python scripts/batch_etl.py --days 7 --out data/etl/au_v1
+#   python scripts/train_etl.py --data data/etl/au_v1 --synthetic 800 --steps 1500 --promote
 uvicorn serve:app --host 0.0.0.0 --port 43137
+# Loads checkpoints/v1-etl.pt if present, else v1-synthetic.pt
 
 # Or from repo root
 docker compose up -d --build skywatch-ai
@@ -22,11 +26,11 @@ docker compose up -d --build skywatch-ai
 |---|---|
 | `GET /health` | Engine + ML readiness |
 | `POST /v1/diagnostics` | Deterministic CAPE/SRH (numpy) |
-| `POST /v1/predict` | V1 neural sounding demo (torch + checkpoint) |
+| `POST /v1/predict` | V1 neural sounding (torch + checkpoint) |
 
 Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **Engine** / **AI V1** / **Legacy**. Vercel Hobby: leave unset.
 
-**AI V1 is a synthetic-trained demo** — not calibrated on real weather. Real skill needs the ETL path below.
+**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Current promoted weights: `checkpoints/v1-etl.pt` (17 AU UWYO samples + synthetic mix). Not an official forecast — skill targets for CAPE/inversions are still open.
 
 ## What is verified and what is not
 
@@ -38,18 +42,20 @@ Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **En
 | Grid / normaliser / tokens / contract | 1–2 | **Tested** |
 | Baselines + evaluation through engine | 3, 5 | **Tested** |
 | Loss math + schedule | 6 | **Tested** |
-| Real-data ETL scaffold (Open-Meteo teacher + UWYO sonde → contract samples) | 1 | **Scaffolded** — `skywatch/etl/`, `scripts/build_etl_sample.py` |
-| Training on real data, skill claims | 8–9 | **Not done** |
-| BARRA2 / ERA5 archive ETL | 1 | **Not done** — swap teacher source when you have local NetCDF |
+| Real-data ETL (Open-Meteo hist-forecast teacher + UWYO BUFR inventory → contract samples) | 1 | **Done** — `scripts/batch_etl.py`, `skywatch/etl/` |
+| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **Done** (small AU set; engine gate not fully green) |
+| Skill claims / calibration | 9 | **Not done** — need more stations/days + BARRA2 |
+| BARRA2 / ERA5 archive ETL | 1 | **Not done** — free ERA5 archive returns null pressure levels; hist-forecast IFS used |
 
 ## First things to run
     pip install -r requirements-train.txt
     python -m unittest discover -s tests -v
     python scripts/smoke_test.py --out-dir runs/synthetic-smoke
-    python scripts/build_etl_sample.py --wmo 94610 --lat -31.95 --lon 115.86 --validate-only
+    python scripts/batch_etl.py --days 5 --stations 94610,94767 --out data/etl/au_v1
+    python scripts/train_etl.py --data data/etl/au_v1 --synthetic 800 --steps 1500 --promote
     python scripts/compare_sounding.py sonde.csv --hemisphere S
 
-Synthetic smoke validates plumbing/learnability only. ETL samples validate the *contract*; they do not yet train a skillful model.
+Batch ETL uses UWYO **inventory** launch times (AU often 11/19/23Z, not 00/12). Teacher = Open-Meteo historical-forecast IFS.
 
 ## Engine conventions (SRH convention confirmed)
 * **SRH:** `hemisphere="S"` = Bunkers left-mover with sign flipped → positive = favourable for cyclonic supercells (exact mirror of the NH definition; tested).

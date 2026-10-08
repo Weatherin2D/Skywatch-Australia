@@ -1,8 +1,6 @@
-"""Build a model sample from a physical sounding and run V1 inference.
+"""V1 inference: Open-Meteo teacher prior + radiosonde observation tokens.
 
-Demo / bootstrap path: the input column is used as both the *teacher prior*
-and the observation source. A real ETL will supply a true teacher (BARRA2 /
-ERA5 / Open-Meteo) independent of held-out radiosonde obs.
+Falls back to self-prior only if the teacher fetch fails (offline / API down).
 """
 from __future__ import annotations
 
@@ -15,19 +13,12 @@ import torch
 
 from . import thermo as th
 from .constants import EPS
-from .grid import (
-    fill_below_ground,
-    interp_lnp,
-    level_index,
-    make_vertical_grid,
-    valid_levels,
-)
-from .nn.model import V1SoundingModel
+from .etl.build_sample import build_inference_sample
+from .etl.openmeteo_teacher import fetch_teacher_column
 from .nn.train import load_checkpoint
-from .normalizer import Normalizer, PROFILE_VARS, SURFACE_VARS
-from .obs_tokens import DEFAULT_UNC, RawObs, encode_tokens, raw_from_sounding
+from .nn.model import V1SoundingModel
+from .normalizer import Normalizer
 from .profile import Profile
-from .synthetic import IN_LEVELS, N_FIELD_CHANNELS, N_HIST, N_STATIC, WINDOW
 
 _MODEL: Optional[V1SoundingModel] = None
 _NORM: Optional[Normalizer] = None
@@ -41,13 +32,14 @@ def default_checkpoint_path() -> str:
         return env
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for rel in (
+        "checkpoints/v1-etl.pt",
         "checkpoints/v1-synthetic.pt",
         "runs/synthetic-smoke/ckpt.pt",
     ):
         p = os.path.join(here, rel)
         if os.path.isfile(p):
             return p
-    return os.path.join(here, "checkpoints/v1-synthetic.pt")
+    return os.path.join(here, "checkpoints/v1-etl.pt")
 
 
 def load_model(path: Optional[str] = None, device: str = "cpu"):
@@ -70,13 +62,13 @@ def ensure_model(path: Optional[str] = None):
         load_model(path)
 
 
-def levels_to_arrays(
+def levels_to_sonde_column(
     levels: List[dict],
     *,
     temp_unit: str = "C",
     wind_unit: str = "ms",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
-    """Return p, T[K], q, u, v, z|None sorted surface→top."""
+) -> Dict[str, Any]:
+    """JSON levels → native sonde column dict (surface→top)."""
     spd_scale = {"kt": 0.514444, "ms": 1.0, "kmh": 1 / 3.6, "mph": 0.44704}.get(
         wind_unit.lower(), 1.0
     )
@@ -111,7 +103,6 @@ def levels_to_arrays(
         raise ValueError("need at least 3 valid levels")
 
     p = np.asarray(p_list, float)
-    # unique pressures
     _, uniq = np.unique(p, return_index=True)
     uniq = np.sort(uniq)
     p = p[uniq]
@@ -134,106 +125,18 @@ def levels_to_arrays(
         u[bad] = np.interp(x[bad], x[~bad], u[~bad])
         v[bad] = np.interp(x[bad], x[~bad], v[~bad])
 
-    z_out = None
-    if np.all(np.isfinite(z)) and np.all(np.diff(z) > 0):
-        z_out = z
-    return p, T, q, u, v, z_out
+    if not (np.all(np.isfinite(z)) and np.all(np.diff(z) > 0)):
+        z = Profile(p, T, q, u, v, z=None).z
 
-
-def build_sample_from_sounding(
-    levels: List[dict],
-    norm: Normalizer,
-    *,
-    lat: float = -31.95,
-    lon: float = 115.86,
-    temp_unit: str = "C",
-    wind_unit: str = "ms",
-    max_tokens: int = 128,
-    n_sig: int = 24,
-) -> Dict[str, np.ndarray]:
-    """Construct a contract-shaped sample for demo inference.
-
-    Teacher prior = input column on the internal grid (no independent NWP yet).
-    Observation tokens = thinned radiosonde from the same column (demo only —
-    a real pipeline must hold out obs_target from input tokens).
-    """
-    p, T, q, u, v, z = levels_to_arrays(levels, temp_unit=temp_unit, wind_unit=wind_unit)
-    grid = norm.grid_p
-    p_sfc = float(p[0])
-    z_sfc = float(z[0]) if z is not None else float(
-        44330.77 * (1 - (p_sfc / 1013.25) ** 0.190263)
-    )
-    if z is None:
-        prof_tmp = Profile(p, T, q, u, v, z=None)
-        z = prof_tmp.z
-
-    # native → transformed (5,N) then encode
-    native = np.stack(
-        [
-            interp_lnp(grid, p, T),
-            interp_lnp(grid, p, np.log(np.maximum(q, 1e-6))),
-            interp_lnp(grid, p, u),
-            interp_lnp(grid, p, v),
-            z_sfc + interp_lnp(grid, p, z - z[0]),
-        ]
-    )
-    valid = valid_levels(grid, p_sfc)
-    teacher = fill_below_ground(native, valid)
-    teacher_s = np.array([T[0], np.log(max(q[0], 1e-6)), u[0], v[0], p_sfc], float)
-
-    tn = fill_below_ground(norm.encode_profile(teacher), valid)
-    tsn = norm.encode_surface(teacher_s)
-
-    rs = DEFAULT_UNC["radiosonde"]
-    raw = raw_from_sounding(
-        norm, p, T, q, u, v, lat=lat, lon=lon, time_h=-0.25, n_sig=n_sig
-    )
-    toks, _ = encode_tokens(raw, norm, lat0=lat, lon0=lon, max_tokens=max_tokens)
-
-    # Held-out obs targets left empty for demo (avoid trivial copy in metrics UI)
-    N = len(grid)
-    obs_t = np.zeros((5, N), np.float32)
-    obs_m = np.zeros((5, N), bool)
-    obs_s = np.ones((5, N), np.float32)
-
-    idx = level_index(grid, IN_LEVELS)
-    H = W = WINDOW
-    xs, ys = np.meshgrid(np.linspace(-1, 1, W), np.linspace(-1, 1, H))
-    fields = np.zeros((N_HIST, N_FIELD_CHANNELS, H, W), np.float32)
-    base = np.concatenate([tn[:, idx].reshape(-1), tsn[:4]])
-    for t in range(N_HIST):
-        fields[t] = base[:, None, None] + 0.02 * (t - (N_HIST - 1)) * xs[None]
-
-    sf = np.zeros((N_STATIC, H, W), np.float32)
-    sf[0] = z_sfc / 1000.0
-    sf[5] = 1.0
-    sf[6] = (lat + 25) / 15.0
-    sf[7] = (lon - 134) / 20.0
-
-    f32 = lambda a: np.asarray(a, np.float32)
-    return dict(
-        fields=fields,
-        static=sf,
-        **toks,
-        teacher_profile=f32(tn),
-        teacher_surface=f32(tsn),
-        teacher_nearest=f32(tn),
-        persistence_profile=f32(tn),
-        persistence_surface=f32(tsn),
-        persistence_valid=np.bool_(False),
-        p_sfc_prior=np.float32(p_sfc),
-        z_sfc=np.float32(z_sfc),
-        valid=valid,
-        target_profile=f32(tn),
-        target_surface=f32(tsn),
-        obs_target=obs_t,
-        obs_mask=obs_m,
-        obs_sigma=obs_s,
-        surf_obs_target=np.zeros(5, np.float32),
-        surf_obs_mask=np.zeros(5, bool),
-        surf_obs_sigma=np.ones(5, np.float32),
-        event_weight=np.float32(1.0),
-    )
+    return {
+        "p": p,
+        "T": T,
+        "q": q,
+        "u": u,
+        "v": v,
+        "z": z,
+        "p_sfc": float(p[0]),
+    }
 
 
 @torch.no_grad()
@@ -244,7 +147,6 @@ def predict_sample(sample: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         k: torch.as_tensor(np.asarray(v)[None], device=_DEVICE)
         for k, v in sample.items()
     }
-    # bools
     for k in ("tok_mask", "valid", "obs_mask", "surf_obs_mask", "persistence_valid"):
         if k in batch:
             batch[k] = batch[k].bool() if batch[k].dtype != torch.bool else batch[k]
@@ -257,11 +159,10 @@ def decode_prediction(
     pred: Dict[str, np.ndarray],
     norm: Optional[Normalizer] = None,
 ) -> Dict[str, Any]:
-    """Decode normalised mean → physical levels + Profile-ready arrays."""
     norm = norm or _NORM
     assert norm is not None
     valid = sample["valid"]
-    native = norm.decode_profile(pred["mean"])  # (5,N) T, lnq, u, v, Z
+    native = norm.decode_profile(pred["mean"])
     surf = norm.decode_surface(pred["s_mean"])
     grid = norm.grid_p
     mask = valid & (grid >= 100.0)
@@ -272,7 +173,6 @@ def decode_prediction(
     v = native[3, mask]
     Z = native[4, mask]
     Td = th.dewpoint(p, q)
-    # ensure surface→top decreasing p
     levels = []
     for i in range(len(p)):
         spd = float(math.hypot(u[i], v[i]))
@@ -310,22 +210,38 @@ def predict_from_levels(
     temp_unit: str = "C",
     wind_unit: str = "ms",
     hemisphere: str = "S",
+    time_iso: Optional[str] = None,
+    teacher_model: str = "pulse",
 ) -> Dict[str, Any]:
     from . import compute_diagnostics
 
     ensure_model()
     assert _NORM is not None and _CK is not None
-    sample = build_sample_from_sounding(
-        levels,
-        _NORM,
-        lat=lat,
-        lon=lon,
-        temp_unit=temp_unit,
-        wind_unit=wind_unit,
+
+    sonde = levels_to_sonde_column(levels, temp_unit=temp_unit, wind_unit=wind_unit)
+    teacher_meta: Dict[str, Any] = {}
+    teacher_mode = "open-meteo"
+    try:
+        teacher = fetch_teacher_column(
+            lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+        )
+        teacher_meta = {
+            "source": teacher.get("source"),
+            "model": teacher.get("model"),
+            "valid_time": teacher.get("valid_time"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        # Offline / API failure — degrade to self-prior (documented).
+        teacher = dict(sonde)
+        teacher_mode = "self-prior-fallback"
+        teacher_meta = {"error": str(exc), "source": "self-prior-fallback"}
+
+    sample = build_inference_sample(
+        teacher, sonde, lat=lat, lon=lon, norm=_NORM
     )
     pred = predict_sample(sample)
     decoded = decode_prediction(sample, pred, _NORM)
-    # Engine diagnostics on the predicted column
+
     p = np.array([L["p"] for L in decoded["levels"]])
     T = np.array([L["t"] for L in decoded["levels"]]) + 273.15
     Td = np.array([L["td"] for L in decoded["levels"]]) + 273.15
@@ -342,14 +258,21 @@ def predict_from_levels(
         for k, v in diag.items()
         if v is not None and math.isfinite(float(v))
     }
+
+    disclaimer = (
+        "SkyWatch AI V1 — Open-Meteo teacher + radiosonde obs. "
+        "Not an official forecast. Skill depends on training data version."
+    )
+    if teacher_mode == "self-prior-fallback":
+        disclaimer += " Teacher fetch failed; used self-prior fallback."
+
     return {
         "engine": "skywatch-ai-v1",
         "dataset_version": _CK.get("dataset_version", "unknown"),
         "step": _CK.get("step"),
-        "disclaimer": (
-            "Synthetic-trained V1 demo. Not calibrated on real weather. "
-            "Teacher prior is the input column itself until real ETL is live."
-        ),
+        "teacher": teacher_meta,
+        "teacher_mode": teacher_mode,
+        "disclaimer": disclaimer,
         "levels": decoded["levels"],
         "surface": decoded["surface"],
         "diagnostics": diag,
@@ -358,3 +281,19 @@ def predict_from_levels(
         "lon": lon,
         "hemisphere": hemisphere.upper(),
     }
+
+
+# Back-compat alias used by older call sites / tests
+def build_sample_from_sounding(levels, norm, **kw):
+    sonde = levels_to_sonde_column(
+        levels,
+        temp_unit=kw.get("temp_unit", "C"),
+        wind_unit=kw.get("wind_unit", "ms"),
+    )
+    lat = kw.get("lat", -31.95)
+    lon = kw.get("lon", 115.86)
+    try:
+        teacher = fetch_teacher_column(lat, lon, model="pulse")
+    except Exception:  # noqa: BLE001
+        teacher = dict(sonde)
+    return build_inference_sample(teacher, sonde, lat=lat, lon=lon, norm=norm)

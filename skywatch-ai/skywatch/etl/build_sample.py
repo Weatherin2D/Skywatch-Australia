@@ -218,3 +218,106 @@ def build_training_sample(
     if errs:
         raise ValueError("sample failed contract: " + "; ".join(errs[:8]))
     return sample
+
+
+def build_inference_sample(
+    teacher: Dict[str, Any],
+    sonde: Dict[str, Any],
+    *,
+    lat: float,
+    lon: float,
+    norm: Optional[Normalizer] = None,
+    max_tokens: int = 128,
+    n_sig: int = 24,
+) -> Dict[str, np.ndarray]:
+    """Forward-pass sample: Open-Meteo teacher prior + radiosonde observation tokens.
+
+    No held-out obs_target (inference). Teacher and sonde must be independent columns.
+    """
+    grid = make_vertical_grid()
+    norm = norm or Normalizer.default(grid)
+    N = len(grid)
+
+    p_sfc = float(sonde["p_sfc"])
+    z_sfc = float(sonde["z"][0])
+    valid = valid_levels(grid, p_sfc)
+
+    teach = fill_below_ground(_column_to_native(teacher, grid, z_sfc), valid)
+    teach_s = np.array(
+        [
+            teacher["T"][0],
+            np.log(max(float(teacher["q"][0]), 1e-6)),
+            teacher["u"][0],
+            teacher["v"][0],
+            float(teacher["p_sfc"]),
+        ],
+        float,
+    )
+    # Target unused at inference — fill with sonde for contract shape if needed.
+    truth = fill_below_ground(_column_to_native(sonde, grid, z_sfc), valid)
+    truth_s = np.array(
+        [
+            sonde["T"][0],
+            np.log(max(float(sonde["q"][0]), 1e-6)),
+            sonde["u"][0],
+            sonde["v"][0],
+            p_sfc,
+        ],
+        float,
+    )
+
+    raw = raw_from_sounding(
+        norm,
+        sonde["p"],
+        sonde["T"],
+        sonde["q"],
+        sonde["u"],
+        sonde["v"],
+        lat=lat,
+        lon=lon,
+        time_h=-0.25,
+        n_sig=n_sig,
+        z=sonde["z"],
+    )
+    toks, _ = encode_tokens(raw, norm, lat0=lat, lon0=lon, max_tokens=max_tokens)
+
+    tn = fill_below_ground(norm.encode_profile(teach), valid)
+    tsn = norm.encode_surface(teach_s)
+    idx = level_index(grid, IN_LEVELS)
+    H = W = WINDOW
+    xs, _ys = np.meshgrid(np.linspace(-1, 1, W), np.linspace(-1, 1, H))
+    fields = np.zeros((N_HIST, N_FIELD_CHANNELS, H, W), np.float32)
+    base = np.concatenate([tn[:, idx].reshape(-1), tsn[:4]])
+    for t in range(N_HIST):
+        fields[t] = base[:, None, None] + 0.02 * (t - (N_HIST - 1)) * xs[None]
+
+    sf = np.zeros((N_STATIC, H, W), np.float32)
+    sf[0] = z_sfc / 1000.0
+    sf[5] = 1.0
+    sf[6] = (lat + 25) / 15.0
+    sf[7] = (lon - 134) / 20.0
+
+    f32 = lambda a: np.asarray(a, np.float32)
+    return dict(
+        fields=fields,
+        static=sf,
+        **toks,
+        teacher_profile=f32(tn),
+        teacher_surface=f32(tsn),
+        teacher_nearest=f32(tn),
+        persistence_profile=f32(tn),
+        persistence_surface=f32(tsn),
+        persistence_valid=np.bool_(False),
+        p_sfc_prior=np.float32(teach_s[4]),
+        z_sfc=np.float32(z_sfc),
+        valid=valid,
+        target_profile=f32(fill_below_ground(norm.encode_profile(truth), valid)),
+        target_surface=f32(norm.encode_surface(truth_s)),
+        obs_target=np.zeros((5, N), np.float32),
+        obs_mask=np.zeros((5, N), bool),
+        obs_sigma=np.ones((5, N), np.float32),
+        surf_obs_target=np.zeros(5, np.float32),
+        surf_obs_mask=np.zeros(5, bool),
+        surf_obs_sigma=np.ones(5, np.float32),
+        event_weight=np.float32(1.0),
+    )

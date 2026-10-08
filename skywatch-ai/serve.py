@@ -91,6 +91,8 @@ class PredictRequest(BaseModel):
     hemisphere: str = "S"
     tempUnit: str = "C"
     windUnit: str = "ms"
+    time: Optional[str] = None  # ISO — aligns Open-Meteo teacher
+    teacherModel: str = "pulse"
 
 
 def _finite(x: Optional[float]) -> bool:
@@ -234,6 +236,8 @@ def predict(body: PredictRequest):
             temp_unit=body.tempUnit,
             wind_unit=body.windUnit,
             hemisphere=hem,
+            time_iso=body.time,
+            teacher_model=body.teacherModel,
         )
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc

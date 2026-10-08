@@ -25,6 +25,8 @@ export type SkywatchAiPredictResult = {
   engine: string;
   dataset_version?: string;
   disclaimer?: string;
+  teacher_mode?: string;
+  teacher?: Record<string, unknown>;
   levels: Array<{
     p: number;
     t: number;
@@ -219,6 +221,7 @@ export async function fetchSkywatchAiPredict(
   options?: {
     lat?: number;
     lon?: number;
+    time?: string | null;
     hemisphere?: "N" | "S";
     signal?: AbortSignal;
     timeoutMs?: number;
@@ -227,7 +230,7 @@ export async function fetchSkywatchAiPredict(
   const base = skywatchAiBaseUrl();
   if (!base || levels.length < 3) return null;
 
-  const timeoutMs = options?.timeoutMs ?? 20_000;
+  const timeoutMs = options?.timeoutMs ?? 45_000;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   const onAbort = () => ac.abort();
@@ -254,6 +257,8 @@ export async function fetchSkywatchAiPredict(
         hemisphere: options?.hemisphere ?? "S",
         tempUnit: "C",
         windUnit: "ms",
+        time: options?.time ?? undefined,
+        teacherModel: "pulse",
       }),
       signal: ac.signal,
       cache: "no-store",
@@ -313,11 +318,12 @@ export async function attachSkywatchAiEngine(
     return { ...payload, engine: "legacy" };
   }
 
-  // Neural V1 demo path
+  // Neural V1 (Open-Meteo teacher + obs tokens)
   if (mode === "predict") {
     const pred = await fetchSkywatchAiPredict(payload.levels, {
       lat: payload.latitude,
       lon: payload.longitude,
+      time: payload.validTime,
       hemisphere: "S",
       signal,
     });
@@ -330,6 +336,10 @@ export async function attachSkywatchAiEngine(
       };
     }
     const levels = levelsFromPredict(pred);
+    const teacherNote =
+      pred.teacher_mode === "open-meteo"
+        ? "Open-Meteo teacher"
+        : "self-prior fallback";
     return {
       ...payload,
       levels,
@@ -338,7 +348,7 @@ export async function attachSkywatchAiEngine(
       engineHemisphere: pred.hemisphere,
       engineMessage: pred.disclaimer,
       aiDiagnostics: pred.diagnostics,
-      attribution: `${payload.attribution} · SkyWatch AI V1 (synthetic demo)`,
+      attribution: `${payload.attribution} · SkyWatch AI V1 (${teacherNote})`,
     };
   }
 
