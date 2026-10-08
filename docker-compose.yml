@@ -6,6 +6,10 @@ services:
       context: ./skywatch-ai
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      SKYWATCH_AI_CHECKPOINT: /app/checkpoints/v1-etl.pt
+      SKYWATCH_AI_API_KEY: ${SKYWATCH_AI_API_KEY:-}
+      PORT: "43137"
     expose:
       - "43137"
     # Optional host access for local Next.js (`SKYWATCH_AI_URL=http://127.0.0.1:43137`)

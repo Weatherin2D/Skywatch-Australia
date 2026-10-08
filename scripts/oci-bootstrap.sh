@@ -28,7 +28,7 @@ apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin do
 
 systemctl enable --now docker
 
-# Open HTTP/HTTPS (OCI security list must also allow these)
+# Open HTTP/HTTPS (OCI VCN security list / NSG must also allow these)
 ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow 443/tcp
@@ -43,7 +43,16 @@ done
 
 echo
 echo "Docker installed. Log out/in (or newgrp docker), then:"
-echo "  git clone <repo> skywatch && cd skywatch"
-echo "  cp .env.example .env   # fill KV_* secrets"
+echo
+echo "  # AI sidecar only (Next stays on Vercel Hobby):"
+echo "  git clone <repo> /opt/skywatch && cd /opt/skywatch"
+echo "  bash scripts/oci-deploy-ai.sh"
+echo
+echo "  # Full stack (app + AI + Caddy):"
+echo "  cp .env.example .env   # fill KV_* + SKYWATCH_AI_API_KEY"
 echo "  docker compose up -d --build"
+echo
+echo "OCI console checklist:"
+echo "  - Shape: Ampere A1 (Always Free) ≥2 GB for torch, 6–12 GB preferred"
+echo "  - VCN security list ingress: TCP 22, 80, 443 from 0.0.0.0/0"
 echo

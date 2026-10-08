@@ -1,0 +1,18 @@
+# Reverse proxy for SkyWatch AI sidecar only (OCI / VPS).
+# IP-only: leave SKYWATCH_DOMAIN empty → HTTP on :80
+# Domain: set SKYWATCH_DOMAIN=ai.example.com for automatic HTTPS
+
+{
+	email {$CADDY_EMAIL:admin@localhost}
+}
+
+{$SKYWATCH_DOMAIN::80} {
+	encode gzip zstd
+	# Long timeout for cold CPU predict
+	reverse_proxy skywatch-ai:43137 {
+		transport http {
+			read_timeout 120s
+			write_timeout 120s
+		}
+	}
+}

@@ -44,6 +44,29 @@ flyctl secrets set SKYWATCH_AI_API_KEY=…
 
 Requires a Fly org with billing enabled (2 GB VM).
 
+## Oracle Cloud Always Free (recommended free durable host)
+
+AI-only compose (Next stays on Vercel):
+
+```bash
+# On a fresh Ubuntu Ampere VM:
+sudo bash scripts/oci-bootstrap.sh
+# log out/in for docker group
+git clone <repo> /opt/skywatch && cd /opt/skywatch
+bash scripts/oci-deploy-ai.sh
+```
+
+Files: [`docker-compose.ai.yml`](../../docker-compose.ai.yml), [`Caddyfile.ai`](../../Caddyfile.ai).
+
+OCI console: open **TCP 80 + 443** on the VCN security list / NSG. Use ≥2 GB RAM (Ampere A1 flexible).
+
+Vercel:
+
+```
+SKYWATCH_AI_URL=http://<VM_PUBLIC_IP>   # or https://ai.yourdomain.com
+SKYWATCH_AI_API_KEY=<from deploy script output>
+```
+
 ## Local + Cloudflare tunnel (smoke)
 
 ```bash

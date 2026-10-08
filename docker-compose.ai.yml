@@ -1,0 +1,56 @@
+# SkyWatch AI sidecar only — Oracle Cloud Always Free / any VPS
+# Use when Next stays on Vercel Hobby and only the torch sidecar needs a VM.
+#
+#   docker compose -f docker-compose.ai.yml up -d --build
+#
+# Public URL (after Caddy + security list 80/443):
+#   https://<domain-or-ip>/health
+# Vercel:
+#   SKYWATCH_AI_URL=https://<domain-or-ip>
+#   SKYWATCH_AI_API_KEY=<same as below>
+
+services:
+  skywatch-ai:
+    build:
+      context: ./skywatch-ai
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SKYWATCH_AI_CHECKPOINT: /app/checkpoints/v1-etl.pt
+      SKYWATCH_AI_API_KEY: ${SKYWATCH_AI_API_KEY:-}
+      PORT: "43137"
+    expose:
+      - "43137"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:43137/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SKYWATCH_DOMAIN: ${SKYWATCH_DOMAIN:-}
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@localhost}
+    volumes:
+      - ./Caddyfile.ai:/etc/caddy/Caddyfile:ro
+      - caddy_ai_data:/data
+      - caddy_ai_config:/config
+    depends_on:
+      skywatch-ai:
+        condition: service_healthy
+
+volumes:
+  caddy_ai_data:
+  caddy_ai_config:
