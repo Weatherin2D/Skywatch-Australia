@@ -32,17 +32,26 @@ docker compose up -d --build skywatch-ai
 
 Next.js: set `SKYWATCH_AI_URL` (+ optional `SKYWATCH_AI_API_KEY`). On `/soundings`, use **Engine** / **AI V1** / **Legacy**.
 
-**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt`. Not an official forecast — high-CAPE MAE and inversion hit-rate targets may still be open (see `metrics/holdout-metrics.json`).
+**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt` (`etl+synth-136r-1500s`). Not an official forecast — see `metrics/holdout-metrics.json`.
 
-### Railway deploy (public sidecar)
+### Public sidecar deploy
+
+**Preferred — Railway** (see [`railway.toml`](railway.toml)):
 
 ```bash
-# From skywatch-ai/ (see railway.toml). Dockerfile serves :43137 with v1-etl.pt.
-# Set SKYWATCH_AI_API_KEY in Railway; mirror it on Vercel (server-only).
-# Vercel: SKYWATCH_AI_URL=https://<your-railway-host>
+cd skywatch-ai
+railway login   # or RAILWAY_TOKEN
+railway up
+# Set SKYWATCH_AI_API_KEY in Railway; mirror on Vercel (server-only):
+#   SKYWATCH_AI_URL=https://<railway-host>
+#   SKYWATCH_AI_API_KEY=<same secret>
 ```
 
-Memory ≥2 GB recommended (CPU torch). `/health` stays public; other routes require `Authorization: Bearer <key>` when the env is set.
+**Fallback — Fly** ([`fly.toml`](fly.toml)): `flyctl deploy` from `skywatch-ai/` (needs a billed Fly org; 2 GB VM).
+
+**Dev / smoke — Cloudflare quick tunnel** to a local uvicorn on `:43137` (ephemeral `*.trycloudflare.com`). Useful when Railway/Fly/Vercel env updates are blocked.
+
+Memory ≥2 GB recommended (CPU torch). `/health` stays public; other routes require `Authorization: Bearer <key>` when `SKYWATCH_AI_API_KEY` is set.
 
 ## What is verified and what is not
 

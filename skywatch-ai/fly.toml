@@ -1,0 +1,34 @@
+# SkyWatch AI sidecar — Fly.io
+# Deploy from this directory: flyctl deploy --config fly.toml --app skywatch-ai-au
+#
+# Prefer Railway when authenticated (see railway.toml). Fly is the fallback host
+# used when Railway CLI login is unavailable in CI/cloud agents.
+
+app = "skywatch-ai-au"
+primary_region = "syd"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  SKYWATCH_AI_CHECKPOINT = "/app/checkpoints/v1-etl.pt"
+
+[http_service]
+  internal_port = 43137
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 1
