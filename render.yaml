@@ -1,6 +1,24 @@
 # SkyWatch Australia — Render Blueprint
 # https://render.com/docs/blueprint-spec
+#
+# skywatch-ai needs 1c-2g (2 GB). Free/0.5c-512mb will OOM loading CPU torch.
 services:
+  - type: web
+    name: skywatch-ai
+    runtime: docker
+    plan: 1c-2g
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./skywatch-ai
+    healthCheckPath: /health
+    envVars:
+      - key: SKYWATCH_AI_CHECKPOINT
+        value: /app/checkpoints/v1-etl.pt
+      - key: SKYWATCH_AI_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
   - type: web
     name: skywatch-australia
     runtime: docker
@@ -14,7 +32,11 @@ services:
         value: production
       - key: HOSTNAME
         value: "0.0.0.0"
-      # Set these in the Render Dashboard (Values → Sync: false prompts on deploy)
+      # After first AI deploy, set to https://skywatch-ai.onrender.com (or your custom name)
+      - key: SKYWATCH_AI_URL
+        sync: false
+      - key: SKYWATCH_AI_API_KEY
+        sync: false
       - key: KV_REST_API_URL
         sync: false
       - key: KV_REST_API_TOKEN

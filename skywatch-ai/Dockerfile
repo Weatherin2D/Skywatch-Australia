@@ -13,6 +13,8 @@ COPY checkpoints ./checkpoints
 
 ENV PYTHONUNBUFFERED=1
 ENV SKYWATCH_AI_CHECKPOINT=/app/checkpoints/v1-etl.pt
+# Render injects PORT; local/Docker Compose default 43137.
+ENV PORT=43137
 EXPOSE 43137
 
-CMD ["uvicorn", "serve:app", "--host", "0.0.0.0", "--port", "43137"]
+CMD ["sh", "-c", "uvicorn serve:app --host 0.0.0.0 --port ${PORT}"]
