@@ -88,12 +88,19 @@ def _parse_hourly_column(
         raise RuntimeError("Open-Meteo column too short after NaN filter")
 
     order = np.argsort(-np.asarray(p_list))
+    u = np.asarray(u_list, float)[order]
+    v = np.asarray(v_list, float)[order]
+    # Guard: default Open-Meteo unit is km/h; m/s jets rarely exceed ~120.
+    if float(np.nanmax(np.hypot(u, v))) > 150.0:
+        raise RuntimeError(
+            "Open-Meteo winds look like km/h (max speed > 150); set wind_speed_unit=ms"
+        )
     return {
         "p": np.asarray(p_list, float)[order],
         "T": np.asarray(T_list, float)[order],
         "q": np.asarray(q_list, float)[order],
-        "u": np.asarray(u_list, float)[order],
-        "v": np.asarray(v_list, float)[order],
+        "u": u,
+        "v": v,
         "z": np.asarray(z_list, float)[order],
         "p_sfc": float(np.asarray(p_list, float)[order][0]),
         "valid_time": times[idx] + ("Z" if "Z" not in times[idx] else ""),
@@ -181,6 +188,9 @@ def fetch_teacher_column(
 
     errors: List[str] = []
 
+    # Open-Meteo defaults wind components to km/h — always request m/s.
+    wind_unit = {"wind_speed_unit": "ms"}
+
     if use_hist and time_iso:
         t = datetime.fromisoformat(time_iso.replace("Z", "+00:00")).astimezone(
             timezone.utc
@@ -194,6 +204,7 @@ def fetch_teacher_column(
             "hourly": ",".join(vars_),
             "timezone": "UTC",
             "models": m,
+            **wind_unit,
         }
         url = (
             "https://historical-forecast-api.open-meteo.com/v1/forecast?"
@@ -216,6 +227,7 @@ def fetch_teacher_column(
         "timezone": "UTC",
         "forecast_days": "2",
         "past_days": "8",
+        **wind_unit,
     }
     url = "https://api.open-meteo.com/v1/forecast?" + urlencode(params)
     try:
@@ -237,6 +249,7 @@ def fetch_teacher_column(
             "end_date": day,
             "hourly": ",".join(vars_),
             "timezone": "UTC",
+            **wind_unit,
         }
         url = "https://archive-api.open-meteo.com/v1/archive?" + urlencode(params)
         try:

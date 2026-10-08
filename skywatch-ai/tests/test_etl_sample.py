@@ -59,6 +59,20 @@ class TestEtlSample(unittest.TestCase):
         )
         self.assertTrue(bool(sample["tok_mask"].any()))
 
+    def test_teacher_rejects_kmh_scale_winds(self):
+        from skywatch.etl.openmeteo_teacher import _parse_hourly_column
+
+        times = ["2026-10-06T00:00"]
+        hourly = {"time": times}
+        for p in (1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100):
+            hourly[f"temperature_{p}hPa"] = [10.0]
+            hourly[f"relative_humidity_{p}hPa"] = [50.0]
+            hourly[f"wind_u_component_{p}hPa"] = [180.0]  # km/h-scale
+            hourly[f"wind_v_component_{p}hPa"] = [0.0]
+            hourly[f"geopotential_height_{p}hPa"] = [float(1000 - p) * 10]
+        with self.assertRaisesRegex(RuntimeError, "km/h"):
+            _parse_hourly_column(hourly, times, 0, -33.0, 151.0, "ifs", "test")
+
 
 if __name__ == "__main__":
     unittest.main()

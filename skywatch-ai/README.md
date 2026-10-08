@@ -30,7 +30,7 @@ docker compose up -d --build skywatch-ai
 
 Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **Engine** / **AI V1** / **Legacy**. Vercel Hobby: leave unset.
 
-**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Current promoted weights: `checkpoints/v1-etl.pt` (17 AU UWYO samples + synthetic mix). Not an official forecast — skill targets for CAPE/inversions are still open.
+**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Current promoted weights: `checkpoints/v1-etl.pt` (52 AU UWYO samples + synthetic mix; winds in m/s). Not an official forecast — high-CAPE MAE and inversion hit-rate targets are still open.
 
 ## What is verified and what is not
 
@@ -43,7 +43,7 @@ Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **En
 | Baselines + evaluation through engine | 3, 5 | **Tested** |
 | Loss math + schedule | 6 | **Tested** |
 | Real-data ETL (Open-Meteo hist-forecast teacher + UWYO BUFR inventory → contract samples) | 1 | **Done** — `scripts/batch_etl.py`, `skywatch/etl/` |
-| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **Done** (small AU set; engine gate not fully green) |
+| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **Done** (52 AU samples; T/wind/cape_corr green; high-CAPE + inversions still open) |
 | Skill claims / calibration | 9 | **Not done** — need more stations/days + BARRA2 |
 | BARRA2 / ERA5 archive ETL | 1 | **Not done** — free ERA5 archive returns null pressure levels; hist-forecast IFS used |
 
@@ -55,7 +55,7 @@ Next.js: set `SKYWATCH_AI_URL=http://127.0.0.1:43137`. On `/soundings`, use **En
     python scripts/train_etl.py --data data/etl/au_v1 --synthetic 800 --steps 1500 --promote
     python scripts/compare_sounding.py sonde.csv --hemisphere S
 
-Batch ETL uses UWYO **inventory** launch times (AU often 11/19/23Z, not 00/12). Teacher = Open-Meteo historical-forecast IFS.
+Batch ETL uses UWYO **inventory** launch times (AU often 11/19/23Z, not 00/12). Teacher = Open-Meteo historical-forecast IFS with `wind_speed_unit=ms` (Open-Meteo defaults to km/h).
 
 ## Engine conventions (SRH convention confirmed)
 * **SRH:** `hemisphere="S"` = Bunkers left-mover with sign flipped → positive = favourable for cyclonic supercells (exact mirror of the NH definition; tested).

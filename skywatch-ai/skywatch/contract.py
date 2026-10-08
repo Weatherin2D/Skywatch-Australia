@@ -57,7 +57,10 @@ def validate_sample(s, norm: Normalizer, max_abs_z: float = 12.0) -> List[str]:
     v = s["valid"]
     k0 = int(np.argmax(v))
     for k in ("teacher_profile", "teacher_nearest", "persistence_profile", "target_profile"):
-        if np.abs(s[k]).max() > max_abs_z: errs.append(f"{k}: |z| > {max_abs_z} (wrong units / normaliser / unfilled below-ground levels?)")
+        if np.abs(s[k]).max() > max_abs_z:
+            errs.append(
+                f"{k}: |z-score| > {max_abs_z} (wrong units / normaliser / unfilled below-ground?)"
+            )
         if k0 > 0 and not np.allclose(s[k][:, :k0], s[k][:, k0:k0 + 1], atol=1e-5):
             errs.append(f"{k}: below-ground levels must be filled with the lowest valid level's value")
     for k in ("fields",):
