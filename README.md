@@ -10,24 +10,30 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Full app host (when you have budget / working Docker):** Node host or home PC + Cloudflare Tunnel.
 
-## SkyWatch AI (soundings)
+## SkyWatch AI (soundings) — local only
 
-Python package in [`skywatch-ai/`](skywatch-ai/) — **Docker / local sidecar only** (not Vercel Hobby).
+Python package in [`skywatch-ai/`](skywatch-ai/). Runs as a **local sidecar** (not on Vercel Hobby). Public hosting is optional later; leave `SKYWATCH_AI_URL` unset on Vercel so production falls back to legacy thermo.
 
 | Mode on `/soundings` | What it does |
 |---|---|
 | **Engine** (`engine=auto`) | Deterministic CAPE/SRH on the observed/model profile |
-| **AI V1** (`engine=predict`) | Synthetic-trained neural demo + engine diagnostics (disclaimer in UI) |
+| **AI V1** (`engine=predict`) | Open-Meteo teacher + V1 net + engine diagnostics |
 | **Legacy** | Original TypeScript thermo |
 
 ```bash
-docker compose up -d --build skywatch-ai
+# Terminal A — sidecar
+cd skywatch-ai && . .venv/bin/activate
+# optional: export SKYWATCH_AI_API_KEY=…
+uvicorn serve:app --host 127.0.0.1 --port 43137
+
+# Terminal B — Next
 # .env.local
 SKYWATCH_AI_URL=http://127.0.0.1:43137
-npm run dev
+# SKYWATCH_AI_API_KEY=…   # only if set on the sidecar
+npm run dev -- -p 43127
 ```
 
-Next: real-data ETL (`scripts/build_etl_sample.py` — Open-Meteo teacher + UWYO sonde) → train on contract samples → replace synthetic checkpoint. Details: [`skywatch-ai/README.md`](skywatch-ai/README.md).
+Or: `docker compose up -d --build skywatch-ai`. Details: [`skywatch-ai/README.md`](skywatch-ai/README.md).
 
 ## Vercel Hobby (recommended)
 
