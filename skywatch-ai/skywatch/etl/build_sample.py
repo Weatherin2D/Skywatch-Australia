@@ -254,6 +254,32 @@ def build_training_sample(
     return sample
 
 
+def _encode_field_vector(
+    col: Dict[str, Any],
+    *,
+    grid,
+    norm: Normalizer,
+    z_sfc: float,
+    valid,
+    idx: np.ndarray,
+) -> np.ndarray:
+    """One spatial cell → (N_FIELD_CHANNELS,) encoded teacher vector."""
+    teach = fill_below_ground(_column_to_native(col, grid, z_sfc), valid)
+    teach_s = np.array(
+        [
+            col["T"][0],
+            np.log(max(float(col["q"][0]), 1e-6)),
+            col["u"][0],
+            col["v"][0],
+            float(col["p_sfc"]),
+        ],
+        float,
+    )
+    tn = fill_below_ground(norm.encode_profile(teach), valid)
+    tsn = norm.encode_surface(teach_s)
+    return np.concatenate([tn[:, idx].reshape(-1), tsn[:4]]).astype(np.float32)
+
+
 def build_inference_sample(
     teacher: Dict[str, Any],
     sonde: Dict[str, Any],
@@ -263,10 +289,14 @@ def build_inference_sample(
     norm: Optional[Normalizer] = None,
     max_tokens: int = 128,
     n_sig: int = 24,
+    teacher_history: Optional[Any] = None,
+    spatial_step_deg: Optional[float] = None,
 ) -> Dict[str, np.ndarray]:
     """Forward-pass sample: Open-Meteo teacher prior + radiosonde observation tokens.
 
     No held-out obs_target (inference). Teacher and sonde must be independent columns.
+    When `teacher_history` is a (T,H,W) grid of columns from `fetch_teacher_window`,
+    fields use real spatial structure at `spatial_step_deg` instead of a flat prior.
     """
     grid = make_vertical_grid()
     norm = norm or Normalizer.default(grid)
@@ -319,17 +349,52 @@ def build_inference_sample(
     tsn = norm.encode_surface(teach_s)
     idx = level_index(grid, IN_LEVELS)
     H = W = WINDOW
-    xs, _ys = np.meshgrid(np.linspace(-1, 1, W), np.linspace(-1, 1, H))
     fields = np.zeros((N_HIST, N_FIELD_CHANNELS, H, W), np.float32)
-    base = np.concatenate([tn[:, idx].reshape(-1), tsn[:4]])
-    for t in range(N_HIST):
-        fields[t] = base[:, None, None] + 0.02 * (t - (N_HIST - 1)) * xs[None]
+    base = np.concatenate([tn[:, idx].reshape(-1), tsn[:4]]).astype(np.float32)
+
+    used_spatial = False
+    if teacher_history is not None:
+        try:
+            hist = teacher_history
+            t_avail = min(N_HIST, len(hist))
+            h_avail = min(H, len(hist[0]))
+            w_avail = min(W, len(hist[0][0]))
+            for t in range(t_avail):
+                for i in range(h_avail):
+                    for j in range(w_avail):
+                        col = hist[t][i][j]
+                        if col is None:
+                            fields[t, :, i, j] = base
+                            continue
+                        try:
+                            fields[t, :, i, j] = _encode_field_vector(
+                                col,
+                                grid=grid,
+                                norm=norm,
+                                z_sfc=z_sfc,
+                                valid=valid,
+                                idx=idx,
+                            )
+                            used_spatial = True
+                        except Exception:
+                            fields[t, :, i, j] = base
+            # Pad missing history steps from the latest spatial frame.
+            for t in range(t_avail, N_HIST):
+                fields[t] = fields[t_avail - 1]
+        except Exception:
+            used_spatial = False
+
+    if not used_spatial:
+        xs, _ys = np.meshgrid(np.linspace(-1, 1, W), np.linspace(-1, 1, H))
+        for t in range(N_HIST):
+            fields[t] = base[:, None, None] + 0.02 * (t - (N_HIST - 1)) * xs[None]
 
     sf = np.zeros((N_STATIC, H, W), np.float32)
     sf[0] = z_sfc / 1000.0
     sf[5] = 1.0
     sf[6] = (lat + 25) / 15.0
     sf[7] = (lon - 134) / 20.0
+    _ = spatial_step_deg  # reserved for future static encoding / logging
 
     f32 = lambda a: np.asarray(a, np.float32)
     return dict(

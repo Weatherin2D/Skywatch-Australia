@@ -11,15 +11,22 @@ import json
 import math
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import numpy as np
 
-# Lean level set — fewer vars = fewer timeouts on free API.
-OM_LEVELS = [1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100]
+# Match V1 IN_LEVELS so the teacher prior is not vertically undersampled.
+OM_LEVELS = [1000, 950, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+
+# Spatial context for the sounding net (centre cell = target column).
+# 0.25° ≈ IFS025 native; override with SKYWATCH_AI_SPATIAL_STEP.
+DEFAULT_SPATIAL_STEP_DEG = 0.25
+DEFAULT_SPATIAL_WINDOW = 9
+_WINDOW_BATCH = 40
 
 MODEL_MAP = {
     "pulse": "best_match",
@@ -112,8 +119,19 @@ def _parse_hourly_column(
 
 
 def _pick_time_index(times: List[str], time_iso: Optional[str]) -> int:
-    if not time_iso:
+    if not times:
         return 0
+
+    def ts(t: str) -> float:
+        return datetime.fromisoformat(t.replace("Z", "")).replace(
+            tzinfo=timezone.utc
+        ).timestamp()
+
+    # Live calls with no explicit time → nearest hour to now (not the archive start).
+    if not time_iso:
+        now = datetime.now(timezone.utc).timestamp()
+        return min(range(len(times)), key=lambda i: abs(ts(times[i]) - now))
+
     target = time_iso.replace("Z", "")[:16]
     for i, t in enumerate(times):
         if t[:16] == target[:16]:
@@ -121,12 +139,7 @@ def _pick_time_index(times: List[str], time_iso: Optional[str]) -> int:
     try:
         tgt = datetime.fromisoformat(target).replace(tzinfo=timezone.utc).timestamp()
     except ValueError:
-        return 0
-
-    def ts(t: str) -> float:
-        return datetime.fromisoformat(t.replace("Z", "")).replace(
-            tzinfo=timezone.utc
-        ).timestamp()
+        return len(times) - 1
 
     return min(range(len(times)), key=lambda i: abs(ts(times[i]) - tgt))
 
@@ -261,3 +274,176 @@ def fetch_teacher_column(
             errors.append(f"archive:{exc}")
 
     raise RuntimeError("Open-Meteo teacher failed: " + " | ".join(errors))
+
+
+def spatial_step_deg() -> float:
+    raw = os.environ.get("SKYWATCH_AI_SPATIAL_STEP", "").strip()
+    if raw:
+        try:
+            step = float(raw)
+            if 0.05 <= step <= 1.0:
+                return step
+        except ValueError:
+            pass
+    return DEFAULT_SPATIAL_STEP_DEG
+
+
+def _window_offsets(window: int, step_deg: float) -> List[Tuple[float, float]]:
+    mid = window // 2
+    out: List[Tuple[float, float]] = []
+    for i in range(window):
+        for j in range(window):
+            out.append(((i - mid) * step_deg, (j - mid) * step_deg))
+    return out
+
+
+def _forecast_batch(
+    lats: Sequence[float],
+    lons: Sequence[float],
+    *,
+    model_name: str,
+    vars_: List[str],
+) -> List[dict]:
+    """Multi-point Open-Meteo forecast; returns one hourly payload per site."""
+    params = {
+        "latitude": ",".join(f"{v:.4f}" for v in lats),
+        "longitude": ",".join(f"{v:.4f}" for v in lons),
+        "hourly": ",".join(vars_),
+        "models": model_name,
+        "timezone": "UTC",
+        "forecast_days": "2",
+        "past_days": "8",
+        "wind_speed_unit": "ms",
+    }
+    url = "https://api.open-meteo.com/v1/forecast?" + urlencode(params)
+    data = _get_json(url, timeout=90.0, retries=3)
+    rows = data if isinstance(data, list) else [data]
+    return rows
+
+
+def fetch_teacher_window(
+    lat: float,
+    lon: float,
+    *,
+    model: str = "pulse",
+    time_iso: Optional[str] = None,
+    window: int = DEFAULT_SPATIAL_WINDOW,
+    step_deg: Optional[float] = None,
+    n_hist: int = 3,
+) -> Dict[str, Any]:
+    """Fetch a real lat/lon neighbourhood of teacher columns for V1 fields.
+
+    Returns centre column plus `history` shaped (n_hist, window, window) of
+    column dicts (None where a site failed). Spacing defaults to 0.25°.
+    """
+    step = float(step_deg if step_deg is not None else spatial_step_deg())
+    window = int(window)
+    if window < 1 or window % 2 == 0:
+        raise ValueError("window must be an odd integer >= 1")
+    n_hist = max(1, int(n_hist))
+
+    m = MODEL_MAP.get(model, model)
+    if m == "era5":
+        m = "ecmwf_ifs025"
+    vars_ = _hourly_vars()
+    offsets = _window_offsets(window, step)
+    sites = [(lat + dlat, lon + dlon) for dlat, dlon in offsets]
+
+    payloads: List[Optional[dict]] = [None] * len(sites)
+    for i in range(0, len(sites), _WINDOW_BATCH):
+        chunk = sites[i : i + _WINDOW_BATCH]
+        try:
+            rows = _forecast_batch(
+                [s[0] for s in chunk],
+                [s[1] for s in chunk],
+                model_name=m if m != "era5" else "best_match",
+                vars_=vars_,
+            )
+        except Exception:
+            rows = []
+        for j, site in enumerate(chunk):
+            row = rows[j] if j < len(rows) else None
+            payloads[i + j] = row if isinstance(row, dict) else None
+        if i + _WINDOW_BATCH < len(sites):
+            time.sleep(0.08)
+
+    # Pick a shared time index from the centre site (or first valid).
+    mid = window // 2
+    centre_payload = payloads[mid * window + mid]
+    times: List[str] = []
+    if centre_payload:
+        times = list((centre_payload.get("hourly") or {}).get("time") or [])
+    if not times:
+        for row in payloads:
+            if not row:
+                continue
+            times = list((row.get("hourly") or {}).get("time") or [])
+            if times:
+                break
+    if not times:
+        # Fall back to single-column fetch (no spatial context).
+        centre = fetch_teacher_column(lat, lon, model=model, time_iso=time_iso)
+        return {
+            "center": centre,
+            "history": None,
+            "window": window,
+            "step_deg": step,
+            "spatial": False,
+        }
+
+    idx = _pick_time_index(times, time_iso)
+    hist_idxs = [max(0, idx - (n_hist - 1 - t)) for t in range(n_hist)]
+
+    history: List[List[List[Optional[Dict[str, Any]]]]] = [
+        [[None for _ in range(window)] for _ in range(window)] for _ in range(n_hist)
+    ]
+    centre: Optional[Dict[str, Any]] = None
+
+    for si, row in enumerate(payloads):
+        i, j = divmod(si, window)
+        slat, slon = sites[si]
+        if not row:
+            continue
+        hourly = row.get("hourly") or {}
+        row_times = list(hourly.get("time") or [])
+        if not row_times:
+            continue
+        for t, ti in enumerate(hist_idxs):
+            # Remap index if this site's timeline differs slightly.
+            use_i = ti if ti < len(row_times) else _pick_time_index(
+                row_times, times[ti] if ti < len(times) else time_iso
+            )
+            try:
+                col = _parse_hourly_column(
+                    hourly,
+                    row_times,
+                    use_i,
+                    slat,
+                    slon,
+                    m,
+                    "open-meteo-forecast-window",
+                )
+            except Exception:
+                continue
+            history[t][i][j] = col
+            if t == n_hist - 1 and i == mid and j == mid:
+                centre = col
+
+    if centre is None:
+        centre = fetch_teacher_column(lat, lon, model=model, time_iso=time_iso)
+        return {
+            "center": centre,
+            "history": None,
+            "window": window,
+            "step_deg": step,
+            "spatial": False,
+        }
+
+    return {
+        "center": centre,
+        "history": history,
+        "window": window,
+        "step_deg": step,
+        "spatial": True,
+        "model": m,
+    }

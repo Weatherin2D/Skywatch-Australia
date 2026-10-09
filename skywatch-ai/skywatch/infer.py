@@ -221,23 +221,62 @@ def predict_from_levels(
     sonde = levels_to_sonde_column(levels, temp_unit=temp_unit, wind_unit=wind_unit)
     teacher_meta: Dict[str, Any] = {}
     teacher_mode = "open-meteo"
+    teacher_history = None
+    spatial_step = None
     try:
-        teacher = fetch_teacher_column(
-            lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+        from .etl.openmeteo_teacher import fetch_teacher_window, spatial_step_deg
+        from .synthetic import N_HIST, WINDOW
+
+        win = fetch_teacher_window(
+            lat,
+            lon,
+            model=teacher_model,
+            time_iso=time_iso,
+            window=WINDOW,
+            n_hist=N_HIST,
         )
+        teacher = win["center"]
+        teacher_history = win.get("history")
+        spatial_step = win.get("step_deg", spatial_step_deg())
         teacher_meta = {
             "source": teacher.get("source"),
             "model": teacher.get("model"),
             "valid_time": teacher.get("valid_time"),
+            "spatial": bool(win.get("spatial")),
+            "spatial_step_deg": spatial_step,
+            "spatial_window": win.get("window"),
         }
     except Exception as exc:  # noqa: BLE001
-        # Offline / API failure — degrade to self-prior (documented).
-        teacher = dict(sonde)
-        teacher_mode = "self-prior-fallback"
-        teacher_meta = {"error": str(exc), "source": "self-prior-fallback"}
+        try:
+            teacher = fetch_teacher_column(
+                lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+            )
+            teacher_meta = {
+                "source": teacher.get("source"),
+                "model": teacher.get("model"),
+                "valid_time": teacher.get("valid_time"),
+                "spatial": False,
+                "window_error": str(exc),
+            }
+        except Exception as exc2:  # noqa: BLE001
+            # Offline / API failure — degrade to self-prior (documented).
+            teacher = dict(sonde)
+            teacher_mode = "self-prior-fallback"
+            teacher_meta = {
+                "error": str(exc2),
+                "source": "self-prior-fallback",
+                "spatial": False,
+                "window_error": str(exc),
+            }
 
     sample = build_inference_sample(
-        teacher, sonde, lat=lat, lon=lon, norm=_NORM
+        teacher,
+        sonde,
+        lat=lat,
+        lon=lon,
+        norm=_NORM,
+        teacher_history=teacher_history,
+        spatial_step_deg=spatial_step,
     )
     pred = predict_sample(sample)
     decoded = decode_prediction(sample, pred, _NORM)

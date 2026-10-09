@@ -32,7 +32,9 @@ docker compose up -d --build skywatch-ai
 
 Next.js: set `SKYWATCH_AI_URL` (+ optional `SKYWATCH_AI_API_KEY`). Use **Engine** / **AI V1** / **Legacy** on `/soundings`, `/models` (mini Skew-T), and `/risk` (inspect overlay).
 
-**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt` (`etl+synth-426r-2000s`, 90d + stratified warm-season). Not an official forecast — see `metrics/holdout-metrics.json`.
+**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Live predict pulls a real **9×9 neighbourhood at 0.25°** (override with `SKYWATCH_AI_SPATIAL_STEP`) plus denser teacher pressure levels matching `IN_LEVELS` — not a flat single-column prior. Promoted weights: `checkpoints/v1-etl.pt` (`etl+synth-426r-2000s`, 90d + stratified warm-season). Not an official forecast — see `metrics/holdout-metrics.json`.
+
+**Note:** AI V1 corrects **soundings** (Skew-T / CAPE etc.). It does **not** paint the Models map rain overlay — that grid is Open-Meteo sampling in `ecmwf-map.ts`.
 
 ### Public sidecar deploy
 
