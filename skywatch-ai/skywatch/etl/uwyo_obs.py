@@ -88,6 +88,83 @@ def recent_slots(
     return slots
 
 
+def stratified_slots(
+    wmo: str,
+    *,
+    days: int = 400,
+    max_slots: int = 48,
+    prefer_months: Optional[List[int]] = None,
+    prefer_frac: float = 0.55,
+    rng: Optional[np.random.Generator] = None,
+) -> List[datetime]:
+    """Spread slots across months so summer/spring CAPE cases are not crowded out.
+
+    Most-recent capping (`recent_slots`) only keeps the latest launches — in October
+    that is all winter/spring. Prefer AU warm months (Nov–Mar) when available.
+    """
+    prefer_months = prefer_months or [11, 12, 1, 2, 3]
+    prefer_set = {int(m) for m in prefer_months}
+    rng = rng or np.random.default_rng(0)
+
+    now = datetime.now(timezone.utc)
+    cutoff_dt = now.timestamp() - days * 86400
+    years = {now.year, (now - timedelta(days=max(days, 0))).year}
+    all_slots: List[datetime] = []
+    for y in sorted(years):
+        try:
+            all_slots.extend(fetch_inventory(wmo, y))
+        except Exception:  # noqa: BLE001
+            continue
+    all_slots = [t for t in all_slots if t.timestamp() >= cutoff_dt and t <= now]
+    if not all_slots:
+        return []
+
+    by_month: Dict[int, List[datetime]] = {}
+    for t in all_slots:
+        by_month.setdefault(t.month, []).append(t)
+    for m in by_month:
+        by_month[m].sort(reverse=True)
+
+    n_pref = max(1, int(round(max_slots * prefer_frac))) if prefer_set else 0
+    n_rest = max_slots - n_pref
+    picked: List[datetime] = []
+
+    pref_pool = [t for m, ts in by_month.items() if m in prefer_set for t in ts]
+    rest_pool = [t for m, ts in by_month.items() if m not in prefer_set for t in ts]
+    pref_pool.sort(reverse=True)
+    rest_pool.sort(reverse=True)
+
+    def _take(pool: List[datetime], n: int) -> List[datetime]:
+        if n <= 0 or not pool:
+            return []
+        if len(pool) <= n:
+            return list(pool)
+        # Round-robin newest-first per month for diversity, then fill.
+        months = sorted({t.month for t in pool})
+        buckets = {m: [t for t in pool if t.month == m] for m in months}
+        out: List[datetime] = []
+        while len(out) < n and any(buckets.values()):
+            for m in months:
+                if buckets[m] and len(out) < n:
+                    out.append(buckets[m].pop(0))
+        return out
+
+    picked.extend(_take(pref_pool, n_pref))
+    picked.extend(_take(rest_pool, n_rest))
+    # Top up if prefer months were sparse.
+    if len(picked) < max_slots:
+        seen = {t.isoformat() for t in picked}
+        for t in sorted(all_slots, reverse=True):
+            if t.isoformat() in seen:
+                continue
+            picked.append(t)
+            if len(picked) >= max_slots:
+                break
+    # Light shuffle within the pick so ETL order isn't purely newest-first.
+    order = rng.permutation(len(picked))
+    return [picked[i] for i in order]
+
+
 def _extract_csv(html: str) -> str:
     marker = "time,longitude,latitude,pressure"
     idx = html.lower().find(marker)

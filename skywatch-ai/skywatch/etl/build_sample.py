@@ -34,6 +34,7 @@ def event_weight_from_sonde(
     *,
     hemisphere: str = "S",
     cape_hi: float = 2000.0,
+    cape_mid: float = 500.0,
     inv_k: float = 1.5,
 ) -> float:
     """Stage-6 oversampling weight from truth-column CAPE / inversion strength."""
@@ -46,11 +47,14 @@ def event_weight_from_sonde(
 
         diag = compute_diagnostics(prof, hemisphere=hemisphere.upper())
         sbcape = float(diag.get("SBCAPE") or 0.0)
-        if math.isfinite(sbcape) and sbcape > cape_hi:
-            w *= 3.0
+        if math.isfinite(sbcape):
+            if sbcape > cape_hi:
+                w *= 4.0
+            elif sbcape > cape_mid:
+                w *= 2.0
         strength, _ = inversion_strength(prof.T, prof.z_agl)
         if math.isfinite(strength) and strength >= inv_k:
-            w *= 2.0
+            w *= 2.5
     except Exception:  # noqa: BLE001 — keep baseline weight
         return 1.0
     return float(w)

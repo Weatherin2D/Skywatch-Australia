@@ -96,6 +96,18 @@ ap.add_argument(
     default="",
     help="comma WMO ids forced into real validation (overrides frac for those)",
 )
+ap.add_argument(
+    "--event-boundary",
+    type=float,
+    default=0.90,
+    help="fraction of steps when event_finetune stage starts (default 0.90)",
+)
+ap.add_argument(
+    "--event-lr-mult",
+    type=float,
+    default=0.3,
+    help="LR multiplier during event_finetune",
+)
 args = ap.parse_args()
 
 real, files, metas = load_npz_dir(args.data)
@@ -182,7 +194,21 @@ if args.promote and os.path.isfile(prev):
     shutil.copy2(prev, prev_bak)
     print("backed up previous →", prev_bak)
 
-model, hist = train(cfg, tcfg, ScheduleConfig(), train_s, val_s, norm)
+# Earlier event_finetune spends more steps on CAPE/inversion-weighted samples.
+bounds = list(ScheduleConfig().boundaries)
+# boundaries: teacher, obs, structure, physics, probabilistic, event
+# Keep first five; set last (event start) from --event-boundary.
+if len(bounds) >= 6:
+    bounds[5] = float(np.clip(args.event_boundary, 0.5, 0.95))
+scfg = ScheduleConfig(
+    total_steps=args.steps,
+    boundaries=tuple(bounds),
+    event_lr_mult=args.event_lr_mult,
+)
+print(
+    f"schedule event_boundary={bounds[5]:.2f} event_lr_mult={args.event_lr_mult}"
+)
+model, hist = train(cfg, tcfg, scfg, train_s, val_s, norm)
 
 print("\nEngine evaluation on validation set:")
 res = run_evaluation(model, train_s, val_s, norm, "cpu", hemisphere="S")

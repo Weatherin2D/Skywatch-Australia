@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from skywatch.contract import validate_sample
 from skywatch.etl.build_sample import build_training_sample
 from skywatch.etl.openmeteo_teacher import fetch_teacher_column
-from skywatch.etl.uwyo_obs import fetch_radiosonde, recent_slots
+from skywatch.etl.uwyo_obs import fetch_radiosonde, recent_slots, stratified_slots
 from skywatch.grid import make_vertical_grid
 from skywatch.normalizer import Normalizer
 
@@ -61,6 +61,22 @@ ap.add_argument(
     action="store_true",
     help="delete existing .npz + manifest before running",
 )
+ap.add_argument(
+    "--stratify",
+    action="store_true",
+    help="spread slots across months (prefer warm-season CAPE months)",
+)
+ap.add_argument(
+    "--prefer-months",
+    default="11,12,1,2,3",
+    help="comma months (1-12) oversampled when --stratify",
+)
+ap.add_argument(
+    "--prefer-frac",
+    type=float,
+    default=0.55,
+    help="fraction of max-per-station reserved for prefer-months",
+)
 args = ap.parse_args()
 
 if args.stations:
@@ -95,9 +111,22 @@ with open(manifest_path, "a") as mf:
     for wmo, lat, lon in stations:
         print(f"[{wmo}] inventory…", flush=True)
         try:
-            slots = recent_slots(
-                wmo, days=args.days, max_slots=args.max_per_station
-            )
+            if args.stratify:
+                prefer = [
+                    int(x) for x in args.prefer_months.split(",") if x.strip()
+                ]
+                slots = stratified_slots(
+                    wmo,
+                    days=args.days,
+                    max_slots=args.max_per_station,
+                    prefer_months=prefer,
+                    prefer_frac=args.prefer_frac,
+                    rng=rng,
+                )
+            else:
+                slots = recent_slots(
+                    wmo, days=args.days, max_slots=args.max_per_station
+                )
         except Exception as exc:  # noqa: BLE001
             print(f"[{wmo}] inventory FAIL {exc}")
             fail += 1
