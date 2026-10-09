@@ -811,8 +811,8 @@ function colorFor(
         t,
       );
     case "precip": {
-      if (value <= 0.05) return [0, 0, 0, 0];
-      return stopsColor(
+      if (value <= 0) return [0, 0, 0, 0];
+      const [r, g, b, a] = stopsColor(
         [
           { t: 0, c: [140, 220, 255, 90] },
           { t: 0.25, c: [50, 140, 240, 160] },
@@ -822,6 +822,11 @@ function colorFor(
         ],
         t,
       );
+      // Soften the rain edge so bilinear samples don't read as hard squares.
+      if (value < 0.2) {
+        return [r, g, b, Math.round(a * (value / 0.2))];
+      }
+      return [r, g, b, a];
     }
     case "snow": {
       if (value <= 0.02) return [0, 0, 0, 0];
