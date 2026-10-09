@@ -31,7 +31,7 @@ export function AiLiveBanner() {
         </p>
         <p className="text-xs text-white/65">
           Use the amber <span className="font-semibold text-amber-200">AI V1</span>{" "}
-          control — Model soundings (not Observed). ausrisk.vercel.app is offline.
+          control — Model soundings (not Observed). Use this live host (Vercel Hobby is offline).
         </p>
         <div className="ml-auto flex flex-wrap gap-1.5">
           {LINKS.map((l) => (

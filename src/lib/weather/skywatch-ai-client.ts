@@ -236,8 +236,8 @@ export async function fetchSkywatchAiPredict(
   const base = skywatchAiBaseUrl();
   if (!base || levels.length < 3) return null;
 
-  // Allow cold-start on Railway; local GPU-less CPU predict is usually <10s.
-  const timeoutMs = options?.timeoutMs ?? 45_000;
+  // Cold CPU predict + Open-Meteo teacher; keep under Next route budget.
+  const timeoutMs = options?.timeoutMs ?? 55_000;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   const onAbort = () => ac.abort();

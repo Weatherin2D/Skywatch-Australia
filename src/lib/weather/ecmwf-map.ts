@@ -25,17 +25,17 @@ const HOBBY = useHobbyBudget();
  * National sample spacing (°). Precip / convection use HIRES.
  * Self-hosted full compute densifies all models (incl. ICON/GFS); Hobby stays lighter.
  */
-const GRID_STEP = HOBBY ? 1.5 : 0.55;
-const HIRES_STEP = HOBBY ? 1.0 : 0.4;
-const COARSE_STEP = HOBBY ? 2.2 : 1.2;
-const BATCH = HOBBY ? 60 : 90;
-const BATCH_CONCURRENCY = HOBBY ? 6 : 6;
+const GRID_STEP = HOBBY ? 1.5 : 0.65;
+const HIRES_STEP = HOBBY ? 1.0 : 0.5;
+const COARSE_STEP = HOBBY ? 2.2 : 1.25;
+const BATCH = HOBBY ? 60 : 80;
+const BATCH_CONCURRENCY = HOBBY ? 6 : 4;
 const FORECAST_DAYS = 3;
 const CACHE_TTL_MS = 18 * 60_000;
 const OUT_WIDTH = HOBBY ? 1280 : 1920;
 const PNG_CACHE_MAX = 96;
 /** Cache schema bump when grid/render behaviour changes. */
-const CACHE_VER = "r5";
+const CACHE_VER = "r6";
 
 export type MapModelId = "ecmwf" | "icon" | "gfs";
 

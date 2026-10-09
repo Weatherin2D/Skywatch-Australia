@@ -224,28 +224,45 @@ def predict_from_levels(
     teacher_history = None
     spatial_step = None
     try:
-        from .etl.openmeteo_teacher import fetch_teacher_window, spatial_step_deg
+        from .etl.openmeteo_teacher import (
+            fetch_teacher_window,
+            spatial_step_deg,
+            spatial_window_enabled,
+        )
         from .synthetic import N_HIST, WINDOW
 
-        win = fetch_teacher_window(
-            lat,
-            lon,
-            model=teacher_model,
-            time_iso=time_iso,
-            window=WINDOW,
-            n_hist=N_HIST,
-        )
-        teacher = win["center"]
-        teacher_history = win.get("history")
-        spatial_step = win.get("step_deg", spatial_step_deg())
-        teacher_meta = {
-            "source": teacher.get("source"),
-            "model": teacher.get("model"),
-            "valid_time": teacher.get("valid_time"),
-            "spatial": bool(win.get("spatial")),
-            "spatial_step_deg": spatial_step,
-            "spatial_window": win.get("window"),
-        }
+        if spatial_window_enabled():
+            # Smaller window by default for latency; full WINDOW when step is coarse.
+            win_n = 5 if spatial_step_deg() <= 0.25 else WINDOW
+            win = fetch_teacher_window(
+                lat,
+                lon,
+                model=teacher_model,
+                time_iso=time_iso,
+                window=win_n,
+                n_hist=N_HIST,
+            )
+            teacher = win["center"]
+            teacher_history = win.get("history")
+            spatial_step = win.get("step_deg", spatial_step_deg())
+            teacher_meta = {
+                "source": teacher.get("source"),
+                "model": teacher.get("model"),
+                "valid_time": teacher.get("valid_time"),
+                "spatial": bool(win.get("spatial")),
+                "spatial_step_deg": spatial_step,
+                "spatial_window": win.get("window"),
+            }
+        else:
+            teacher = fetch_teacher_column(
+                lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+            )
+            teacher_meta = {
+                "source": teacher.get("source"),
+                "model": teacher.get("model"),
+                "valid_time": teacher.get("valid_time"),
+                "spatial": False,
+            }
     except Exception as exc:  # noqa: BLE001
         try:
             teacher = fetch_teacher_column(

@@ -288,6 +288,12 @@ def spatial_step_deg() -> float:
     return DEFAULT_SPATIAL_STEP_DEG
 
 
+def spatial_window_enabled() -> bool:
+    """Neighbourhood teacher fetch is opt-in — default off so soundings stay snappy."""
+    raw = os.environ.get("SKYWATCH_AI_SPATIAL", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def _window_offsets(window: int, step_deg: float) -> List[Tuple[float, float]]:
     mid = window // 2
     out: List[Tuple[float, float]] = []
