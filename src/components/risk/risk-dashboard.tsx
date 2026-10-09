@@ -9,6 +9,13 @@ import {
   type RiskInspectCategory,
   type RiskInspectPoint,
 } from "@/components/risk/risk-inspect-panel";
+import { EngineModeToggle } from "@/components/weather/engine-mode-toggle";
+import type { EngineUiMode } from "@/lib/weather/engine-mode";
+import {
+  riskAiThermoFromSounding,
+  riskSourceToSoundingModel,
+} from "@/lib/weather/risk-ai-thermo";
+import type { SoundingPayload } from "@/lib/weather/sounding-types";
 import {
   DEFAULT_MAP_SETTINGS,
   MAP_REGIONS,
@@ -332,6 +339,7 @@ export function RiskDashboard() {
     RiskInspectPoint | RiskInspectCategory | null
   >(null);
   const [activeLegendId, setActiveLegendId] = useState<string | null>(null);
+  const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
 
   useEffect(() => {
     setSource(readSourceFromUrl());
@@ -516,10 +524,10 @@ export function RiskDashboard() {
     setActiveLegendId(null);
   }, []);
 
-  // Clear inspect when source/product/day changes.
+  // Clear inspect when source/product/day/engine changes.
   useEffect(() => {
     clearInspect();
-  }, [source, product, selectedDay, clearInspect]);
+  }, [source, product, selectedDay, engineMode, clearInspect]);
 
   const onMapClick = useCallback(
     (ll: { lat: number; lng: number }) => {
@@ -534,21 +542,45 @@ export function RiskDashboard() {
           ? `&product=${product}`
           : "";
       const url = `/api/weather/risk-probe?source=${source}${productQs}&day=${selectedDay}&lat=${ll.lat}&lon=${ll.lng}`;
-      void fetch(url, { cache: "no-store" })
-        .then(async (res) => {
+      void (async () => {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
           if (!res.ok) throw new Error("Could not inspect this point");
           const json = (await res.json()) as RiskInspectPoint;
-          setInspectData({ ...json, kind: "point" });
+          let aiThermo = null as RiskInspectPoint["aiThermo"];
+          if (isModelSource(source) && engineMode !== "legacy") {
+            try {
+              const model = riskSourceToSoundingModel(source);
+              const qs = new URLSearchParams({
+                mode: "model",
+                model,
+                engine: engineMode,
+                lat: String(ll.lat),
+                lon: String(ll.lng),
+              });
+              const soundRes = await fetch(`/api/weather/sounding?${qs}`, {
+                cache: "no-store",
+              });
+              if (soundRes.ok) {
+                const sounding = (await soundRes.json()) as SoundingPayload;
+                aiThermo = riskAiThermoFromSounding(sounding, engineMode);
+              }
+            } catch {
+              // Thermo overlay is optional — keep risk probe.
+            }
+          }
+          setInspectData({ ...json, kind: "point", aiThermo });
           setActiveLegendId(json.category?.id ?? null);
-        })
-        .catch((err) => {
+        } catch (err) {
           setInspectError(
             err instanceof Error ? err.message : "Inspect failed",
           );
-        })
-        .finally(() => setInspectLoading(false));
+        } finally {
+          setInspectLoading(false);
+        }
+      })();
     },
-    [selectedDay, source, product],
+    [selectedDay, source, product, engineMode],
   );
 
   const onLegendClick = useCallback(
@@ -591,26 +623,36 @@ export function RiskDashboard() {
           </p>
         </div>
 
-        <div
-          className="inline-flex max-w-full flex-wrap rounded-xl border border-white/15 bg-white/[0.04] p-1"
-          role="group"
-          aria-label="Risk outlook source"
-        >
-          {RISK_SOURCE_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setSourceAndUrl(opt.id)}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-semibold transition",
-                source === opt.id
-                  ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
-                  : "text-white/65 hover:text-white",
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex flex-col items-end gap-2">
+          <div
+            className="inline-flex max-w-full flex-wrap rounded-xl border border-white/15 bg-white/[0.04] p-1"
+            role="group"
+            aria-label="Risk outlook source"
+          >
+            {RISK_SOURCE_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setSourceAndUrl(opt.id)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-sm font-semibold transition",
+                  source === opt.id
+                    ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
+                    : "text-white/65 hover:text-white",
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {isModelSource(source) ? (
+            <EngineModeToggle
+              size="sm"
+              value={engineMode}
+              onChange={setEngineMode}
+              aria-label="Thermo / AI engine for map inspect"
+            />
+          ) : null}
         </div>
       </div>
 

@@ -10,11 +10,13 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Full app host (when you have budget / working Docker):** Node host or home PC + Cloudflare Tunnel.
 
-## SkyWatch AI (soundings) — local only
+## SkyWatch AI — local only
 
 Python package in [`skywatch-ai/`](skywatch-ai/). Runs as a **local sidecar** (not on Vercel Hobby). Public hosting is optional later; leave `SKYWATCH_AI_URL` unset on Vercel so production falls back to legacy thermo.
 
-| Mode on `/soundings` | What it does |
+Same **Engine / AI V1 / Legacy** control on `/soundings`, `/models` (mini Skew-T), and `/risk` (map inspect thermo overlay for Pulse/IFS/UKMO/Access).
+
+| Mode | What it does |
 |---|---|
 | **Engine** (`engine=auto`) | Deterministic CAPE/SRH on the observed/model profile |
 | **AI V1** (`engine=predict`) | Open-Meteo teacher + V1 net + engine diagnostics |

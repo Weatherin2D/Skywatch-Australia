@@ -40,6 +40,7 @@ services:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
       SKYWATCH_AI_URL: http://skywatch-ai:43137
+      SKYWATCH_AI_API_KEY: ${SKYWATCH_AI_API_KEY:-}
     # Not published publicly — Caddy proxies to this service.
     expose:
       - "3000"

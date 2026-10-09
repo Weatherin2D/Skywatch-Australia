@@ -9,8 +9,10 @@ import { SoundingBoxGrid } from "@/components/soundings/sounding-box-grid";
 import { SoundingLocationMapDynamic } from "@/components/soundings/sounding-location-map-dynamic";
 import { SoundingParamsTables } from "@/components/soundings/sounding-params";
 import { SiteShell } from "@/components/site/site-shell";
+import { EngineModeToggle } from "@/components/weather/engine-mode-toggle";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import type { BomLocation } from "@/lib/weather/location-forecast";
+import type { EngineUiMode } from "@/lib/weather/engine-mode";
 import { SOUNDING_STATIONS } from "@/lib/weather/sounding-stations";
 import type {
   SoundingBoxPayload,
@@ -63,8 +65,6 @@ function formatValid(iso: string | null): string {
 function formatHourChip(hour: number): string {
   return `${String(hour).padStart(2, "0")}Z`;
 }
-
-type EngineUiMode = "auto" | "predict" | "legacy";
 
 export function SoundingsDashboard() {
   const { place: saved, saveFromBomLocation } = useSavedPlace();
@@ -307,8 +307,8 @@ export function SoundingsDashboard() {
             </h1>
             <p className="mt-1 max-w-xl text-sm text-white/55">
               Observed radiosondes, single-point model Skew-Ts, and 3×3 model
-              sounding boxes. Sidecar engines: deterministic CAPE/SRH, or V1
-              neural demo (synthetic-trained — not real skill yet).
+              sounding boxes. Thermo via SkyWatch AI engine, or AI V1 neural
+              residual (AU ETL + Open-Meteo teacher — local sidecar).
             </p>
           </div>
 
@@ -336,36 +336,7 @@ export function SoundingsDashboard() {
                 </button>
               ))}
             </div>
-            <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
-              {(
-                [
-                  ["auto", "Engine"],
-                  ["predict", "AI V1"],
-                  ["legacy", "Legacy"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setEngineMode(id)}
-                  title={
-                    id === "predict"
-                      ? "Synthetic-trained neural demo — not calibrated on real weather"
-                      : undefined
-                  }
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                    engineMode === id
-                      ? id === "predict"
-                        ? "bg-amber-400 text-[#070b16]"
-                        : "bg-[var(--cyan)] text-[#070b16]"
-                      : "text-white/65 hover:text-white",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <EngineModeToggle value={engineMode} onChange={setEngineMode} />
           </div>
         </header>
 

@@ -20,8 +20,10 @@ import { ModelsCrossSectionPanel } from "@/components/models/models-cross-sectio
 import { ModelsMeteogram } from "@/components/models/models-meteogram";
 import { ModelsMiniSounding } from "@/components/models/models-mini-sounding";
 import { SiteShell } from "@/components/site/site-shell";
+import { EngineModeToggle } from "@/components/weather/engine-mode-toggle";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import type { CrossSectionPayload } from "@/lib/weather/cross-section";
+import type { EngineUiMode } from "@/lib/weather/engine-mode";
 import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
 import { absoluteAppUrl, shareContent } from "@/lib/share";
 import type { SoundingPayload } from "@/lib/weather/sounding-types";
@@ -239,6 +241,7 @@ export function EcmwfModelsDashboard() {
     "idle",
   );
   const [showSkewt, setShowSkewt] = useState(initial.skewt);
+  const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
   const [transectMode, setTransectMode] = useState(initial.transect);
   const [sounding, setSounding] = useState<SoundingPayload | null>(null);
   const [soundingLoading, setSoundingLoading] = useState(false);
@@ -468,6 +471,7 @@ export function EcmwfModelsDashboard() {
           const qs = new URLSearchParams({
             mode: "model",
             model,
+            engine: engineMode,
             lat: String(probe.lat),
             lon: String(probe.lng),
           });
@@ -498,7 +502,7 @@ export function EcmwfModelsDashboard() {
     })();
 
     return () => ac.abort();
-  }, [showSkewt, probe, modelId, activeTime, transectMode]);
+  }, [showSkewt, probe, modelId, activeTime, transectMode, engineMode]);
 
   // Cross-section when both ends set
   useEffect(() => {
@@ -621,8 +625,8 @@ export function EcmwfModelsDashboard() {
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-white/70">
               Switch ECMWF / ICON / GFS, scrub hourly fields, diff two models,
-              probe a point, open a mini Skew-T, or draw a transect
-              cross-section.
+              probe a point, open a mini Skew-T (Engine / AI V1 / Legacy), or
+              draw a transect cross-section.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -708,6 +712,18 @@ export function EcmwfModelsDashboard() {
                 {m.label}
               </button>
             ))}
+          <EngineModeToggle
+            className="ml-auto"
+            size="sm"
+            value={engineMode}
+            onChange={(m) => {
+              setEngineMode(m);
+              if (!showSkewt) {
+                setShowSkewt(true);
+                if (transectMode) setTransectMode(false);
+              }
+            }}
+          />
           <button
             type="button"
             onClick={() => {
@@ -715,7 +731,7 @@ export function EcmwfModelsDashboard() {
               if (transectMode) setTransectMode(false);
             }}
             className={cn(
-              "ml-auto rounded-md px-2.5 py-1 text-xs font-semibold",
+              "rounded-md px-2.5 py-1 text-xs font-semibold",
               showSkewt
                 ? "bg-[var(--cyan)]/25 text-[var(--cyan)]"
                 : "text-white/55 hover:text-white",
@@ -907,6 +923,7 @@ export function EcmwfModelsDashboard() {
                   lon={probe.lng}
                   model={mapModelToSounding(modelId)}
                   time={activeTime}
+                  engine={engineMode}
                   onClose={() => setShowSkewt(false)}
                 />
               ) : null}

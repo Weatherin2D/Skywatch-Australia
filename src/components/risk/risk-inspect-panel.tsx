@@ -1,7 +1,10 @@
 "use client";
 
 import { X } from "lucide-react";
+import type { RiskAiThermo } from "@/lib/weather/risk-ai-thermo";
 import { cn } from "@/lib/utils";
+
+export type { RiskAiThermo };
 
 export type RiskInspectPoint = {
   kind: "point";
@@ -25,6 +28,8 @@ export type RiskInspectPoint = {
   conditions: Array<{ label: string; value: string; hint?: string }>;
   hazards?: Array<{ id: string; label: string; pct: number }>;
   guidance: string;
+  /** Optional SkyWatch AI / thermo overlay from sounding sidecar. */
+  aiThermo?: RiskAiThermo | null;
 };
 
 export type RiskInspectCategory = {
@@ -178,6 +183,58 @@ export function RiskInspectPanel({ loading, error, data, onClose }: Props) {
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+
+            {data.aiThermo?.conditions.length ? (
+              <div
+                className={cn(
+                  "rounded-xl border px-2.5 py-2",
+                  data.aiThermo.engine === "skywatch-ai-v1"
+                    ? "border-amber-400/35 bg-amber-400/[0.07]"
+                    : "border-[var(--cyan)]/30 bg-[var(--cyan)]/[0.06]",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tracking-wide",
+                      data.aiThermo.engine === "skywatch-ai-v1"
+                        ? "text-amber-200"
+                        : "text-[var(--cyan)]",
+                    )}
+                  >
+                    {data.aiThermo.label}
+                  </p>
+                  {data.aiThermo.soundingUrl ? (
+                    <a
+                      href={data.aiThermo.soundingUrl}
+                      className="text-[11px] font-semibold text-white/70 hover:text-white"
+                    >
+                      Full sounding
+                    </a>
+                  ) : null}
+                </div>
+                {data.aiThermo.message ? (
+                  <p className="mt-0.5 text-[10px] text-white/45">
+                    {data.aiThermo.message}
+                  </p>
+                ) : null}
+                <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                  {data.aiThermo.conditions.map((c) => (
+                    <div key={c.label} className="min-w-0">
+                      <dt className="text-[10px] uppercase tracking-wide text-white/40">
+                        {c.label}
+                      </dt>
+                      <dd
+                        className="truncate text-sm font-semibold text-white/90"
+                        title={c.hint}
+                      >
+                        {c.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             ) : null}
 

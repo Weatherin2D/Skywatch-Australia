@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { SkewTChart } from "@/components/soundings/skew-t";
+import {
+  engineModeLabel,
+  type EngineUiMode,
+} from "@/lib/weather/engine-mode";
 import type { SoundingPayload } from "@/lib/weather/sounding-types";
 
 type Props = {
@@ -12,6 +16,7 @@ type Props = {
   lon: number;
   model?: string;
   time?: string | null;
+  engine?: EngineUiMode;
   onClose?: () => void;
 };
 
@@ -23,15 +28,28 @@ export function ModelsMiniSounding({
   lon,
   model = "ifs",
   time,
+  engine = "auto",
   onClose,
 }: Props) {
   const qs = new URLSearchParams({
     mode: "model",
     model,
+    engine,
     lat: lat.toFixed(3),
     lon: lon.toFixed(3),
   });
   if (time) qs.set("time", time);
+
+  const engineBadge =
+    sounding?.engine === "skywatch-ai-v1"
+      ? "AI V1"
+      : sounding?.engine === "skywatch-ai"
+        ? "Engine"
+        : engine === "predict"
+          ? "AI V1"
+          : engine === "legacy"
+            ? "Legacy"
+            : null;
 
   return (
     <div className="absolute bottom-3 right-3 z-[500] w-[min(280px,calc(100%-1.5rem))] overflow-hidden rounded-xl border border-white/15 bg-[#0a1224]/94 shadow-xl backdrop-blur-md">
@@ -39,9 +57,23 @@ export function ModelsMiniSounding({
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--cyan)]">
             Mini Skew-T
+            {engineBadge ? (
+              <span
+                className={
+                  engineBadge === "AI V1"
+                    ? "ml-1.5 text-amber-300"
+                    : "ml-1.5 text-white/45"
+                }
+              >
+                · {engineBadge}
+              </span>
+            ) : null}
           </p>
           <p className="text-[11px] text-white/55">
             {lat.toFixed(2)}°, {lon.toFixed(2)}°
+            {sounding?.engineMessage
+              ? ` · ${engineModeLabel(engine)}`
+              : ""}
           </p>
         </div>
         <div className="flex items-center gap-1">

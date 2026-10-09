@@ -30,7 +30,7 @@ docker compose up -d --build skywatch-ai
 | `POST /v1/diagnostics` | Deterministic CAPE/SRH (numpy) |
 | `POST /v1/predict` | V1 neural sounding (torch + checkpoint) |
 
-Next.js: set `SKYWATCH_AI_URL` (+ optional `SKYWATCH_AI_API_KEY`). On `/soundings`, use **Engine** / **AI V1** / **Legacy**.
+Next.js: set `SKYWATCH_AI_URL` (+ optional `SKYWATCH_AI_API_KEY`). Use **Engine** / **AI V1** / **Legacy** on `/soundings`, `/models` (mini Skew-T), and `/risk` (inspect overlay).
 
 **AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt` (`etl+synth-136r-1500s`). Not an official forecast — see `metrics/holdout-metrics.json`.
 
@@ -57,7 +57,7 @@ Memory ≥2 GB recommended (CPU torch). `/health` stays public; other routes req
 
 | Component | Milestone | Status |
 |---|---|---|
-| Engine wired to `/soundings` | site | **Done** |
+| Engine / AI V1 / Legacy on `/soundings`, `/models`, `/risk` | site | **Done** |
 | V1 torch smoke + synthetic checkpoint + `/v1/predict` | 4–6 | **Done** (`SMOKE TEST PASSED`, ckpt in `checkpoints/v1-synthetic.pt`) |
 | Deterministic diagnostics engine | 7 | **Tested** |
 | Grid / normaliser / tokens / contract | 1–2 | **Tested** |
