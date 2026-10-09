@@ -5,9 +5,11 @@
 
 import type {
   SoundingLevel,
+  SoundingModelId,
   SoundingParams,
   SoundingPayload,
 } from "@/lib/weather/sounding-types";
+import { analyzeSounding } from "@/lib/weather/sounding-thermo";
 
 export type SoundingEngineId = "skywatch-ai" | "skywatch-ai-v1" | "legacy";
 export type SoundingEngineMode = "auto" | "skywatch" | "legacy" | "predict";
@@ -27,6 +29,7 @@ export type SkywatchAiPredictResult = {
   disclaimer?: string;
   teacher_mode?: string;
   teacher?: Record<string, unknown>;
+  valid_time?: string;
   levels: Array<{
     p: number;
     t: number;
@@ -229,6 +232,7 @@ export async function fetchSkywatchAiPredict(
     lon?: number;
     time?: string | null;
     hemisphere?: "N" | "S";
+    teacherModel?: string;
     signal?: AbortSignal;
     timeoutMs?: number;
   },
@@ -262,7 +266,7 @@ export async function fetchSkywatchAiPredict(
         tempUnit: "C",
         windUnit: "ms",
         time: options?.time ?? undefined,
-        teacherModel: "pulse",
+        teacherModel: options?.teacherModel ?? "pulse",
       }),
       signal: ac.signal,
       cache: "no-store",
@@ -275,6 +279,89 @@ export async function fetchSkywatchAiPredict(
     clearTimeout(timer);
     options?.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+/**
+ * Lat/lon-only AI V1 — one lean teacher fetch inside the sidecar.
+ * Use when the site's Open-Meteo multi-level sounding API is rate-limited.
+ */
+export async function fetchSkywatchAiPredictPoint(options: {
+  lat: number;
+  lon: number;
+  time?: string | null;
+  hemisphere?: "N" | "S";
+  teacherModel?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}): Promise<SkywatchAiPredictResult | null> {
+  const base = skywatchAiBaseUrl();
+  if (!base) return null;
+
+  const timeoutMs = options.timeoutMs ?? 45_000;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  const onAbort = () => ac.abort();
+  options.signal?.addEventListener("abort", onAbort);
+
+  try {
+    const res = await fetch(`${base}/v1/predict-point`, {
+      method: "POST",
+      headers: skywatchAiHeaders(),
+      body: JSON.stringify({
+        lat: options.lat,
+        lon: options.lon,
+        hemisphere: options.hemisphere ?? "S",
+        time: options.time ?? undefined,
+        teacherModel: options.teacherModel ?? "pulse",
+      }),
+      signal: ac.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as SkywatchAiPredictResult;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+/** Build a full SoundingPayload from an AI V1 predict response. */
+export function soundingPayloadFromAiPredict(
+  pred: SkywatchAiPredictResult,
+  options: {
+    lat: number;
+    lon: number;
+    model?: SoundingModelId;
+    placeLabel?: string;
+  },
+): SoundingPayload {
+  const levels = levelsFromPredict(pred);
+  const analysis = analyzeSounding(levels);
+  const validRaw = pred.valid_time || pred.teacher?.valid_time;
+  const validTime =
+    typeof validRaw === "string"
+      ? new Date(validRaw.endsWith("Z") ? validRaw : `${validRaw}Z`).toISOString()
+      : new Date().toISOString();
+  return {
+    status: "ok",
+    mode: "model",
+    model: options.model ?? "pulse",
+    stationId: null,
+    stationName: options.placeLabel ?? "Selected location",
+    latitude: options.lat,
+    longitude: options.lon,
+    validTime,
+    levels,
+    params: mergeAiIntoParams(analysis.params, pred.diagnostics),
+    parcelTraces: analysis.parcelTraces,
+    attribution: "SkyWatch AI V1 via Open-Meteo teacher. Guidance only.",
+    engine: "skywatch-ai-v1",
+    engineHemisphere: pred.hemisphere,
+    engineMessage: pred.disclaimer,
+    aiDiagnostics: pred.diagnostics,
+  };
 }
 
 function levelsFromPredict(

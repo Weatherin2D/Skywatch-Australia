@@ -114,6 +114,16 @@ class PredictRequest(BaseModel):
     teacherModel: str = "pulse"
 
 
+class PredictPointRequest(BaseModel):
+    """Lat/lon-only AI V1 — skips the site's heavy Open-Meteo sounding fetch."""
+
+    lat: float = -31.95
+    lon: float = 115.86
+    hemisphere: str = "S"
+    time: Optional[str] = None
+    teacherModel: str = "pulse"
+
+
 def _finite(x: Optional[float]) -> bool:
     return x is not None and math.isfinite(float(x))
 
@@ -265,3 +275,31 @@ def predict(body: PredictRequest):
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, f"predict failed: {exc}") from exc
+
+
+@app.post("/v1/predict-point")
+def predict_point(body: PredictPointRequest):
+    if not _ML_STATUS.get("ready"):
+        raise HTTPException(
+            503,
+            f"V1 model unavailable: {_ML_STATUS.get('error') or 'not loaded'}",
+        )
+    hem = body.hemisphere.upper()
+    if hem not in ("N", "S"):
+        raise HTTPException(400, "hemisphere must be N or S")
+    try:
+        from skywatch.infer import predict_from_location
+
+        return predict_from_location(
+            lat=body.lat,
+            lon=body.lon,
+            hemisphere=hem,
+            time_iso=body.time,
+            teacher_model=body.teacherModel,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"predict-point failed: {exc}") from exc

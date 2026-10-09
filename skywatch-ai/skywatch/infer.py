@@ -339,6 +339,79 @@ def predict_from_levels(
     }
 
 
+def _teacher_to_level_dicts(teacher: Dict[str, Any]) -> List[dict]:
+    """Native teacher column → JSON levels (°C, m/s) for predict_from_levels."""
+    from . import thermo as th
+
+    p = np.asarray(teacher["p"], float)
+    T = np.asarray(teacher["T"], float)
+    q = np.asarray(teacher["q"], float)
+    u = np.asarray(teacher["u"], float)
+    v = np.asarray(teacher["v"], float)
+    z = np.asarray(teacher["z"], float)
+    Td = th.dewpoint(p, q)
+    out: List[dict] = []
+    for i in range(len(p)):
+        spd = float(math.hypot(u[i], v[i]))
+        wdir = float(((270 - math.degrees(math.atan2(v[i], u[i]))) % 360 + 360) % 360)
+        out.append(
+            {
+                "p": float(p[i]),
+                "t": float(T[i] - 273.15),
+                "td": float(Td[i] - 273.15),
+                "z": float(z[i]),
+                "windDir": wdir,
+                "windSpd": spd,
+                "u": float(u[i]),
+                "v": float(v[i]),
+            }
+        )
+    return out
+
+
+def predict_from_location(
+    *,
+    lat: float = -31.95,
+    lon: float = 115.86,
+    hemisphere: str = "S",
+    time_iso: Optional[str] = None,
+    teacher_model: str = "pulse",
+) -> Dict[str, Any]:
+    """AI V1 sounding from lat/lon only — no Open-Meteo multi-level sounding required.
+
+    Fetches a lean teacher column and uses it as the observation prior so the UI
+    keeps working when the site's heavy pressure-level forecast API is 429'd.
+    """
+    ensure_model()
+    teacher = fetch_teacher_column(
+        lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+    )
+    levels = _teacher_to_level_dicts(teacher)
+    out = predict_from_levels(
+        levels,
+        lat=lat,
+        lon=lon,
+        temp_unit="C",
+        wind_unit="ms",
+        hemisphere=hemisphere,
+        time_iso=time_iso or teacher.get("valid_time"),
+        teacher_model=teacher_model,
+    )
+    out["teacher_mode"] = "open-meteo-point"
+    out["disclaimer"] = (
+        "SkyWatch AI V1 — Open-Meteo teacher column (point mode). "
+        "Not an official forecast. Skill depends on training data version."
+    )
+    if out.get("teacher") is not None:
+        out["teacher"] = {
+            **out["teacher"],
+            "point_mode": True,
+            "valid_time": teacher.get("valid_time"),
+        }
+    out["valid_time"] = teacher.get("valid_time")
+    return out
+
+
 # Back-compat alias used by older call sites / tests
 def build_sample_from_sounding(levels, norm, **kw):
     sonde = levels_to_sonde_column(

@@ -675,6 +675,22 @@ export type EcmwfMapCatalog = {
   issuedAt: string | null;
 };
 
+function synthesizeHourlyTimes(forecastDays = FORECAST_DAYS): string[] {
+  /** Local wall times matching Open-Meteo timezone=Australia/Sydney format. */
+  const out: string[] = [];
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  const hours = Math.max(24, forecastDays * 24);
+  for (let i = 0; i < hours; i++) {
+    const d = new Date(start.getTime() + i * 3_600_000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    out.push(
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`,
+    );
+  }
+  return out;
+}
+
 async function fetchHourlyTimes(
   field: string,
   model: MapModelId,
@@ -687,14 +703,33 @@ async function fetchHourlyTimes(
     forecast_days: String(FORECAST_DAYS),
     timezone: "Australia/Sydney",
   });
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
-  const json = (await res.json()) as { hourly?: { time?: string[] } };
-  return (json.hourly?.time ?? []).map(String);
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(Math.min(4000, 800 * 2 ** attempt));
+    try {
+      const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (res.status === 429) {
+        lastErr = new Error("Open-Meteo 429");
+        continue;
+      }
+      if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+      const json = (await res.json()) as { hourly?: { time?: string[] } };
+      const times = (json.hourly?.time ?? []).map(String);
+      if (times.length) return times;
+      lastErr = new Error("Open-Meteo returned no times");
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+  // Keep the Models scrubber alive even when the free API is throttling.
+  if (lastErr) {
+    console.warn("[ecmwf-map] times fallback:", lastErr.message);
+  }
+  return synthesizeHourlyTimes();
 }
 
 export async function getEcmwfMapCatalog(
@@ -712,12 +747,8 @@ export async function getEcmwfMapCatalog(
     times = cached.times;
     issuedAt = new Date(cached.fetchedAt).toISOString();
   } else {
-    try {
-      times = await fetchHourlyTimes(product.field, model);
-      issuedAt = new Date().toISOString();
-    } catch {
-      // UI can still show the picker; frame endpoint fills times later.
-    }
+    times = await fetchHourlyTimes(product.field, model);
+    issuedAt = new Date().toISOString();
   }
 
   const groups = (

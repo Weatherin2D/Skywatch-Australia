@@ -19,8 +19,10 @@ import {
 } from "@/lib/weather/uwyo-sounding";
 import {
   attachSkywatchAiEngine,
+  fetchSkywatchAiPredictPoint,
   parseEngineMode,
   skywatchAiBaseUrl,
+  soundingPayloadFromAiPredict,
 } from "@/lib/weather/skywatch-ai-client";
 import type { SoundingBoxPayload } from "@/lib/weather/sounding-types";
 
@@ -144,6 +146,34 @@ export async function GET(req: NextRequest) {
           },
         });
       }
+      // AI V1: prefer sidecar point predict (one lean teacher fetch) so Skew-T
+      // still works when Open-Meteo's multi-level forecast API is 429'd.
+      if (engineMode === "predict" && skywatchAiBaseUrl()) {
+        const teacherModel =
+          model === "ifs" ? "ifs" : model === "access" ? "access" : "pulse";
+        const pred = await fetchSkywatchAiPredictPoint({
+          lat,
+          lon,
+          time,
+          hemisphere: "S",
+          teacherModel,
+        });
+        if (pred?.levels?.length) {
+          const aiPayload = soundingPayloadFromAiPredict(pred, {
+            lat,
+            lon,
+            model,
+            placeLabel: place,
+          });
+          return NextResponse.json(aiPayload, {
+            headers: {
+              "Cache-Control":
+                "public, max-age=120, stale-while-revalidate=600",
+            },
+          });
+        }
+      }
+
       const payload = await fetchModelSounding({
         latitude: lat,
         longitude: lon,
@@ -152,6 +182,40 @@ export async function GET(req: NextRequest) {
         time,
       });
       const enriched = await attachSkywatchAiEngine(payload, engineMode);
+
+      // Last resort: OM sounding empty + AI V1 still wanted.
+      if (
+        enriched.status !== "ok" &&
+        engineMode === "predict" &&
+        skywatchAiBaseUrl()
+      ) {
+        const teacherModel =
+          model === "ifs" ? "ifs" : model === "access" ? "access" : "pulse";
+        const pred = await fetchSkywatchAiPredictPoint({
+          lat,
+          lon,
+          time,
+          hemisphere: "S",
+          teacherModel,
+        });
+        if (pred?.levels?.length) {
+          return NextResponse.json(
+            soundingPayloadFromAiPredict(pred, {
+              lat,
+              lon,
+              model,
+              placeLabel: place,
+            }),
+            {
+              headers: {
+                "Cache-Control":
+                  "public, max-age=120, stale-while-revalidate=600",
+              },
+            },
+          );
+        }
+      }
+
       return NextResponse.json(enriched, {
         headers: {
           "Cache-Control":
