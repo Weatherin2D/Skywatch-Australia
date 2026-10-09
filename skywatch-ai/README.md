@@ -32,7 +32,7 @@ docker compose up -d --build skywatch-ai
 
 Next.js: set `SKYWATCH_AI_URL` (+ optional `SKYWATCH_AI_API_KEY`). Use **Engine** / **AI V1** / **Legacy** on `/soundings`, `/models` (mini Skew-T), and `/risk` (inspect overlay).
 
-**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt` (`etl+synth-136r-1500s`). Not an official forecast — see `metrics/holdout-metrics.json`.
+**AI V1 predict** uses an Open-Meteo teacher prior + radiosonde observation tokens (falls back to self-prior if the teacher fetch fails). Promoted weights: `checkpoints/v1-etl.pt` (`etl+synth-334r-1500s`, 90d AU inventory). Not an official forecast — see `metrics/holdout-metrics.json`.
 
 ### Public sidecar deploy
 
@@ -64,8 +64,8 @@ Memory ≥2 GB recommended (CPU torch). `/health` stays public; other routes req
 | Baselines + evaluation through engine | 3, 5 | **Tested** |
 | Loss math + schedule | 6 | **Tested** |
 | Real-data ETL (Open-Meteo hist-forecast teacher + UWYO BUFR inventory → contract samples) | 1 | **Done** — `scripts/batch_etl.py`, event_weight for CAPE/inversions |
-| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **Done** — 136 AU samples + 1500 synth; train-val T/wind/cape green |
-| Holdout eval on real AU sondes | 8b | **Done** — `metrics/holdout-metrics.json` (T ok; wind/cape/inversion still open on real holdout) |
+| Train/eval on ETL+synth, promote `v1-etl.pt` | 8 | **Done** — 334 AU samples (90d) + 1500 synth; train-val T/wind/cape green |
+| Holdout eval on real AU sondes | 8b | **Done** — `metrics/holdout-metrics.json` (T ok; wind/cape/inversion still open; improved vs 136r) |
 | Skill claims / calibration | 9 | **Not done** — high-CAPE MAE nan (no holdout CAPE>2000); inversion 0.29 |
 | BARRA2 / ERA5 archive ETL | 1 | **Not done** — free ERA5 archive returns null pressure levels; hist-forecast IFS used |
 | Public sidecar | site | **Ready** — `railway.toml` / `fly.toml` + API key; smoke via Cloudflare tunnel |
