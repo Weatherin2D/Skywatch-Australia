@@ -108,7 +108,8 @@ async function fetchUwyoCsv(
         "User-Agent": "SkyWatchAustralia/1.0 (+soundings)",
       },
       cache: "no-store",
-      signal: AbortSignal.timeout(35_000),
+      // UWYO often hangs on connect — fail fast so Observed doesn't spin forever.
+      signal: AbortSignal.timeout(12_000),
     });
     const text = await res.text();
     if (!res.ok) {
@@ -123,9 +124,13 @@ async function fetchUwyoCsv(
     }
     return { ok: true, csv };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const timedOut = /aborted|timeout|TimeoutError/i.test(msg);
     return {
       ok: false,
-      reason: err instanceof Error ? err.message : String(err),
+      reason: timedOut
+        ? "University of Wyoming radiosonde archive timed out — try Model mode + AI V1"
+        : msg,
     };
   }
 }
@@ -242,7 +247,7 @@ async function fetchUwyoInventoryYear(
       "User-Agent": "SkyWatchAustralia/1.0 (+soundings-archive)",
     },
     cache: "no-store",
-    signal: AbortSignal.timeout(40_000),
+    signal: AbortSignal.timeout(12_000),
   });
   const html = await res.text();
   if (!res.ok) {

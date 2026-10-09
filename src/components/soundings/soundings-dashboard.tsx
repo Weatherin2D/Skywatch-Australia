@@ -68,7 +68,9 @@ function formatHourChip(hour: number): string {
 
 export function SoundingsDashboard() {
   const { place: saved, saveFromBomLocation } = useSavedPlace();
-  const [mode, setMode] = useState<SoundingMode>("observed");
+  // Default to Model — Observed depends on UWYO which often times out;
+  // Engine / AI V1 work on Open-Meteo model profiles without UWYO.
+  const [mode, setMode] = useState<SoundingMode>("model");
   const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
   const [station, setStation] = useState("94610"); // Perth — often available
   const [model, setModel] = useState<SoundingModelId>("pulse");
@@ -155,9 +157,14 @@ export function SoundingsDashboard() {
     const ac = new AbortController();
     setArchiveLoading(true);
     const years = archiveYears.join(",");
+    const timeout = AbortSignal.timeout(25_000);
+    const combined =
+      typeof AbortSignal.any === "function"
+        ? AbortSignal.any([ac.signal, timeout])
+        : ac.signal;
     void fetch(
       `/api/weather/sounding?archive=1&station=${encodeURIComponent(station)}&year=${years}`,
-      { cache: "no-store", signal: ac.signal },
+      { cache: "no-store", signal: combined },
     )
       .then(async (res) => {
         if (!res.ok) throw new Error(`Archive unavailable (${res.status})`);
@@ -233,9 +240,14 @@ export function SoundingsDashboard() {
           if (modelHour) params.set("time", modelHour);
           if (mode === "box") params.set("spacing", String(boxSpacing));
         }
+        const timeout = AbortSignal.timeout(55_000);
+        const combined =
+          typeof AbortSignal.any === "function" && signal
+            ? AbortSignal.any([signal, timeout])
+            : (signal ?? timeout);
         const res = await fetch(`/api/weather/sounding?${params}`, {
           cache: "no-store",
-          signal,
+          signal: combined,
         });
         if (!res.ok) throw new Error(`Sounding unavailable (${res.status})`);
         const json = (await res.json()) as SoundingPayload | SoundingBoxPayload;
@@ -266,7 +278,15 @@ export function SoundingsDashboard() {
         setData(null);
         setBoxData(null);
         setLoading(false);
-        setError(err instanceof Error ? err.message : "Unavailable");
+        const msg = err instanceof Error ? err.message : "Unavailable";
+        const timedOut = /aborted|timeout|TimeoutError/i.test(msg);
+        setError(
+          timedOut
+            ? mode === "observed"
+              ? "Observed radiosonde timed out (UWYO). Switch to Model and use Engine or AI V1."
+              : "Sounding request timed out — try again or switch engine"
+            : msg,
+        );
       }
     },
     [mode, engineMode, station, place, model, modelHour, observedTime, boxSpacing],
