@@ -6,6 +6,7 @@ import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteSidebar } from "@/components/site/site-sidebar";
 import { WarningsBar } from "@/components/site/warnings-bar";
+import { AiLiveBanner } from "@/components/weather/ai-live-banner";
 import { MOBILE_NAV } from "@/components/site/nav-config";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ export function SiteShell({
   return (
     <div className="flex min-h-screen flex-col bg-[var(--page)]">
       <SiteHeader />
+      <AiLiveBanner />
       <WarningsBar />
       <div className="mx-auto flex w-full max-w-[1680px] flex-1">
         <SiteSidebar />

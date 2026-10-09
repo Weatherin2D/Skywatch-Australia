@@ -23,14 +23,18 @@ import { SiteShell } from "@/components/site/site-shell";
 import { EngineModeToggle } from "@/components/weather/engine-mode-toggle";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import type { CrossSectionPayload } from "@/lib/weather/cross-section";
-import type { EngineUiMode } from "@/lib/weather/engine-mode";
+import {
+  parseEngineUiMode,
+  type EngineUiMode,
+} from "@/lib/weather/engine-mode";
 import { replaceUrlIfOnPath } from "@/lib/nav/safe-history";
 import { absoluteAppUrl, shareContent } from "@/lib/share";
 import type { SoundingPayload } from "@/lib/weather/sounding-types";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_PRODUCT_ID = "temperature_2m";
-const DEFAULT_MODEL_ID = "ecmwf";
+/** ICON is the most reliable Open-Meteo national grid for AU demos. */
+const DEFAULT_MODEL_ID = "icon";
 const MAP_BOUNDS: [[number, number], [number, number]] = [
   [-44.0, 112.5],
   [-9.5, 154.5],
@@ -157,6 +161,7 @@ function readModelsQuery(): {
   lon: number | null;
   skewt: boolean;
   transect: boolean;
+  engine: EngineUiMode;
 } {
   if (typeof window === "undefined") {
     return {
@@ -164,10 +169,11 @@ function readModelsQuery(): {
       model: DEFAULT_MODEL_ID,
       diff: null,
       time: null,
-      lat: null,
-      lon: null,
-      skewt: false,
+      lat: -31.95,
+      lon: 115.86,
+      skewt: true,
       transect: false,
+      engine: "predict",
     };
   }
   const sp = new URLSearchParams(window.location.search);
@@ -181,15 +187,18 @@ function readModelsQuery(): {
     diffRaw === "icon" || diffRaw === "gfs" || diffRaw === "ecmwf"
       ? diffRaw
       : null;
+  const hasSkewtParam = sp.has("skewt");
   return {
     product: sp.get("product") || DEFAULT_PRODUCT_ID,
     model,
     diff: diff && diff !== model ? diff : null,
     time: sp.get("time"),
-    lat: sp.get("lat") != null ? Number(sp.get("lat")) : null,
-    lon: sp.get("lon") != null ? Number(sp.get("lon")) : null,
-    skewt: sp.get("skewt") === "1",
+    lat: sp.get("lat") != null ? Number(sp.get("lat")) : -31.95,
+    lon: sp.get("lon") != null ? Number(sp.get("lon")) : 115.86,
+    // Default Skew-T on so AI V1 mini sounding is visible without hunting.
+    skewt: hasSkewtParam ? sp.get("skewt") === "1" : true,
     transect: sp.get("transect") === "1",
+    engine: parseEngineUiMode(sp.get("engine") || "predict"),
   };
 }
 
@@ -241,7 +250,7 @@ export function EcmwfModelsDashboard() {
     "idle",
   );
   const [showSkewt, setShowSkewt] = useState(initial.skewt);
-  const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
+  const [engineMode, setEngineMode] = useState<EngineUiMode>(initial.engine);
   const [transectMode, setTransectMode] = useState(initial.transect);
   const [sounding, setSounding] = useState<SoundingPayload | null>(null);
   const [soundingLoading, setSoundingLoading] = useState(false);
@@ -315,6 +324,7 @@ export function EcmwfModelsDashboard() {
     }
     if (showSkewt) params.set("skewt", "1");
     if (transectMode) params.set("transect", "1");
+    if (engineMode !== "auto") params.set("engine", engineMode);
     const qs = params.toString();
     const next = qs ? `/models?${qs}` : "/models";
     replaceUrlIfOnPath("/models", next);
@@ -328,6 +338,7 @@ export function EcmwfModelsDashboard() {
     probe,
     showSkewt,
     transectMode,
+    engineMode,
   ]);
 
   const imageUrl = useMemo(() => {

@@ -12,7 +12,10 @@ import { SiteShell } from "@/components/site/site-shell";
 import { EngineModeToggle } from "@/components/weather/engine-mode-toggle";
 import { useSavedPlace } from "@/hooks/use-saved-place";
 import type { BomLocation } from "@/lib/weather/location-forecast";
-import type { EngineUiMode } from "@/lib/weather/engine-mode";
+import {
+  parseEngineUiMode,
+  type EngineUiMode,
+} from "@/lib/weather/engine-mode";
 import { SOUNDING_STATIONS } from "@/lib/weather/sounding-stations";
 import type {
   SoundingBoxPayload,
@@ -66,18 +69,57 @@ function formatHourChip(hour: number): string {
   return `${String(hour).padStart(2, "0")}Z`;
 }
 
-export function SoundingsDashboard() {
-  const { place: saved, saveFromBomLocation } = useSavedPlace();
-  // Default to Model — Observed depends on UWYO which often times out;
-  // Engine / AI V1 work on Open-Meteo model profiles without UWYO.
-  const [mode, setMode] = useState<SoundingMode>("model");
-  const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
-  const [station, setStation] = useState("94610"); // Perth — often available
-  const [model, setModel] = useState<SoundingModelId>("pulse");
-  const [place, setPlace] = useState<Place>({
+function readSoundingsQuery(): {
+  mode: SoundingMode;
+  engine: EngineUiMode;
+  model: SoundingModelId;
+  lat: number;
+  lon: number;
+  place: string;
+} {
+  const fallback = {
+    mode: "model" as SoundingMode,
+    engine: "predict" as EngineUiMode,
+    model: "pulse" as SoundingModelId,
     lat: -31.95,
     lon: 115.86,
-    label: "Perth, WA",
+    place: "Perth, WA",
+  };
+  if (typeof window === "undefined") return fallback;
+  const sp = new URLSearchParams(window.location.search);
+  const modeRaw = (sp.get("mode") || "model").toLowerCase();
+  const mode: SoundingMode =
+    modeRaw === "observed" || modeRaw === "box" || modeRaw === "model"
+      ? modeRaw
+      : "model";
+  const modelRaw = (sp.get("model") || "pulse").toLowerCase();
+  const model: SoundingModelId = MODELS.some((m) => m.id === modelRaw)
+    ? (modelRaw as SoundingModelId)
+    : "pulse";
+  const lat = Number(sp.get("lat"));
+  const lon = Number(sp.get("lon"));
+  return {
+    mode,
+    engine: parseEngineUiMode(sp.get("engine") || "predict"),
+    model,
+    lat: Number.isFinite(lat) ? lat : fallback.lat,
+    lon: Number.isFinite(lon) ? lon : fallback.lon,
+    place: sp.get("place") || fallback.place,
+  };
+}
+
+export function SoundingsDashboard() {
+  const { place: saved, saveFromBomLocation } = useSavedPlace();
+  const initial = useMemo(() => readSoundingsQuery(), []);
+  // Default Model + AI V1 — Observed depends on UWYO which often times out.
+  const [mode, setMode] = useState<SoundingMode>(initial.mode);
+  const [engineMode, setEngineMode] = useState<EngineUiMode>(initial.engine);
+  const [station, setStation] = useState("94610"); // Perth — often available
+  const [model, setModel] = useState<SoundingModelId>(initial.model);
+  const [place, setPlace] = useState<Place>({
+    lat: initial.lat,
+    lon: initial.lon,
+    label: initial.place,
   });
   const [parcel, setParcel] = useState<"SFC" | "ML" | "MU">("SFC");
   const [data, setData] = useState<SoundingPayload | null>(null);
@@ -95,6 +137,31 @@ export function SoundingsDashboard() {
     () => new Date().getUTCFullYear(),
   );
   const [archiveDate, setArchiveDate] = useState<string>("");
+
+  // Keep shareable URL in sync with Model / AI V1 controls.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.pathname !== "/soundings") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("mode", mode);
+    url.searchParams.set("engine", engineMode);
+    if (mode === "observed") {
+      url.searchParams.delete("model");
+      url.searchParams.delete("lat");
+      url.searchParams.delete("lon");
+      url.searchParams.delete("place");
+    } else {
+      url.searchParams.set("model", model);
+      url.searchParams.set("lat", place.lat.toFixed(3));
+      url.searchParams.set("lon", place.lon.toFixed(3));
+      url.searchParams.set("place", place.label);
+    }
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}`,
+    );
+  }, [mode, engineMode, model, place]);
 
   useEffect(() => {
     if (!saved) return;

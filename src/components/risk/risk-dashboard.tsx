@@ -10,7 +10,10 @@ import {
   type RiskInspectPoint,
 } from "@/components/risk/risk-inspect-panel";
 import { EngineModeToggle } from "@/components/weather/engine-mode-toggle";
-import type { EngineUiMode } from "@/lib/weather/engine-mode";
+import {
+  parseEngineUiMode,
+  type EngineUiMode,
+} from "@/lib/weather/engine-mode";
 import {
   riskAiThermoFromSounding,
   riskSourceToSoundingModel,
@@ -198,14 +201,15 @@ function ModelProductBlurbList({
 }
 
 function readSourceFromUrl(): RiskSource {
-  if (typeof window === "undefined") return "bom";
+  if (typeof window === "undefined") return "pulse";
   const sp = new URLSearchParams(window.location.search);
-  const s = (sp.get("source") || "").toLowerCase();
+  const s = (sp.get("source") || "pulse").toLowerCase();
+  if (s === "bom" || s === "meteye") return "bom";
   if (s === "pulse" || s === "auto") return "pulse";
   if (s === "access") return "access";
   if (s === "ifs" || s === "ecmwf" || s === "ecmwf_ifs") return "ifs";
   if (s === "ukmo" || s === "uk") return "ukmo";
-  return "bom";
+  return "pulse";
 }
 
 function readProductFromUrl(): ModelRiskProduct {
@@ -214,7 +218,11 @@ function readProductFromUrl(): ModelRiskProduct {
   return resolveModelRiskProduct(sp.get("product"));
 }
 
-function syncUrl(source: RiskSource, product: ModelRiskProduct) {
+function syncUrl(
+  source: RiskSource,
+  product: ModelRiskProduct,
+  engine: EngineUiMode,
+) {
   if (typeof window === "undefined") return;
   // Only touch the query while still on /risk — never rewrite another route.
   if (window.location.pathname !== "/risk") return;
@@ -222,12 +230,20 @@ function syncUrl(source: RiskSource, product: ModelRiskProduct) {
   if (source === "bom") {
     url.searchParams.delete("source");
     url.searchParams.delete("product");
+    url.searchParams.delete("engine");
   } else {
     url.searchParams.set("source", source);
     if (product === "risk") url.searchParams.delete("product");
     else url.searchParams.set("product", product);
+    url.searchParams.set("engine", engine);
   }
   window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+}
+
+function readEngineFromUrl(): EngineUiMode {
+  if (typeof window === "undefined") return "predict";
+  const sp = new URLSearchParams(window.location.search);
+  return parseEngineUiMode(sp.get("engine") || "predict");
 }
 
 function isModelSource(source: RiskSource): boolean {
@@ -320,7 +336,8 @@ function emptyDayMessage(product: ModelRiskProduct): string {
 }
 
 export function RiskDashboard() {
-  const [source, setSource] = useState<RiskSource>("bom");
+  // Default Pulse so AI V1 thermo overlay is available without an extra click.
+  const [source, setSource] = useState<RiskSource>("pulse");
   const [product, setProduct] = useState<ModelRiskProduct>("risk");
   const [data, setData] = useState<PublicForecastResponse | null>(null);
   const [catalog, setCatalog] = useState<RiskCatalog | null>(null);
@@ -339,11 +356,12 @@ export function RiskDashboard() {
     RiskInspectPoint | RiskInspectCategory | null
   >(null);
   const [activeLegendId, setActiveLegendId] = useState<string | null>(null);
-  const [engineMode, setEngineMode] = useState<EngineUiMode>("auto");
+  const [engineMode, setEngineMode] = useState<EngineUiMode>("predict");
 
   useEffect(() => {
     setSource(readSourceFromUrl());
     setProduct(readProductFromUrl());
+    setEngineMode(readEngineFromUrl());
   }, []);
 
   useEffect(() => {
@@ -506,14 +524,19 @@ export function RiskDashboard() {
     const nextProduct = next === "bom" ? "risk" : product;
     setSource(next);
     if (next === "bom") setProduct("risk");
-    syncUrl(next, nextProduct);
+    syncUrl(next, nextProduct, engineMode);
     setSelectedDay(null);
   };
 
   const setProductAndUrl = (next: ModelRiskProduct) => {
     setProduct(next);
-    syncUrl(source, next);
+    syncUrl(source, next, engineMode);
     setSelectedDay(null);
+  };
+
+  const setEngineAndUrl = (next: EngineUiMode) => {
+    setEngineMode(next);
+    syncUrl(source, product, next);
   };
 
   const clearInspect = useCallback(() => {
@@ -649,7 +672,7 @@ export function RiskDashboard() {
             <EngineModeToggle
               size="sm"
               value={engineMode}
-              onChange={setEngineMode}
+              onChange={setEngineAndUrl}
               aria-label="Thermo / AI engine for map inspect"
             />
           ) : null}
