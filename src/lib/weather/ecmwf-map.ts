@@ -407,6 +407,10 @@ export type EcmwfFrameResult = {
   units: string;
   min: number | null;
   max: number | null;
+  /** National sample spacing used for this product/model (°). */
+  gridStep: number;
+  /** Sample sites in the product cache. */
+  gridPoints: number;
 };
 
 const cache = new Map<string, ProductCache>();
@@ -1406,6 +1410,8 @@ export async function renderEcmwfFrame(opts: {
       units: isDiff ? `Δ ${product.units}` : product.units,
       min: null,
       max: null,
+      gridStep: gridStepFor(product, model),
+      gridPoints: data.points.length,
     };
     if (cacheKey) rememberPng(cacheKey, result);
     return result;
@@ -1556,6 +1562,8 @@ export async function renderEcmwfFrame(opts: {
     units: isDiff ? `Δ ${product.units}` : product.units,
     min: vmin,
     max: vmax,
+    gridStep: gridStepFor(product, model),
+    gridPoints: data.points.length,
   };
   if (cacheKey) rememberPng(cacheKey, result);
 

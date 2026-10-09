@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
         "X-Ecmwf-Empty": result.empty ? "1" : "0",
         "X-Ecmwf-Model": headerSafe(model ?? "ecmwf"),
         "X-Ecmwf-Diff": headerSafe(diffModel ?? ""),
+        "X-Ecmwf-Grid-Step": String(result.gridStep),
+        "X-Ecmwf-Grid-Points": String(result.gridPoints),
       },
     });
   } catch (err) {
