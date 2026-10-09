@@ -404,7 +404,10 @@ export async function fetchObservedSounding(options: {
     : recentSoundingSlots();
 
   let lastReason = "No recent sounding found";
-  for (const slot of slots.slice(0, 10)) {
+  const isHardTimeout = (reason: string) =>
+    /timed out|TimeoutError|aborted due to timeout/i.test(reason);
+
+  for (const slot of slots.slice(0, options.time ? 1 : 4)) {
     const tried = await tryObservedSlot(
       options.wmo,
       name,
@@ -414,19 +417,21 @@ export async function fetchObservedSounding(options: {
     );
     if (tried.ok) return tried.payload;
     lastReason = tried.reason;
+    // UWYO connect hangs = every retry will hang. Bail immediately.
+    if (isHardTimeout(tried.reason)) break;
     await sleep(120);
   }
 
   // Fall back to latest inventory launch when fixed 00/12Z probes miss
   // (common for some AU sites whose BUFR times are 11Z/23Z).
-  if (!options.time) {
+  if (!options.time && !isHardTimeout(lastReason)) {
     try {
       const year = new Date().getUTCFullYear();
       const archive = await fetchObservedSoundingArchive({
         wmo: options.wmo,
-        years: [year, year - 1],
+        years: [year],
       });
-      for (const inv of archive.slots.slice(0, 8)) {
+      for (const inv of archive.slots.slice(0, 4)) {
         const tried = await tryObservedSlot(
           options.wmo,
           name,
@@ -436,6 +441,7 @@ export async function fetchObservedSounding(options: {
         );
         if (tried.ok) return tried.payload;
         lastReason = tried.reason;
+        if (isHardTimeout(tried.reason)) break;
         await sleep(100);
       }
     } catch (err) {
