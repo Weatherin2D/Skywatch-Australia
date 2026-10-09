@@ -1241,18 +1241,32 @@ async function fetchPointSeries(
     timezone: "Australia/Sydney",
     wind_speed_unit: "kmh",
   });
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
-  const json = (await res.json()) as {
-    hourly?: Record<string, unknown[]>;
-  };
-  const times = ((json.hourly?.time ?? []) as unknown[]).map(String);
-  const series = ((json.hourly?.[field] ?? []) as unknown[]).map(num);
-  return { times, series };
+  const url = `https://api.open-meteo.com/v1/forecast?${params}`;
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await sleep(Math.min(5000, 700 * 2 ** attempt));
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (res.status === 429) {
+        lastErr = new Error("Open-Meteo 429");
+        continue;
+      }
+      if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+      const json = (await res.json()) as {
+        hourly?: Record<string, unknown[]>;
+      };
+      const times = ((json.hourly?.time ?? []) as unknown[]).map(String);
+      const series = ((json.hourly?.[field] ?? []) as unknown[]).map(num);
+      return { times, series };
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+  throw lastErr ?? new Error("Open-Meteo point failed");
 }
 
 /** Exact Open-Meteo point sample for map clicks (fast, independent of grid cache). */

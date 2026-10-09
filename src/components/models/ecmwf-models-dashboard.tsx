@@ -491,7 +491,10 @@ export function EcmwfModelsDashboard() {
             cache: "no-store",
             signal: ac.signal,
           });
-          if (!res.ok) throw new Error(`Sounding unavailable (${res.status})`);
+          if (!res.ok) {
+            lastErr = `Sounding unavailable (${res.status})`;
+            continue;
+          }
           const json = (await res.json()) as SoundingPayload;
           if (ac.signal.aborted) return;
           if (json.status === "ok" && json.levels.length) {
