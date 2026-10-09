@@ -101,16 +101,26 @@ async function fetchUwyoCsv(
     src: "BUFR",
   });
   const url = `https://weather.uwyo.edu/wsgi/sounding?${params}`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 8_000);
   try {
-    const res = await fetch(url, {
-      headers: {
-        Accept: "text/html,text/plain,*/*",
-        "User-Agent": "SkyWatchAustralia/1.0 (+soundings)",
-      },
-      cache: "no-store",
-      // UWYO often hangs on connect — fail fast so Observed doesn't spin forever.
-      signal: AbortSignal.timeout(12_000),
-    });
+    // Promise.race: undici sometimes ignores AbortSignal during TCP connect.
+    const res = await Promise.race([
+      fetch(url, {
+        headers: {
+          Accept: "text/html,text/plain,*/*",
+          "User-Agent": "SkyWatchAustralia/1.0 (+soundings)",
+        },
+        cache: "no-store",
+        signal: ac.signal,
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("UWYO connect timed out")),
+          8_000,
+        );
+      }),
+    ]);
     const text = await res.text();
     if (!res.ok) {
       return {
@@ -125,13 +135,15 @@ async function fetchUwyoCsv(
     return { ok: true, csv };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const timedOut = /aborted|timeout|TimeoutError/i.test(msg);
+    const timedOut = /aborted|timeout|TimeoutError|timed out/i.test(msg);
     return {
       ok: false,
       reason: timedOut
         ? "University of Wyoming radiosonde archive timed out — try Model mode + AI V1"
         : msg,
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
