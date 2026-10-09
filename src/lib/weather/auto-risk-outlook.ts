@@ -68,16 +68,16 @@ const BATCH = HOBBY ? 50 : 40;
 /** Keep modest concurrency to limit Open-Meteo 429s from Vercel egress. */
 const BATCH_CONCURRENCY = HOBBY ? 3 : 6;
 /** Abort remaining waves so the handler can return before the platform 504s. */
-const FETCH_BUDGET_MS = HOBBY ? 45_000 : 120_000;
+const FETCH_BUDGET_MS = HOBBY ? 45_000 : 180_000;
 /** Below this fraction of SAMPLE_SITES, don't trust a clear/no-risk outlook. */
 const MIN_SITE_COVERAGE = 0.3;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
 /**
  * National fill spacing. Hobby ~1.2° (~130 km) for ~500 sites / 60s budget.
- * Full compute ~0.55° (~60 km) for ~2k sites — much less blocky risk polygons.
+ * Full compute ~0.4° (~45 km) for ~4.5k sites — far less blocky risk polygons.
  */
-const GRID_STEP_DEG = HOBBY ? 1.2 : 0.55;
-const MIN_FILL_KM = HOBBY ? 100 : 45;
+const GRID_STEP_DEG = HOBBY ? 1.2 : 0.4;
+const MIN_FILL_KM = HOBBY ? 100 : 32;
 /** Drop ocean/fill points farther than this from any known AU site. */
 const NEAR_LAND_KM = 220;
 
@@ -1821,14 +1821,14 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  // v10: denser national fill on full-compute (~0.55°) for less blocky maps.
-  return `model-risk/v10/${kind}.json`;
+  // v11: denser national fill on full-compute (~0.4°) for smoother maps.
+  return `model-risk/v11/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v10",
+    "skywatch-model-risk-v11",
     `${kind}.json`,
   );
 }

@@ -23,8 +23,8 @@ const AU = {
   maxLon: BOM_RISK_IMAGE_BOUNDS[1][1],
 };
 
-const WORK_WIDTH = 720;
-const OUT_WIDTH = 2200;
+const WORK_WIDTH = 960;
+const OUT_WIDTH = 2400;
 const OUTLINE_PX = 2;
 
 /** Max triangle edge (km). Low ranks stretch farther so tropical floors merge. */
