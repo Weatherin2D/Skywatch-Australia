@@ -4,7 +4,7 @@ import { getEcmwfMapCatalog } from "@/lib/weather/ecmwf-map";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /** GET /api/weather/ecmwf-map?product=temperature_2m&model=ecmwf */
 export async function GET(req: NextRequest) {

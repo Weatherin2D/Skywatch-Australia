@@ -25,17 +25,17 @@ const HOBBY = useHobbyBudget();
  * National sample spacing (°). Precip / convection use HIRES.
  * Self-hosted full compute densifies all models (incl. ICON/GFS); Hobby stays lighter.
  */
-const GRID_STEP = HOBBY ? 1.5 : 0.8;
-const HIRES_STEP = HOBBY ? 1.0 : 0.6;
-const COARSE_STEP = HOBBY ? 2.2 : 1.4;
-const BATCH = HOBBY ? 60 : 80;
-const BATCH_CONCURRENCY = HOBBY ? 6 : 8;
+const GRID_STEP = HOBBY ? 1.5 : 0.55;
+const HIRES_STEP = HOBBY ? 1.0 : 0.4;
+const COARSE_STEP = HOBBY ? 2.2 : 1.2;
+const BATCH = HOBBY ? 60 : 90;
+const BATCH_CONCURRENCY = HOBBY ? 6 : 6;
 const FORECAST_DAYS = 3;
 const CACHE_TTL_MS = 18 * 60_000;
-const OUT_WIDTH = HOBBY ? 1280 : 1600;
+const OUT_WIDTH = HOBBY ? 1280 : 1920;
 const PNG_CACHE_MAX = 96;
 /** Cache schema bump when grid/render behaviour changes. */
-const CACHE_VER = "r4";
+const CACHE_VER = "r5";
 
 export type MapModelId = "ecmwf" | "icon" | "gfs";
 
@@ -540,7 +540,13 @@ async function loadProductGrid(
     });
   }
 
-  const points: GridPoint[] = [];
+  type RawSite = {
+    lat: number;
+    lon: number;
+    series: unknown[];
+    wxSeries: unknown[];
+  };
+  const rawSites: RawSite[] = [];
   let times: string[] = [];
 
   for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
@@ -566,31 +572,42 @@ async function loadProductGrid(
         if (!times.length && t.length) {
           times = t.map(String);
         }
-        const values: (number | null)[] = times.map((_, ti) => num(series[ti]));
-        const weatherCodes = product.thunderBolts
-          ? times.map((_, ti) =>
-              product.field === "weather_code"
-                ? num(series[ti])
-                : num(wxSeries[ti]),
-            )
-          : undefined;
-        points.push({
+        rawSites.push({
           lat: b.lats[j]!,
           lon: b.lons[j]!,
-          values,
-          weatherCodes,
+          series,
+          wxSeries,
         });
       }
     }
-    // Brief pause only when we still have many waves left (rate-limit cushion).
+    // Brief pause between waves so denser national grids don't trip 429s.
     if (i + BATCH_CONCURRENCY < batches.length && batches.length > 4) {
-      await sleep(35);
+      await sleep(HOBBY ? 45 : 70);
     }
   }
 
   if (!times.length) {
     throw new Error("ECMWF returned no hourly times");
   }
+
+  const points: GridPoint[] = rawSites.map((site) => {
+    const values: (number | null)[] = times.map((_, ti) =>
+      num(site.series[ti]),
+    );
+    const weatherCodes = product.thunderBolts
+      ? times.map((_, ti) =>
+          product.field === "weather_code"
+            ? num(site.series[ti])
+            : num(site.wxSeries[ti]),
+        )
+      : undefined;
+    return {
+      lat: site.lat,
+      lon: site.lon,
+      values,
+      weatherCodes,
+    };
+  });
 
   return {
     fetchedAt: Date.now(),
