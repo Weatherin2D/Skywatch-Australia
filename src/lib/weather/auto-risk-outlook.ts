@@ -50,6 +50,7 @@ import {
   aestPartsToUnix,
   unixToAestParts,
 } from "@/lib/weather/archive-time";
+import { useHobbyBudget } from "@/lib/runtime-budget";
 import { promises as fs } from "fs";
 import path from "path";
 import { get as blobGet, put as blobPut } from "@vercel/blob";
@@ -60,18 +61,23 @@ export { MODEL_RISK_PRODUCTS, PRODUCT_META, resolveModelRiskProduct };
 const CACHE_MS = 20 * 60_000;
 /** Empty/failed outlooks must not stick for the full cache window. */
 const EMPTY_CACHE_MS = 90_000;
+/** Hobby: coarse grid + tight budget. Local/full: denser mesh for smoother maps. */
+const HOBBY = useHobbyBudget();
 /** Open-Meteo multi-location batches — keep under Vercel 60s budget. */
-const BATCH = 50;
+const BATCH = HOBBY ? 50 : 40;
 /** Keep modest concurrency to limit Open-Meteo 429s from Vercel egress. */
-const BATCH_CONCURRENCY = 3;
+const BATCH_CONCURRENCY = HOBBY ? 3 : 6;
 /** Abort remaining waves so the handler can return before the platform 504s. */
-const FETCH_BUDGET_MS = 45_000;
+const FETCH_BUDGET_MS = HOBBY ? 45_000 : 120_000;
 /** Below this fraction of SAMPLE_SITES, don't trust a clear/no-risk outlook. */
 const MIN_SITE_COVERAGE = 0.3;
 const FORECAST_DAYS = AUTO_RISK_DAY_COUNT;
-/** National fill (~1.2° / ~130 km). Towns kept as anchors. Target ~450–550 sites. */
-const GRID_STEP_DEG = 1.2;
-const MIN_FILL_KM = 100;
+/**
+ * National fill spacing. Hobby ~1.2° (~130 km) for ~500 sites / 60s budget.
+ * Full compute ~0.55° (~60 km) for ~2k sites — much less blocky risk polygons.
+ */
+const GRID_STEP_DEG = HOBBY ? 1.2 : 0.55;
+const MIN_FILL_KM = HOBBY ? 100 : 45;
 /** Drop ocean/fill points farther than this from any known AU site. */
 const NEAR_LAND_KM = 220;
 
@@ -334,7 +340,7 @@ function approxKm(
 
 /**
  * National sample grid: all BoM towns plus a regular fill over land.
- * Kept near ~450–550 points so cold Open-Meteo fetches stay under Vercel’s 60s limit.
+ * Hobby ~500 pts for the 60s budget; full compute ~2k pts (~60 km) for smoother maps.
  */
 function buildSampleSites(): BomRiskSite[] {
   const sites: BomRiskSite[] = BOM_RISK_SITES.map((s) => ({ ...s }));
@@ -1815,13 +1821,14 @@ type SharedPayload = {
 };
 
 function sharedBlobPath(kind: ModelRiskKind) {
-  return `model-risk/v9/${kind}.json`;
+  // v10: denser national fill on full-compute (~0.55°) for less blocky maps.
+  return `model-risk/v10/${kind}.json`;
 }
 
 function sharedLocalPath(kind: ModelRiskKind) {
   return path.join(
     process.env.TMPDIR || "/tmp",
-    "skywatch-model-risk-v9",
+    "skywatch-model-risk-v10",
     `${kind}.json`,
   );
 }

@@ -941,8 +941,9 @@ export function buildRenderedRiskFields(
 
   const rankSoftWork = fieldToSoft(rankWork);
   const hatchSoftWork = fieldToSoft(hatchWork);
-  blurFloat(rankSoftWork, work.width, work.height, 3);
-  if (drawHatch) blurFloat(hatchSoftWork, work.width, work.height, 2);
+  // Slightly stronger work-space blur so denser sample meshes don't look speckled.
+  blurFloat(rankSoftWork, work.width, work.height, 4);
+  if (drawHatch) blurFloat(hatchSoftWork, work.width, work.height, 3);
 
   const rankSoft = upsampleBilinear(
     rankSoftWork,
