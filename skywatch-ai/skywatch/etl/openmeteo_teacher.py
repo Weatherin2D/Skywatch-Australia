@@ -19,8 +19,8 @@ from urllib.request import Request, urlopen
 
 import numpy as np
 
-# Match V1 IN_LEVELS so the teacher prior is not vertically undersampled.
-OM_LEVELS = [1000, 950, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+# Core levels Open-Meteo IFS/GFS reliably fill (extras often null → wasted URL weight).
+OM_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
 
 # Spatial context for the sounding net (centre cell = target column).
 # 0.25° ≈ IFS025 native; override with SKYWATCH_AI_SPATIAL_STEP.

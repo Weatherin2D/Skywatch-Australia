@@ -39,8 +39,26 @@ const MODEL_OPEN_METEO: Record<
 const BOX_ROW_NS = ["N", "C", "S"] as const;
 const BOX_COL_EW = ["W", "C", "E"] as const;
 
+/** Short TTL cache so UI retries / AI attach don't re-hit Open-Meteo 429s. */
+const SOUNDING_CACHE_TTL_MS = 12 * 60_000;
+const soundingCache = new Map<string, { at: number; payload: SoundingPayload }>();
+
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function soundingCacheKey(opts: {
+  latitude: number;
+  longitude: number;
+  model: SoundingModelId;
+  time?: string | null;
+}): string {
+  return [
+    opts.model,
+    opts.latitude.toFixed(3),
+    opts.longitude.toFixed(3),
+    opts.time ?? "now",
+  ].join("|");
 }
 
 function pickHourIndex(times: string[], preferIso?: string | null): number {
@@ -172,6 +190,15 @@ export async function fetchModelSounding(options: {
   time?: string | null;
 }): Promise<SoundingPayload> {
   const meta = MODEL_OPEN_METEO[options.model];
+  const cacheKey = soundingCacheKey(options);
+  const hit = soundingCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < SOUNDING_CACHE_TTL_MS && hit.payload.status === "ok") {
+    return {
+      ...hit.payload,
+      stationName: options.placeLabel ?? hit.payload.stationName,
+    };
+  }
+
   const params = new URLSearchParams({
     latitude: options.latitude.toFixed(4),
     longitude: options.longitude.toFixed(4),
@@ -183,16 +210,27 @@ export async function fetchModelSounding(options: {
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
 
   let lastErr = "Open-Meteo failed";
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, Math.min(8000, 900 * 2 ** attempt)));
+      }
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
         signal: AbortSignal.timeout(40_000),
       });
       if (res.status === 429) {
-        lastErr = "Open-Meteo rate limited";
-        await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+        lastErr = "Open-Meteo rate limited — retry in a moment";
+        const retryAfter = Number(res.headers.get("retry-after"));
+        await new Promise((r) =>
+          setTimeout(
+            r,
+            Number.isFinite(retryAfter)
+              ? retryAfter * 1000
+              : Math.min(10_000, 1200 * (attempt + 1)),
+          ),
+        );
         continue;
       }
       if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
@@ -220,7 +258,7 @@ export async function fetchModelSounding(options: {
         ? new Date(`${valid}Z`).toISOString()
         : new Date(valid).toISOString();
       const analysis = analyzeSounding(levels);
-      return {
+      const payload: SoundingPayload = {
         status: "ok",
         mode: "model",
         model: options.model,
@@ -234,9 +272,19 @@ export async function fetchModelSounding(options: {
         parcelTraces: analysis.parcelTraces,
         attribution: `SkyWatch ${meta.label} via Open-Meteo pressure levels. Guidance only.`,
       };
+      soundingCache.set(cacheKey, { at: Date.now(), payload });
+      return payload;
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
     }
+  }
+  // Stale cache beats an empty Skew-T while Open-Meteo is throttling.
+  if (hit?.payload.status === "ok") {
+    return {
+      ...hit.payload,
+      stationName: options.placeLabel ?? hit.payload.stationName,
+      attribution: `${hit.payload.attribution} · cached (rate limit)`,
+    };
   }
   return emptyModel(options, meta.label, lastErr);
 }
