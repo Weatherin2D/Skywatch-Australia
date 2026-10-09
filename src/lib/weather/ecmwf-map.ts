@@ -5,6 +5,8 @@
 
 import { PNG } from "pngjs";
 
+import { useHobbyBudget } from "@/lib/runtime-budget";
+
 export const ECMWF_MAP_BOUNDS: [[number, number], [number, number]] = [
   [-44.0, 112.5],
   [-9.5, 154.5],
@@ -17,18 +19,23 @@ const AU = {
   maxLon: ECMWF_MAP_BOUNDS[1][1],
 };
 
-/** National sample spacing (°). Precip uses HIRES for identifiable rain features. */
-const GRID_STEP = 1.5;
-const HIRES_STEP = 1.15;
-const COARSE_STEP = 2.5;
-const BATCH = 60;
-const BATCH_CONCURRENCY = 8;
+const HOBBY = useHobbyBudget();
+
+/**
+ * National sample spacing (°). Precip / convection use HIRES.
+ * Self-hosted full compute densifies all models (incl. ICON/GFS); Hobby stays lighter.
+ */
+const GRID_STEP = HOBBY ? 1.5 : 0.8;
+const HIRES_STEP = HOBBY ? 1.0 : 0.6;
+const COARSE_STEP = HOBBY ? 2.2 : 1.4;
+const BATCH = HOBBY ? 60 : 80;
+const BATCH_CONCURRENCY = HOBBY ? 6 : 8;
 const FORECAST_DAYS = 3;
 const CACHE_TTL_MS = 18 * 60_000;
-const OUT_WIDTH = 1280;
+const OUT_WIDTH = HOBBY ? 1280 : 1600;
 const PNG_CACHE_MAX = 96;
 /** Cache schema bump when grid/render behaviour changes. */
-const CACHE_VER = "r3";
+const CACHE_VER = "r4";
 
 export type MapModelId = "ecmwf" | "icon" | "gfs";
 
@@ -373,11 +380,10 @@ type ProductCache = {
   productId: string;
 };
 
-function gridStepFor(product: EcmwfProduct, model: MapModelId = "ecmwf"): number {
+function gridStepFor(product: EcmwfProduct, _model: MapModelId = "ecmwf"): number {
   if (product.coarse) return COARSE_STEP;
-  // Keep hires only for precip on ECMWF; ICON/GFS stay coarser for budget.
-  if (product.hires && model === "ecmwf") return HIRES_STEP;
-  if (model !== "ecmwf") return COARSE_STEP;
+  // Same national density for ECMWF / ICON / GFS — precip & convection get HIRES.
+  if (product.hires) return HIRES_STEP;
   return GRID_STEP;
 }
 
