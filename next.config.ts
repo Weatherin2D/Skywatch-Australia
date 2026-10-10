@@ -1,15 +1,11 @@
 import type { NextConfig } from "next";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  // Keep Turbopack rooted on this app when pages-site/ also has a lockfile.
+  // Pin workspace root so pages-site/package-lock.json does not steal Turbopack root.
   turbopack: {
-    root: projectRoot,
+    root: process.cwd(),
   },
-  // Standalone output is for Railway/Docker self-host. Vercel uses its own bundling.
+  // Standalone is for Docker/Railway. Vercel uses its own output pipeline.
   ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
   async redirects() {
     return [
