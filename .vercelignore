@@ -1,0 +1,10 @@
+pages-site
+skywatch-ai
+scripts/oci-*.sh
+scripts/gcp-*.sh
+scripts/home-start.*
+docker-compose*.yml
+Dockerfile
+Caddyfile*
+*.md
+!README.md
