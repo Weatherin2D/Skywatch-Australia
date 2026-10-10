@@ -12,7 +12,7 @@ export const ENGINE_UI_OPTIONS: {
     id: "predict",
     label: "AI V1",
     title:
-      "SkyWatch AI V1 — ETL-trained neural residual on Open-Meteo teacher (local sidecar)",
+      "CloudCountry AI V1 — ETL-trained neural residual on Open-Meteo teacher (local sidecar)",
   },
   { id: "legacy", label: "Legacy" },
 ];
@@ -27,7 +27,7 @@ export function parseEngineUiMode(raw: string | null | undefined): EngineUiMode 
 }
 
 export function engineModeLabel(mode: EngineUiMode): string {
-  if (mode === "predict") return "SkyWatch AI V1";
+  if (mode === "predict") return "CloudCountry AI V1";
   if (mode === "legacy") return "Legacy thermo";
-  return "SkyWatch AI engine";
+  return "CloudCountry AI engine";
 }

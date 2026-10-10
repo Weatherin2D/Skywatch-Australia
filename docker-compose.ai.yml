@@ -1,4 +1,4 @@
-# SkyWatch AI sidecar only — Oracle Cloud Always Free / any VPS
+# CloudCountry AI sidecar only — Oracle Cloud Always Free / any VPS
 # Use when Next stays on Vercel Hobby and only the torch sidecar needs a VM.
 #
 #   docker compose -f docker-compose.ai.yml up -d --build

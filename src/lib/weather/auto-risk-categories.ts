@@ -1,5 +1,5 @@
 /**
- * SkyWatch automated convective risk categories + legend copy.
+ * CloudCountry automated convective risk categories + legend copy.
  * L1/L2 are SPC-style hatch overlays, not standalone fills.
  */
 

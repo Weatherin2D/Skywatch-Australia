@@ -74,7 +74,7 @@ function App() {
 
       <header className="brand-bar">
         <div className="brand">
-          <p className="brand-mark">SkyWatch</p>
+          <p className="brand-mark">CloudCountry</p>
           <p className="brand-sub">Australia · Pages lite</p>
         </div>
         <p className="tagline">
@@ -231,7 +231,7 @@ function App() {
             ) : null}
 
             <p className="lite-disclaimer">
-              Lite build for GitHub Pages. Full SkyWatch (BoM forecasts, Himawari
+              Lite build for GitHub Pages. Full CloudCountry (BoM forecasts, Himawari
               products, cells, warnings) needs a Node host when budget allows.
             </p>
           </div>

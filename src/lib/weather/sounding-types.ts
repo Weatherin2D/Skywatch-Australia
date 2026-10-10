@@ -87,7 +87,7 @@ export type SoundingPayload = {
   engine?: "skywatch-ai" | "skywatch-ai-v1" | "legacy";
   engineHemisphere?: string;
   engineMessage?: string;
-  /** Raw SkyWatch AI diagnostic keys when engine === skywatch-ai. */
+  /** Raw CloudCountry AI diagnostic keys when engine === skywatch-ai. */
   aiDiagnostics?: Record<string, number>;
 };
 

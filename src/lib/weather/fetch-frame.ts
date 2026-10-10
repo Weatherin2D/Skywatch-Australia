@@ -295,7 +295,7 @@ async function fetchUpstreamOnce(
   try {
     const res = await fetch(upstream, {
       headers: {
-        "User-Agent": "SkyWatchAustralia/1.0",
+        "User-Agent": "CloudCountry/1.0",
         Accept: "image/png,image/*;q=0.9,*/*;q=0.1",
       },
       cache: "no-store",

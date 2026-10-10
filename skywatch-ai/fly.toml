@@ -1,4 +1,4 @@
-# SkyWatch AI sidecar — Fly.io
+# CloudCountry AI sidecar — Fly.io
 # Deploy from this directory: flyctl deploy --config fly.toml --app skywatch-ai-au
 #
 # Prefer Railway when authenticated (see railway.toml). Fly is the fallback host

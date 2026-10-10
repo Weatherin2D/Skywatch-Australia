@@ -28,7 +28,7 @@ export type RiskInspectPoint = {
   conditions: Array<{ label: string; value: string; hint?: string }>;
   hazards?: Array<{ id: string; label: string; pct: number }>;
   guidance: string;
-  /** Optional SkyWatch AI / thermo overlay from sounding sidecar. */
+  /** Optional CloudCountry AI / thermo overlay from sounding sidecar. */
   aiThermo?: RiskAiThermo | null;
 };
 

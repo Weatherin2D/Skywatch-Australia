@@ -1,4 +1,4 @@
-# SkyWatch Australia
+# CloudCountry
 
 Professional Australian weather site — radar, forecasts, severe weather, and deeper insight.
 
@@ -10,7 +10,7 @@ Professional Australian weather site — radar, forecasts, severe weather, and d
 
 **Full app host (when you have budget / working Docker):** Node host or home PC + Cloudflare Tunnel.
 
-## SkyWatch AI — local only
+## CloudCountry AI — local only
 
 Python package in [`skywatch-ai/`](skywatch-ai/). Runs as a **local sidecar** (not on Vercel Hobby). Public hosting is optional later; leave `SKYWATCH_AI_URL` unset on Vercel so production falls back to legacy thermo.
 
@@ -65,7 +65,7 @@ Hobby mode is automatic — do **not** set `SKYWATCH_FULL_COMPUTE=1` unless you 
 
 4. Deploy. Open the `*.vercel.app` URL. Check **Usage** after a day of light traffic (Active CPU should stay well under 4h).
 
-**Trade-offs on Hobby:** radar uses RainViewer Universal Blue (not the custom SkyWatch dBZ ladder); lightning trail is thinner until the browser live socket fills it; archive grows once per day via cron plus sparse lazy ingest.
+**Trade-offs on Hobby:** radar uses RainViewer Universal Blue (not the custom CloudCountry dBZ ladder); lightning trail is thinner until the browser live socket fills it; archive grows once per day via cron plus sparse lazy ingest.
 
 To restore full recolour/warm on a paid plan or self-host: set `SKYWATCH_FULL_COMPUTE=1` (or `SKYWATCH_RADAR_DIRECT=0` + `SKYWATCH_WARM=1`).
 
@@ -134,14 +134,14 @@ Copy the `https://….trycloudflare.com` link it prints. Keep that terminal open
 
 | Route | Status |
 |-------|--------|
-| `/` | SkyWatch homepage — hero, near-you moment card, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
+| `/` | CloudCountry homepage — hero, near-you moment card, location-aware BoM panels, Himawari loops, shareable map links, overlays, storm activity, model comparison, upper air |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
 | `/models` | Multi-model map lab (ECMWF / ICON / GFS) — product picker, diff mode, click values, meteogram, mini Skew-T, transect cross-section |
 | `/model-comparison` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
 | `/ensemble` | ECMWF ensemble spaghetti (2 m temp / precip) for saved place |
 | `/radar` | Active Cell Tracker overlay (`?chase=1&cell=`) — scores, projected paths, details |
 | `/warnings` | BoM warnings, or Automated thunderstorm cells via `?source=auto` |
-| `/warnings/auto/[cellId]` | SkyWatch automated cell alert detail (score, analysis, path) |
+| `/warnings/auto/[cellId]` | CloudCountry automated cell alert detail (score, analysis, path) |
 | `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |

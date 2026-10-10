@@ -87,9 +87,9 @@ export function SoundingParamsTables({
       >
         <span className="font-semibold tracking-wide">
           {neural
-            ? "SkyWatch AI V1"
+            ? "CloudCountry AI V1"
             : ai
-              ? "SkyWatch AI engine"
+              ? "CloudCountry AI engine"
               : "Legacy thermo"}
         </span>
         {ai && engineHemisphere ? (

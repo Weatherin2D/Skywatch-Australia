@@ -1,5 +1,5 @@
 /**
- * SkyWatch model-risk products: categorical risk + hazard chance layers.
+ * CloudCountry model-risk products: categorical risk + hazard chance layers.
  * Chance bands are SPC-style probability contours (within ~40 km).
  */
 
@@ -229,7 +229,7 @@ export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {
     description:
       "Categorical thunderstorm risk ladder (ingredients + suppressors).",
     emptyMessage: (model) =>
-      `No elevated thunderstorm risk in SkyWatch ${model} guidance.`,
+      `No elevated thunderstorm risk in CloudCountry ${model} guidance.`,
     kind: "risk",
   },
   tstorm: {
@@ -239,7 +239,7 @@ export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {
     keyTitle: "Thunderstorm chance",
     description: "Probability of a thunderstorm within ~40 km.",
     emptyMessage: (model) =>
-      `No elevated thunderstorm chance in SkyWatch ${model} guidance.`,
+      `No elevated thunderstorm chance in CloudCountry ${model} guidance.`,
     kind: "chance",
     bands: TSTORM_CHANCE_BANDS,
   },
@@ -250,7 +250,7 @@ export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {
     keyTitle: "Large hail chance",
     description: "Probability of large hail (about 2 cm+).",
     emptyMessage: (model) =>
-      `No elevated large-hail chance in SkyWatch ${model} guidance.`,
+      `No elevated large-hail chance in CloudCountry ${model} guidance.`,
     kind: "chance",
     bands: HAIL_CHANCE_BANDS,
   },
@@ -261,7 +261,7 @@ export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {
     keyTitle: "Damaging winds chance",
     description: "Probability of damaging thunderstorm winds / gusts.",
     emptyMessage: (model) =>
-      `No elevated damaging-wind chance in SkyWatch ${model} guidance.`,
+      `No elevated damaging-wind chance in CloudCountry ${model} guidance.`,
     kind: "chance",
     bands: WIND_CHANCE_BANDS,
   },
@@ -272,7 +272,7 @@ export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {
     keyTitle: "Heavy rainfall chance",
     description: "Probability of heavy convective rainfall.",
     emptyMessage: (model) =>
-      `No elevated heavy-rainfall chance in SkyWatch ${model} guidance.`,
+      `No elevated heavy-rainfall chance in CloudCountry ${model} guidance.`,
     kind: "chance",
     bands: RAIN_CHANCE_BANDS,
   },
@@ -283,7 +283,7 @@ export const PRODUCT_META: Record<ModelRiskProduct, ProductMeta> = {
     keyTitle: "Tornado chance",
     description: "Probability of a tornado (rare; guidance only).",
     emptyMessage: (model) =>
-      `No elevated tornado chance in SkyWatch ${model} guidance.`,
+      `No elevated tornado chance in CloudCountry ${model} guidance.`,
     kind: "chance",
     bands: TORNADO_CHANCE_BANDS,
   },

@@ -1,5 +1,5 @@
 /**
- * SkyWatch model-risk outlooks from Open-Meteo fields.
+ * CloudCountry model-risk outlooks from Open-Meteo fields.
  * - Pulse: multi-model best_match blend (CAPE/LI/triggers/daylight heating)
  * - Access: BoM ACCESS-G (`bom_access_global`) when the open feed is live
  * - IFS: ECMWF IFS HRES (~9 km)
@@ -217,8 +217,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "best_match",
     label: "Pulse",
     attribution:
-      "SkyWatch Pulse · Open-Meteo multi-model blend (CAPE/LI/CIN, cloud layers, showers, shear, soil/BL, VPD, weather codes, boundaries, lat/lon/month daylight heating, tropical wet-season pulse — plus cap/dry-air/blocked-heating suppressors). Guidance only — not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in SkyWatch Pulse guidance.",
+      "CloudCountry Pulse · Open-Meteo multi-model blend (CAPE/LI/CIN, cloud layers, showers, shear, soil/BL, VPD, weather codes, boundaries, lat/lon/month daylight heating, tropical wet-season pulse — plus cap/dry-air/blocked-heating suppressors). Guidance only — not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in CloudCountry Pulse guidance.",
     hourlyFields: [
       ...HOURLY_CORE,
       ...HOURLY_LI,
@@ -231,7 +231,7 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "bom_access_global",
     label: "Access",
     attribution:
-      "SkyWatch Access · BoM ACCESS-G via Open-Meteo (~15 km; CAPE/LI/CIN, cloud layers, soil/BL, VPD and storm suppressors when the feed is live). Guidance only — not an official warning.",
+      "CloudCountry Access · BoM ACCESS-G via Open-Meteo (~15 km; CAPE/LI/CIN, cloud layers, soil/BL, VPD and storm suppressors when the feed is live). Guidance only — not an official warning.",
     emptyMessage:
       "BoM ACCESS-G open data is currently unavailable (or shows no elevated risk). Access will populate when the feed resumes.",
     // ACCESS-G often omits elevated winds on the open feed — still ask for LI/BL/soil.
@@ -246,8 +246,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "ecmwf_ifs",
     label: "IFS",
     attribution:
-      "SkyWatch IFS · ECMWF IFS HRES via Open-Meteo (~9 km; CAPE/CIN, cloud layers, showers, shear, BL/VPD, weather codes, and suppressors that weaken/prevent storms). Guidance only — not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in SkyWatch IFS guidance.",
+      "CloudCountry IFS · ECMWF IFS HRES via Open-Meteo (~9 km; CAPE/CIN, cloud layers, showers, shear, BL/VPD, weather codes, and suppressors that weaken/prevent storms). Guidance only — not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in CloudCountry IFS guidance.",
     // IFS on Open-Meteo regularly leaves LI / soil moisture / freezing level null.
     hourlyFields: [
       ...HOURLY_CORE,
@@ -260,8 +260,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "ukmo_global_deterministic_10km",
     label: "UKMO",
     attribution:
-      "SkyWatch UKMO · UK Met Office Global via Open-Meteo (~10 km; CAPE/CIN, cloud layers, rain, gust shear, soil/VPD, weather codes, and storm suppressors — no elevated winds/LI on the open feed). Guidance only — not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in SkyWatch UKMO guidance.",
+      "CloudCountry UKMO · UK Met Office Global via Open-Meteo (~10 km; CAPE/CIN, cloud layers, rain, gust shear, soil/VPD, weather codes, and storm suppressors — no elevated winds/LI on the open feed). Guidance only — not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in CloudCountry UKMO guidance.",
     hourlyFields: [...HOURLY_CORE],
   },
 };
@@ -1775,7 +1775,7 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
       message: anySignal
         ? undefined
         : suppressClear
-          ? `SkyWatch ${config.label} guidance is still refreshing — try again in a moment.`
+          ? `CloudCountry ${config.label} guidance is still refreshing — try again in a moment.`
           : feedDown
             ? config.emptyMessage
             : meta.emptyMessage(config.label),

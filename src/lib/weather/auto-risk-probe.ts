@@ -1,5 +1,5 @@
 /**
- * Point-probe helpers for SkyWatch risk products — nearest sample site
+ * Point-probe helpers for CloudCountry risk products — nearest sample site
  * ingredients + human-readable "why this rating" copy.
  */
 

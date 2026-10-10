@@ -1,4 +1,4 @@
-# Deploying the SkyWatch AI sidecar
+# Deploying the CloudCountry AI sidecar
 
 ## Env
 

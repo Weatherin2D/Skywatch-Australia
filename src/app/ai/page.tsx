@@ -5,7 +5,7 @@ const CARDS = [
   {
     title: "AI Soundings",
     blurb:
-      "Model Skew-T with SkyWatch AI V1 neural residual (Open-Meteo teacher). Skip Observed while UWYO is down.",
+      "Model Skew-T with CloudCountry AI V1 neural residual (Open-Meteo teacher). Skip Observed while UWYO is down.",
     href: "/soundings?mode=model&engine=predict&model=pulse&lat=-31.95&lon=115.86&place=Perth",
     cta: "Open AI V1 sounding",
   },
@@ -19,7 +19,7 @@ const CARDS = [
   {
     title: "AI Risk",
     blurb:
-      "Pulse risk outlook. Tap a coloured area — the inspect panel shows SkyWatch AI thermo (CAPE, shear, SRH).",
+      "Pulse risk outlook. Tap a coloured area — the inspect panel shows CloudCountry AI thermo (CAPE, shear, SRH).",
     href: "/risk?source=pulse&engine=predict",
     cta: "Open AI Risk",
   },
@@ -34,7 +34,7 @@ export default function AiHubPage() {
             Local AI demo
           </p>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold text-white sm:text-4xl">
-            SkyWatch AI V1
+            CloudCountry AI V1
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-white/65">
             The Hobby production host (ausrisk.vercel.app) is disabled by Vercel

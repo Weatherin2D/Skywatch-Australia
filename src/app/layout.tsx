@@ -17,15 +17,15 @@ const display = Oswald({
 });
 
 export const metadata: Metadata = {
-  title: "SkyWatch Australia | Real weather. Deeper insight.",
+  title: "CloudCountry | Real weather. Deeper insight.",
   description:
     "Australian weather, observed and forecast — radar, warnings, outlooks, and deeper insight for a safer Australia.",
-  applicationName: "SkyWatch Australia",
+  applicationName: "CloudCountry",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "SkyWatch",
+    title: "CloudCountry",
   },
   icons: {
     icon: [{ url: "/icon", type: "image/png" }],

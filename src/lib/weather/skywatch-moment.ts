@@ -37,7 +37,7 @@ export function buildSkywatchMoment(opts: {
 
   if (top && top.ratePerMin >= 2) {
     const headline = `Lightning punching ${top.label}`;
-    const detail = `${top.ratePerMin}/min · ${top.strikes15m} strikes in 15 min — SkyWatch is watching the cells.`;
+    const detail = `${top.ratePerMin}/min · ${top.strikes15m} strikes in 15 min — CloudCountry is watching the cells.`;
     return {
       eyebrow: "Live moment",
       headline,
@@ -101,11 +101,11 @@ export function buildSkywatchMoment(opts: {
   }
 
   return {
-    eyebrow: "SkyWatch moment",
+    eyebrow: "CloudCountry moment",
     headline: `Quiet skies near ${place}`,
     detail:
       "No strong lightning clusters right now — explore radar, satellite, and ECMWF models while it’s calm.",
-    shareText: `Quiet skies near ${place} on SkyWatch Australia — live radar, lightning and ECMWF models.`,
+    shareText: `Quiet skies near ${place} on CloudCountry — live radar, lightning and ECMWF models.`,
     href: "/models",
     mood: "calm",
   };

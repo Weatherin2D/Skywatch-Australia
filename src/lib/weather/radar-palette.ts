@@ -10,7 +10,7 @@ export type Rgba = readonly [number, number, number, number];
 export { RADAR_PALETTE_ID, RADAR_RENDER_REV };
 
 /**
- * Canonical SkyWatch dBZ colour stops (user-specified). RainViewer Universal
+ * Canonical CloudCountry dBZ colour stops (user-specified). RainViewer Universal
  * Blue remaps here. Palette/rev ids live in radar-version.ts.
  */
 
@@ -89,7 +89,7 @@ function packRgba(r: number, g: number, b: number, a: number): number {
   return ((r << 24) | (g << 16) | (b << 8) | a) >>> 0;
 }
 
-/** Universal Blue packed RGBA → SkyWatch packed RGBA (0 = transparent). */
+/** Universal Blue packed RGBA → CloudCountry packed RGBA (0 = transparent). */
 const RECOLOUR_MAP = new Map<number, number>();
 for (const [hex, dbz] of Object.entries(UB_DBZ)) {
   const r = parseInt(hex.slice(0, 2), 16);
@@ -133,7 +133,7 @@ function nearestRecolour(r: number, g: number, b: number, a: number): number {
 }
 
 /**
- * Recolour a RainViewer Universal Blue PNG into the SkyWatch dBZ palette.
+ * Recolour a RainViewer Universal Blue PNG into the CloudCountry dBZ palette.
  * Transparent / unmatched pixels stay transparent.
  */
 export function recolourRadarPng(input: Buffer): Buffer {
@@ -235,7 +235,7 @@ export const RADAR_TILE_SIZE: 256 = 256;
 
 /**
  * Crop a child tile out of a recoloured native parent and nearest-neighbour
- * upscale to RADAR_TILE_SIZE². NN preserves the exact SkyWatch dBZ palette
+ * upscale to RADAR_TILE_SIZE². NN preserves the exact CloudCountry dBZ palette
  * colours (no blended intermediate shades).
  */
 export function extractOverzoomTile(

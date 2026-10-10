@@ -387,14 +387,14 @@ export function SoundingsDashboard() {
         <header className="flex flex-col gap-3 border-b border-white/10 pb-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cyan)]">
-              SkyWatch Australia
+              CloudCountry
             </p>
             <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-white sm:text-4xl">
               Soundings
             </h1>
             <p className="mt-1 max-w-xl text-sm text-white/55">
               Observed radiosondes, single-point model Skew-Ts, and 3×3 model
-              sounding boxes. Thermo via SkyWatch AI engine, or AI V1 neural
+              sounding boxes. Thermo via CloudCountry AI engine, or AI V1 neural
               residual (AU ETL + Open-Meteo teacher — local sidecar).
             </p>
           </div>

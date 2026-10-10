@@ -12,7 +12,7 @@ export const maxDuration = 60;
 
 /**
  * GET /api/weather/risk?source=bom|pulse|access|ifs|ukmo|auto&product=risk|tstorm|hail|wind|rain|tornado
- * Catalog of thunderstorm risk — BoM MetEye (default) or SkyWatch model outlooks.
+ * Catalog of thunderstorm risk — BoM MetEye (default) or CloudCountry model outlooks.
  * `auto` is accepted as a legacy alias for `pulse`. Product applies to model sources only.
  */
 export async function GET(req: NextRequest) {

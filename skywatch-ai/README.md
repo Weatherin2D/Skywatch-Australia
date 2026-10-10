@@ -1,11 +1,11 @@
-# SkyWatch AI — V1 sounding model
+# CloudCountry AI — V1 sounding model
 
 Implements `01_ARCHITECTURE`, `02_DATA_PIPELINE`, `03_V1_SOUNDING_MODEL`.
 Contract: **neural net → atmospheric state · deterministic engine → diagnostics · evaluation through the engine.**
 
 ## Site integration
 
-Served to SkyWatch `/soundings` via FastAPI sidecar (`serve.py`):
+Served to CloudCountry `/soundings` via FastAPI sidecar (`serve.py`):
 
 ```bash
 # Train stack (torch) + run sidecar

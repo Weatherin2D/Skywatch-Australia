@@ -25,7 +25,7 @@ export function radarTileCacheKey(
   y: number,
   smooth = false,
 ): string {
-  // v9: canonical user-specified SkyWatch dBZ ladder (swdbz3)
+  // v9: canonical user-specified CloudCountry dBZ ladder (swdbz3)
   return `${host}|${path}|${z}/${x}/${y}|v9|s${smooth ? 1 : 0}`;
 }
 

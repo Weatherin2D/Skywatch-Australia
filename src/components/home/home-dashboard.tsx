@@ -472,7 +472,7 @@ function HomeDashboardInner({
   async function copyShareLink() {
     const { shareContent } = await import("@/lib/share");
     const result = await shareContent({
-      title: "SkyWatch Australia",
+      title: "CloudCountry",
       text: "Live weather across Australia — radar, lightning and satellite.",
       url: window.location.href,
     });

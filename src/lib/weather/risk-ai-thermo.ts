@@ -46,9 +46,9 @@ export function riskAiThermoFromSounding(
 
   const label =
     engine === "skywatch-ai-v1"
-      ? "SkyWatch AI V1"
+      ? "CloudCountry AI V1"
       : engine === "skywatch-ai"
-        ? "SkyWatch AI engine"
+        ? "CloudCountry AI engine"
         : engineModeLabel(engineMode);
 
   return {

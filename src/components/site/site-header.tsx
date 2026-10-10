@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, MapPin } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType } from "react";
-import { SkyWatchLogo } from "@/components/site/skywatch-logo";
+import { CloudCountryLogo } from "@/components/site/cloudcountry-logo";
 import { LocationSearch } from "@/components/forecast/location-search";
 import {
   MORE_NAV,
@@ -87,7 +87,7 @@ export function SiteHeader() {
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2.5 px-3 py-2.5 sm:px-4 lg:px-5">
         <div className="flex items-center gap-3 lg:gap-4">
           <Link href="/" className="min-w-0 shrink-0">
-            <SkyWatchLogo size="sm" />
+            <CloudCountryLogo size="sm" />
           </Link>
 
           <nav

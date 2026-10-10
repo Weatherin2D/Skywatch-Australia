@@ -170,7 +170,7 @@ export function CellDetailsPanel({
       </div>
 
       <p className="text-[10px] text-white/40">
-        SkyWatch lightning-tracked guidance — not an official BoM warning.
+        CloudCountry lightning-tracked guidance — not an official BoM warning.
       </p>
     </section>
   );

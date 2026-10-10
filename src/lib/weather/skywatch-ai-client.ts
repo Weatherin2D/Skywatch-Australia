@@ -1,5 +1,5 @@
 /**
- * Thin client for the SkyWatch AI diagnostics sidecar.
+ * Thin client for the CloudCountry AI diagnostics sidecar.
  * Unset SKYWATCH_AI_URL → null (Vercel Hobby / no Docker).
  */
 
@@ -146,7 +146,7 @@ export async function fetchSkywatchAiDiagnostics(
 }
 
 /**
- * Overlay SkyWatch AI parcel/shear/moisture numbers onto legacy params.
+ * Overlay CloudCountry AI parcel/shear/moisture numbers onto legacy params.
  * Keeps legacy composites (SCP/STP/SHIP/hazard) and parcelTraces untouched.
  */
 export function mergeAiIntoParams(
@@ -356,7 +356,7 @@ export function soundingPayloadFromAiPredict(
     levels,
     params: mergeAiIntoParams(analysis.params, pred.diagnostics),
     parcelTraces: analysis.parcelTraces,
-    attribution: "SkyWatch AI V1 via Open-Meteo teacher. Guidance only.",
+    attribution: "CloudCountry AI V1 via Open-Meteo teacher. Guidance only.",
     engine: "skywatch-ai-v1",
     engineHemisphere: pred.hemisphere,
     engineMessage: pred.disclaimer,
@@ -423,7 +423,7 @@ export async function attachSkywatchAiEngine(
         ...payload,
         engine: "legacy",
         engineMessage:
-          "SkyWatch AI V1 predict unavailable — using legacy thermo",
+          "CloudCountry AI V1 predict unavailable — using legacy thermo",
       };
     }
     const levels = levelsFromPredict(pred);
@@ -439,7 +439,7 @@ export async function attachSkywatchAiEngine(
       engineHemisphere: pred.hemisphere,
       engineMessage: pred.disclaimer,
       aiDiagnostics: pred.diagnostics,
-      attribution: `${payload.attribution} · SkyWatch AI V1 (${teacherNote})`,
+      attribution: `${payload.attribution} · CloudCountry AI V1 (${teacherNote})`,
     };
   }
 
@@ -452,7 +452,7 @@ export async function attachSkywatchAiEngine(
       return {
         ...payload,
         engine: "legacy",
-        engineMessage: "SkyWatch AI sidecar unavailable — using legacy thermo",
+        engineMessage: "CloudCountry AI sidecar unavailable — using legacy thermo",
       };
     }
     return { ...payload, engine: "legacy" };

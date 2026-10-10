@@ -26,13 +26,13 @@ export default function MorePage() {
             More
           </h1>
           <p className="mt-1 text-white/60">
-            Extra SkyWatch tools and outlooks.
+            Extra CloudCountry tools and outlooks.
           </p>
         </div>
 
         {installHint ? (
           <div className="rounded-2xl border border-[var(--cyan)]/30 bg-[var(--cyan)]/10 px-4 py-3 text-sm text-white/80">
-            <p className="font-semibold text-[var(--cyan)]">Install SkyWatch</p>
+            <p className="font-semibold text-[var(--cyan)]">Install CloudCountry</p>
             <p className="mt-1 text-xs text-white/65">
               Add to your home screen for a full-screen app and offline last
               radar/satellite frame. On iOS: Share → Add to Home Screen. On

@@ -590,14 +590,14 @@ export function EcmwfModelsDashboard() {
     const when = activeTime ? formatHourLabel(activeTime) : "latest";
     const pair = diffLabel ? `${modelLabel}−${diffLabel}` : modelLabel;
     if (probeSample?.formatted) {
-      return `SkyWatch ${pair} · ${probeSample.formatted} · ${productLabel} · ${when}`;
+      return `CloudCountry ${pair} · ${probeSample.formatted} · ${productLabel} · ${when}`;
     }
-    return `SkyWatch ${pair} · ${productLabel} · ${when}`;
+    return `CloudCountry ${pair} · ${productLabel} · ${when}`;
   }, [activeProduct, activeTime, probeSample, modelLabel, diffLabel]);
 
   async function onShareMoment() {
     const result = await shareContent({
-      title: "SkyWatch Models",
+      title: "CloudCountry Models",
       text: momentShareText,
       url: absoluteAppUrl(
         typeof window !== "undefined"

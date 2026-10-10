@@ -50,7 +50,7 @@ export function HomeCommunityPanel() {
               Community photos
             </h2>
             <p className="text-xs text-white/55">
-              Weather moments shared by SkyWatch readers.
+              Weather moments shared by CloudCountry readers.
             </p>
           </div>
         </div>

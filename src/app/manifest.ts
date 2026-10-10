@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SkyWatch Australia",
-    short_name: "SkyWatch",
+    name: "CloudCountry",
+    short_name: "CloudCountry",
     description:
       "Australian weather — radar, warnings, forecasts, and deeper insight.",
     start_url: "/",

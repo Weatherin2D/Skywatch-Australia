@@ -16,7 +16,7 @@ export function useHobbyBudget(): boolean {
   return process.env.VERCEL === "1";
 }
 
-/** Skip SkyWatch dBZ recolour proxy — serve RainViewer tiles direct (zero CPU). */
+/** Skip CloudCountry dBZ recolour proxy — serve RainViewer tiles direct (zero CPU). */
 export function useDirectRadarTiles(): boolean {
   if (process.env.SKYWATCH_RADAR_DIRECT === "0") return false;
   if (process.env.SKYWATCH_RADAR_DIRECT === "1") return true;

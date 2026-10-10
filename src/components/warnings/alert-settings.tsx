@@ -49,7 +49,7 @@ export function WarningAlertSettings() {
           </h2>
           <p className="mt-1 max-w-xl text-xs text-white/65">
             Get a notification when a new BoM Critical/Severe warning appears
-            for your selected states, and when SkyWatch raises an Automated
+            for your selected states, and when CloudCountry raises an Automated
             thunderstorm Watch/Warning. Stored only on this device — no account
             or email.
           </p>

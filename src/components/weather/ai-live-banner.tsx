@@ -27,7 +27,7 @@ export function AiLiveBanner() {
     <div className="border-b border-amber-400/30 bg-amber-400/[0.08]">
       <div className="mx-auto flex max-w-[1680px] flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 sm:px-4">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200">
-          SkyWatch AI V1
+          CloudCountry AI V1
         </p>
         <p className="text-xs text-white/65">
           Use the amber <span className="font-semibold text-amber-200">AI V1</span>{" "}

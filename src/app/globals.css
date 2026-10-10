@@ -228,7 +228,7 @@
   min-height: 100% !important;
 }
 
-/* Keep SkyWatch dBZ colours exact — no browser blending between stops. */
+/* Keep CloudCountry dBZ colours exact — no browser blending between stops. */
 .skywatch-radar-tiles img,
 .leaflet-tile-pane .skywatch-radar-tiles img {
   image-rendering: pixelated;

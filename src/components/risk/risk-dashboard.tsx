@@ -276,7 +276,7 @@ function sourceBlurb(source: RiskSource, product: ModelRiskProduct): string {
           ? "UKMO"
           : "Pulse";
   const meta = PRODUCT_META[product];
-  return `SkyWatch ${model} — ${meta.description}`;
+  return `CloudCountry ${model} — ${meta.description}`;
 }
 
 function sourceLoadingLabel(
@@ -923,7 +923,7 @@ export function RiskDashboard() {
             {source === "bom"
               ? "Source: BoM MetEye thunderstorm layer (IDZ73094)"
               : catalog?.attribution ??
-                `Source: SkyWatch ${source === "access" ? "Access" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"} · Open-Meteo`}
+                `Source: CloudCountry ${source === "access" ? "Access" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"} · Open-Meteo`}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",

@@ -64,7 +64,7 @@ async function probeGibsWms(
       gibsHimawariWmsUrl(isoTime, product, { width: GIBS_PROBE_WIDTH }),
       {
         method: "GET",
-        headers: { "User-Agent": "SkyWatchAustralia/1.0" },
+        headers: { "User-Agent": "CloudCountry/1.0" },
         cache: "no-store",
         signal: AbortSignal.timeout(8000),
       },
@@ -125,7 +125,7 @@ async function fetchRealEarthTimes(
       {
         headers: {
           Accept: "application/json",
-          "User-Agent": "SkyWatchAustralia/1.0",
+          "User-Agent": "CloudCountry/1.0",
         },
         cache: "no-store",
         signal: AbortSignal.timeout(12_000),
@@ -282,7 +282,7 @@ export async function GET(request: NextRequest) {
     const rvPromise = fetch(RAINVIEWER_URL, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "SkyWatchAustralia/1.0",
+        "User-Agent": "CloudCountry/1.0",
       },
       cache: "no-store",
       signal: AbortSignal.timeout(8000),

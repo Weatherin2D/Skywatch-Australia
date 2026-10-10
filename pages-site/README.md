@@ -1,4 +1,4 @@
-# SkyWatch Australia — GitHub Pages lite
+# CloudCountry — GitHub Pages lite
 
 Static Vite + React build that runs on **GitHub Pages** (no Docker, no Node server).
 
@@ -9,7 +9,7 @@ Static Vite + React build that runs on **GitHub Pages** (no Docker, no Node serv
 - Optional RainViewer infrared satellite tiles
 - **Open-Meteo** current conditions for the eight capital cities
 
-This is intentionally a subset of the full Next.js SkyWatch app (BoM, Himawari products, storm cells, warnings, community, etc.).
+This is intentionally a subset of the full Next.js CloudCountry app (BoM, Himawari products, storm cells, warnings, community, etc.).
 
 ## Local
 

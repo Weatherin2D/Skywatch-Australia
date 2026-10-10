@@ -1,4 +1,4 @@
-# Start SkyWatch on a Windows home PC (Docker Desktop + Compose).
+# Start CloudCountry on a Windows home PC (Docker Desktop + Compose).
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
@@ -13,7 +13,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   exit 1
 }
 
-Write-Host "Building and starting SkyWatch (app + Caddy on ports 80/443)…"
+Write-Host "Building and starting CloudCountry (app + Caddy on ports 80/443)…"
 docker compose up -d --build
 
 Write-Host ""

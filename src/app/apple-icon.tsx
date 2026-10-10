@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-/** Apple touch icon — larger radar mark for home screen. */
+/** Apple touch icon — CloudCountry cloud mark for home screen. */
 export default function AppleIcon() {
   return new ImageResponse(
     (
@@ -14,39 +14,30 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#0b1224",
+          background: "linear-gradient(135deg, #22d3ee 0%, #0ea5e9 100%)",
           borderRadius: 36,
         }}
       >
         <svg
-          width="140"
-          height="140"
-          viewBox="0 0 32 32"
+          width="120"
+          height="120"
+          viewBox="0 0 48 48"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <circle
-            cx="16"
-            cy="16"
-            r="11"
-            stroke="#22d3ee"
-            strokeWidth="2"
-            opacity="0.35"
-          />
-          <circle
-            cx="16"
-            cy="16"
-            r="7"
-            stroke="#22d3ee"
-            strokeWidth="1.8"
-            opacity="0.7"
-          />
           <path
-            d="M16 16 L16 5 A11 11 0 0 1 25.5 20.5 Z"
-            fill="#22d3ee"
+            d="M14 28c0-5.5 4-9.5 9.2-9.5 1.2-3.8 4.6-6.5 8.7-6.5 5.1 0 9.1 4 9.1 9.1 0 .4 0 .8-.1 1.2 3.1.7 5.4 3.5 5.4 6.8 0 3.9-3.1 7-7 7H16.5C11.9 36 8 32.1 8 27.5c0-3.8 2.6-7 6-7.9"
+            fill="#041018"
             opacity="0.95"
           />
-          <circle cx="16" cy="16" r="2.4" fill="#22d3ee" />
+          <circle cx="24" cy="26" r="3.2" fill="#22d3ee" opacity="0.9" />
+          <path
+            d="M24 18.5v4.2M24 29.3v4.2M17.5 26h4.2M26.3 26h4.2"
+            stroke="#22d3ee"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            opacity="0.85"
+          />
         </svg>
       </div>
     ),

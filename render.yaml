@@ -1,4 +1,4 @@
-# SkyWatch Australia — Render Blueprint
+# CloudCountry — Render Blueprint
 # https://render.com/docs/blueprint-spec
 #
 # skywatch-ai needs 1c-2g (2 GB). Free/0.5c-512mb will OOM loading CPU torch.

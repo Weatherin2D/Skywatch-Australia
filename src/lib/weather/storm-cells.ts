@@ -1,5 +1,5 @@
 /**
- * SkyWatch storm cells — cluster live lightning into tracked cells with
+ * CloudCountry storm cells — cluster live lightning into tracked cells with
  * short motion vectors. Radar timestamps are used as the valid-time spine;
  * detection is lightning-density based (RainViewer tiles are not a full grid).
  *
@@ -430,11 +430,11 @@ function buildAnalysis(opts: {
 
   if (opts.alertLevel === "warning") {
     analysis.push(
-      "SkyWatch Warning — intense lightning cell; treat as elevated thunderstorm risk in the vicinity.",
+      "CloudCountry Warning — intense lightning cell; treat as elevated thunderstorm risk in the vicinity.",
     );
   } else if (opts.alertLevel === "watch") {
     analysis.push(
-      "SkyWatch Watch — active thunderstorm cell; monitor nearby places along the track.",
+      "CloudCountry Watch — active thunderstorm cell; monitor nearby places along the track.",
     );
   } else {
     analysis.push("Below automated alert threshold — guidance only.");
@@ -596,7 +596,7 @@ export function buildStormCells(
     cells,
     alerts,
     attribution: "Blitzortung / LightningMaps · RainViewer timing",
-    note: "SkyWatch guidance — cells from lightning clusters, not official BoM tracks.",
+    note: "CloudCountry guidance — cells from lightning clusters, not official BoM tracks.",
   };
 }
 

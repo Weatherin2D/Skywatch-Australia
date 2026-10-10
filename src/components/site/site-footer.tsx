@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SkyWatchLogo } from "@/components/site/skywatch-logo";
+import { CloudCountryLogo } from "@/components/site/cloudcountry-logo";
 
 const FOOTER_LINKS = [
   { href: "/warnings", label: "Warnings" },
@@ -23,7 +23,7 @@ export function SiteFooter() {
       />
       <div className="relative mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-3 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 lg:px-5">
         <div className="space-y-2">
-          <SkyWatchLogo size="sm" />
+          <CloudCountryLogo size="sm" />
           <p className="max-w-md text-sm text-white/70">
             Australia&apos;s weather, at your fingertips — live radar, lightning,
             forecasts and severe weather in one place.

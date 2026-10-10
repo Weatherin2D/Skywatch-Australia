@@ -36,7 +36,7 @@ function pngResponse(
 }
 
 /**
- * Proxy RainViewer radar tiles remapped to the locked SkyWatch dBZ scale.
+ * Proxy RainViewer radar tiles remapped to the locked CloudCountry dBZ scale.
  *
  * GET /api/weather/radar-tile?host=&path=&pal=&r=&smooth=&z=&x=&y=
  *
