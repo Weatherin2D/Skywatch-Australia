@@ -25,8 +25,8 @@ export function SiteFooter() {
         <div className="space-y-2">
           <CloudCountryLogo size="sm" />
           <p className="max-w-md text-sm text-white/70">
-            Australia&apos;s weather, at your fingertips — live radar, lightning,
-            forecasts and severe weather in one place.
+            Explore Australian radar, lightning activity, forecasts, and severe
+            weather information in one place.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-semibold">

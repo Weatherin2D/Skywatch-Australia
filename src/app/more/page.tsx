@@ -26,17 +26,17 @@ export default function MorePage() {
             More
           </h1>
           <p className="mt-1 text-white/60">
-            Extra CloudCountry tools and outlooks.
+            More weather maps, forecasts, and tools.
           </p>
         </div>
 
         {installHint ? (
           <div className="rounded-2xl border border-[var(--cyan)]/30 bg-[var(--cyan)]/10 px-4 py-3 text-sm text-white/80">
-            <p className="font-semibold text-[var(--cyan)]">Install CloudCountry</p>
+            <p className="font-semibold text-[var(--cyan)]">Install StormFront Australia</p>
             <p className="mt-1 text-xs text-white/65">
               Add to your home screen for a full-screen app and offline last
-              radar/satellite frame. On iOS: Share → Add to Home Screen. On
-              Android: browser menu → Install app.
+              radar or satellite image. On iPhone or iPad, tap Share, then Add to
+              Home Screen. On Android, open the browser menu and tap Install app.
             </p>
           </div>
         ) : null}

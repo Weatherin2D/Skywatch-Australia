@@ -261,7 +261,7 @@ export function SoundingLocationMap({ place, onPick, className }: Props) {
         </MapContainer>
 
         <p className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-full border border-white/15 bg-[#0b1224]/85 px-3 py-1 text-[11px] text-white/70 backdrop-blur-md">
-          Cyan rings = radiosonde sites · click anywhere for a model profile
+          Weather-balloon stations · select any point for a local forecast profile
         </p>
       </div>
     </div>

@@ -1,4 +1,4 @@
-# CloudCountry — Oracle Cloud / any VPS
+# StormFront Australia — Oracle Cloud / any VPS
 # Build + run on the VM (native ARM Ampere or AMD micro).
 services:
   skywatch-ai:

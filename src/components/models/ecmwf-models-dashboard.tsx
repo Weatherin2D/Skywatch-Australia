@@ -590,14 +590,14 @@ export function EcmwfModelsDashboard() {
     const when = activeTime ? formatHourLabel(activeTime) : "latest";
     const pair = diffLabel ? `${modelLabel}−${diffLabel}` : modelLabel;
     if (probeSample?.formatted) {
-      return `CloudCountry ${pair} · ${probeSample.formatted} · ${productLabel} · ${when}`;
+      return `StormFront Australia ${pair} · ${probeSample.formatted} · ${productLabel} · ${when}`;
     }
-    return `CloudCountry ${pair} · ${productLabel} · ${when}`;
+    return `StormFront Australia ${pair} · ${productLabel} · ${when}`;
   }, [activeProduct, activeTime, probeSample, modelLabel, diffLabel]);
 
   async function onShareMoment() {
     const result = await shareContent({
-      title: "CloudCountry Models",
+      title: "StormFront Australia forecast models",
       text: momentShareText,
       url: absoluteAppUrl(
         typeof window !== "undefined"
@@ -925,7 +925,7 @@ export function EcmwfModelsDashboard() {
                     ? probe && !probeB
                       ? "Click end point B for transect"
                       : "Click start point A for transect"
-                    : "Click map for value · Skew-T · share"}
+                    : "Select the map for local forecast details and an atmosphere chart · share"}
                 </div>
               )}
               {showSkewt && probe && !transectMode ? (

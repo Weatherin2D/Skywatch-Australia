@@ -472,7 +472,7 @@ function HomeDashboardInner({
   async function copyShareLink() {
     const { shareContent } = await import("@/lib/share");
     const result = await shareContent({
-      title: "CloudCountry",
+      title: "StormFront Australia",
       text: "Live weather across Australia — radar, lightning and satellite.",
       url: window.location.href,
     });
@@ -955,7 +955,7 @@ function HomeDashboardInner({
     focus === "radar"
       ? "Live rain radar with lightning and national map overlays."
       : focus === "satellite"
-        ? "Himawari loops across Australia — infrared, visible and air mass."
+        ? "Satellite images across Australia — infrared, natural colour and air-mass views."
         : null;
 
   return (
@@ -1306,7 +1306,7 @@ function HomeDashboardInner({
                             ? `Latest frame ${liveTipLabel} · checks for a new frame regularly`
                             : useRadarLoop
                               ? "Live rain radar updates"
-                              : "Live Himawari updates"
+                              : "Live satellite updates"
                         }
                       >
                         <span

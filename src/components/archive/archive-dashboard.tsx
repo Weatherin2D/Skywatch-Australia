@@ -966,7 +966,7 @@ function ArchiveDashboardInner() {
             <Toggle
               on={showSynoptic}
               onChange={setShowSynoptic}
-              label="Synoptic"
+              label="Pressure patterns"
             />
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">

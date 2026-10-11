@@ -3,7 +3,6 @@ import {
   createCommunityPost,
   deleteCommunityPost,
   getCommunityAdminSecret,
-  getCommunityStorageStatusFresh,
   isCommunityAdminAuthorized,
   listCommunityPosts,
   MAX_IMAGE_BYTES,
@@ -31,15 +30,11 @@ export const maxDuration = 30;
  */
 export async function GET() {
   try {
-    const [posts, storage] = await Promise.all([
-      listCommunityPosts(),
-      getCommunityStorageStatusFresh(),
-    ]);
+    const posts = await listCommunityPosts();
     return NextResponse.json(
       {
         posts,
         adminDeleteConfigured: Boolean(getCommunityAdminSecret()),
-        storage,
         security: {
           publishCooldownSec: COMMUNITY_PUBLISH_COOLDOWN_SEC,
         },

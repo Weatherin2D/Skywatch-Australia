@@ -51,7 +51,7 @@ const MAPS = [
 /** Recent timing + loop-length history (skip redundant 1h when 2h covers it). */
 const PERIODS_H = [2, 12] as const;
 
-const USER_AGENT = "CloudCountry/1.0";
+const USER_AGENT = "StormFrontAustralia/1.0";
 /** Keep up to the longest fetched period. */
 const KEEP_SEC = Math.max(...PERIODS_H) * 60 * 60;
 /** MyBlitzortung col_smooth default — age steps across the colour ramp. */

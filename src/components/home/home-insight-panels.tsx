@@ -95,7 +95,7 @@ export function HomeMomentCard() {
 
   async function onShare() {
     const result = await shareContent({
-      title: "CloudCountry",
+      title: "StormFront Australia",
       text: moment.shareText,
       url: absoluteAppUrl(moment.href),
     });
@@ -157,7 +157,7 @@ export function HomeMomentCard() {
               href={moment.href}
               className="inline-flex text-xs font-semibold text-[var(--cyan)] hover:underline"
             >
-              Open on CloudCountry →
+              Open on StormFront Australia →
             </Link>
           </>
         )}
@@ -343,16 +343,16 @@ export function HomeUpperAirPanel() {
   }, [data?.validTime]);
 
   return (
-    <PanelShell title="Upper air — Sydney">
+    <PanelShell title="Atmosphere above Sydney">
       {loading && !data ? (
-        <p className="text-sm text-white/70">Loading Sydney radiosonde…</p>
+        <p className="text-sm text-white/70">Loading Sydney weather-balloon data…</p>
       ) : null}
       {error && !data ? (
         <p className="text-sm text-white/80">{error}</p>
       ) : null}
       {data?.status === "empty" ? (
         <p className="text-sm text-white/80">
-          {data.message ?? "No recent Sydney Airport sounding."}
+          {data.message ?? "No recent weather-balloon data for Sydney Airport."}
         </p>
       ) : null}
       {data && data.status !== "empty" ? (
@@ -394,9 +394,9 @@ export function HomeUpperAirPanel() {
             <div className="absolute bottom-2 left-2 flex flex-wrap gap-3 text-[10px] text-[var(--ink)]/80">
               <span className="inline-flex items-center gap-1">
                 <Gauge className="h-3 w-3 text-[var(--cyan)]" />
-                CAPE {data.cape != null ? Math.round(data.cape) : "—"}
+                Storm potential {data.cape != null ? Math.round(data.cape) : "—"}
               </span>
-              <span>CIN {data.cin != null ? Math.round(data.cin) : "—"}</span>
+              <span>Storm suppression {data.cin != null ? Math.round(data.cin) : "—"}</span>
               <span>
                 Shear{" "}
                 {data.shearKmh != null

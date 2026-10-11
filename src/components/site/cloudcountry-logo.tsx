@@ -54,9 +54,9 @@ export function CloudCountryLogo({
           )}
         >
           <span className={inverted ? "text-[var(--brand)]" : "text-white"}>
-            Cloud
+            StormFront
           </span>
-          <span className="text-[var(--cyan)]">Country</span>
+          <span className="text-[var(--cyan)]"> Australia</span>
         </span>
       ) : null}
     </div>

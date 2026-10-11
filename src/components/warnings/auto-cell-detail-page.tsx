@@ -56,7 +56,7 @@ export function AutoCellDetailPage({ cellId }: { cellId: string }) {
             Automated alerts
           </Link>
           <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cyan)]">
-            CloudCountry automated
+            StormFront Australia estimate
           </p>
           <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-white">
             Thunderstorm cell

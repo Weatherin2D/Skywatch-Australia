@@ -350,8 +350,8 @@ export function SoundingsDashboard() {
         setError(
           timedOut
             ? mode === "observed"
-              ? "Observed radiosonde timed out (UWYO). Switch to Model and use Engine or AI V1."
-              : "Sounding request timed out — try again or switch engine"
+              ? "Weather-balloon data is taking too long to load. Try the forecast view instead."
+              : "The atmosphere profile is taking too long to load. Try again or switch to the forecast view."
             : msg,
         );
       }
@@ -387,15 +387,15 @@ export function SoundingsDashboard() {
         <header className="flex flex-col gap-3 border-b border-white/10 pb-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cyan)]">
-              CloudCountry
+              StormFront Australia
             </p>
             <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Soundings
+              Atmosphere profiles
             </h1>
             <p className="mt-1 max-w-xl text-sm text-white/55">
-              Observed radiosondes, single-point model Skew-Ts, and 3×3 model
-              sounding boxes. Thermo via CloudCountry AI engine, or AI V1 neural
-              residual (AU ETL + Open-Meteo teacher — local sidecar).
+              Compare weather-balloon observations with forecast conditions at
+              different heights in the atmosphere. Forecast charts and nearby
+              grid views are experimental and may be incomplete.
             </p>
           </div>
 
@@ -403,9 +403,9 @@ export function SoundingsDashboard() {
             <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
               {(
                 [
-                  ["observed", "Observed"],
-                  ["model", "Model"],
-                  ["box", "Box"],
+                  ["observed", "Balloon data"],
+                  ["model", "Forecast"],
+                  ["box", "Nearby grid"],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -766,9 +766,9 @@ export function SoundingsDashboard() {
               <div className="flex aspect-[640/720] items-center justify-center px-6 text-center text-sm text-white/50">
                 {loading
                   ? mode === "box"
-                    ? "Building sounding box…"
-                    : "Building Skew-T…"
-                  : error || "No profile levels to plot."}
+                    ? "Preparing nearby profiles…"
+                    : "Preparing atmosphere chart…"
+                  : error || "No profile data available to show."}
               </div>
             )}
           </div>
@@ -784,28 +784,28 @@ export function SoundingsDashboard() {
                 </div>
               ) : (
                 <div className="flex aspect-square items-center justify-center text-sm text-white/45">
-                  Hodograph waiting on profile
+                  Wind profile will appear when data loads
                 </div>
               )}
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/60">
               <p className="font-[family-name:var(--font-display)] text-sm font-semibold text-white">
-                Readout
+                Chart guide
               </p>
               <ul className="mt-2 space-y-1.5">
                 <li>
-                  Temp (red) · Dewpoint (green) · {parcel} parcel (gold dash)
+                  Temperature (red) · moisture (green) · selected storm path (gold dash)
                 </li>
                 <li>
                   {mode === "box"
-                    ? "Box cells are north-up. Click a cell to inspect full Skew-T, hodograph, and params."
-                    : "Wind barbs on the right (knots). Hodograph coloured by height AGL; RM/LM = Bunkers storm motion."}
+                    ? "Select a grid square to see its full atmosphere chart, wind profile, and weather details."
+                    : "Wind direction and speed are shown at different heights. Speeds are in knots."}
                 </li>
                 <li className="text-white/40">
                   {activeSounding?.attribution ??
                     boxData?.attribution ??
-                    "UWYO observed BUFR · Open-Meteo model levels"}
+                    "Weather-balloon observations · Forecast model data"}
                 </li>
               </ul>
             </div>

@@ -85,7 +85,7 @@ export function HodographChart({ levels, params }: Props) {
       viewBox={`0 0 ${S} ${S}`}
       className="h-full w-full"
       role="img"
-      aria-label="Hodograph"
+      aria-label="Wind direction and speed at different heights"
     >
       <rect width={S} height={S} fill="#070b16" rx={8} />
       {rings.map((kt) => {

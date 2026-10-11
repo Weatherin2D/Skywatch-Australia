@@ -193,7 +193,7 @@ export function SkewTChart({
       viewBox={`0 0 ${W} ${H}`}
       className="h-full w-full"
       role="img"
-      aria-label={compact ? "Mini Skew-T" : "Skew-T log-P diagram"}
+      aria-label={compact ? "Mini atmosphere chart" : "Atmosphere profile chart"}
     >
       <rect width={W} height={H} fill="#070b16" />
       <rect
@@ -331,7 +331,7 @@ export function SkewTChart({
             fontFamily="Oswald, sans-serif"
             fontWeight={600}
           >
-            Skew-T log-P
+            Atmosphere profile
           </text>
           <text
             x={W - PAD.r}
@@ -341,7 +341,7 @@ export function SkewTChart({
             fontSize={11}
             fontFamily="ui-monospace, monospace"
           >
-            T · Td · {activeParcel} parcel
+            Temperature · moisture · selected storm path
           </text>
         </>
       ) : null}
