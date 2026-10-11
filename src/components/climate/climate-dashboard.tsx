@@ -73,8 +73,9 @@ export function ClimateDashboard() {
             Climate guidance
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-white/70">
-            14–16 day temperature and rain context from Open-Meteo models. This
-            is planning guidance — not an official BoM seasonal climate product.
+            Temperature and rainfall guidance for 14 to 16 days ahead. Use it
+            for broad planning only; it is not an official Bureau of Meteorology
+            seasonal outlook.
           </p>
         </div>
 

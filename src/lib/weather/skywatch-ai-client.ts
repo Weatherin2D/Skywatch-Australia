@@ -356,7 +356,7 @@ export function soundingPayloadFromAiPredict(
     levels,
     params: mergeAiIntoParams(analysis.params, pred.diagnostics),
     parcelTraces: analysis.parcelTraces,
-    attribution: "CloudCountry AI V1 via Open-Meteo teacher. Guidance only.",
+    attribution: "StormFront Australia experimental forecast model. Guidance only.",
     engine: "skywatch-ai-v1",
     engineHemisphere: pred.hemisphere,
     engineMessage: pred.disclaimer,
@@ -423,14 +423,10 @@ export async function attachSkywatchAiEngine(
         ...payload,
         engine: "legacy",
         engineMessage:
-          "CloudCountry AI V1 predict unavailable — using legacy thermo",
+          "Experimental forecast model unavailable. Using the original model instead.",
       };
     }
     const levels = levelsFromPredict(pred);
-    const teacherNote =
-      pred.teacher_mode === "open-meteo"
-        ? "Open-Meteo teacher"
-        : "self-prior fallback";
     return {
       ...payload,
       levels,
@@ -439,7 +435,7 @@ export async function attachSkywatchAiEngine(
       engineHemisphere: pred.hemisphere,
       engineMessage: pred.disclaimer,
       aiDiagnostics: pred.diagnostics,
-      attribution: `${payload.attribution} · CloudCountry AI V1 (${teacherNote})`,
+      attribution: `${payload.attribution} · StormFront Australia experimental model`,
     };
   }
 
@@ -452,7 +448,7 @@ export async function attachSkywatchAiEngine(
       return {
         ...payload,
         engine: "legacy",
-        engineMessage: "CloudCountry AI sidecar unavailable — using legacy thermo",
+        engineMessage: "Experimental weather model unavailable. Using the original model instead.",
       };
     }
     return { ...payload, engine: "legacy" };

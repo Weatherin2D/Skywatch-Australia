@@ -48,10 +48,10 @@ export function WarningAlertSettings() {
             Browser alerts
           </h2>
           <p className="mt-1 max-w-xl text-xs text-white/65">
-            Get a notification when a new BoM Critical/Severe warning appears
-            for your selected states, and when CloudCountry raises an Automated
-            thunderstorm Watch/Warning. Stored only on this device — no account
-            or email.
+            Get alerts for new Critical or Severe Bureau of Meteorology warnings
+            in your selected states, and for StormFront Australia thunderstorm
+            estimates. Alert settings stay on this device; no account or email
+            is needed.
           </p>
         </div>
         <button

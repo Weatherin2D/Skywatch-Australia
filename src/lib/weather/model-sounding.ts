@@ -270,7 +270,7 @@ export async function fetchModelSounding(options: {
         levels,
         params: analysis.params,
         parcelTraces: analysis.parcelTraces,
-        attribution: `CloudCountry ${meta.label} via Open-Meteo pressure levels. Guidance only.`,
+        attribution: `${meta.label} forecast model via Open-Meteo. Guidance only.`,
       };
       soundingCache.set(cacheKey, { at: Date.now(), payload });
       return payload;
@@ -377,7 +377,7 @@ export async function fetchModelSoundingBox(options: {
               levels: [],
               params: emptyAnalysis.params,
               parcelTraces: emptyAnalysis.parcelTraces,
-              attribution: `CloudCountry ${meta.label} via Open-Meteo`,
+              attribution: `${meta.label} forecast model via Open-Meteo`,
               message: "No profile at this grid point",
             },
           });
@@ -411,7 +411,7 @@ export async function fetchModelSoundingBox(options: {
             levels,
             params: analysis.params,
             parcelTraces: analysis.parcelTraces,
-            attribution: `CloudCountry ${meta.label} box via Open-Meteo. Guidance only.`,
+            attribution: `${meta.label} forecast model via Open-Meteo. Guidance only.`,
             message:
               levels.length >= 6 ? undefined : "Profile too shallow at this point",
           },
@@ -429,7 +429,7 @@ export async function fetchModelSoundingBox(options: {
         placeLabel,
         validTime,
         cells,
-        attribution: `CloudCountry ${meta.label} 3×3 box (±${spacingDeg}°) via Open-Meteo. Guidance only.`,
+        attribution: `${meta.label} forecast model via Open-Meteo. Guidance only.`,
         message:
           okCount > 0
             ? undefined
@@ -486,11 +486,11 @@ function emptyBox(
         levels: [],
         params: empty.params,
         parcelTraces: empty.parcelTraces,
-        attribution: `CloudCountry ${label} via Open-Meteo`,
+        attribution: `${label} forecast model via Open-Meteo`,
         message,
       },
     })),
-    attribution: `CloudCountry ${label} via Open-Meteo`,
+    attribution: `${label} forecast model via Open-Meteo`,
     message,
   };
 }
@@ -518,7 +518,7 @@ function emptyModel(
     levels: [],
     params: empty.params,
     parcelTraces: empty.parcelTraces,
-    attribution: `CloudCountry ${label} via Open-Meteo`,
+    attribution: `${label} forecast model via Open-Meteo`,
     message,
   };
 }

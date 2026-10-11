@@ -28,25 +28,38 @@ export const PRIMARY_NAV_END = [
 ] as const;
 
 export const SECONDARY_NAV = [
-  { href: "/archive", label: "Archive", icon: Archive },
-  { href: "/models", label: "Models", icon: Layers },
-  { href: "/model-comparison", label: "Model comparison", icon: ChartColumn },
-  { href: "/ensemble", label: "Ensemble", icon: ChartColumn },
-  { href: "/soundings", label: "Soundings", icon: Wind },
+  { href: "/archive", label: "Past weather", icon: Archive },
+  { href: "/models", label: "Forecast models", icon: Layers },
+  { href: "/model-comparison", label: "Compare forecasts", icon: ChartColumn },
+  { href: "/ensemble", label: "Forecast range", icon: ChartColumn },
+  { href: "/soundings", label: "Atmosphere profiles", icon: Wind },
   { href: "/climate", label: "Climate", icon: ThermometerSun },
-  { href: "/risk", label: "Risk", icon: CloudLightning },
+  { href: "/risk", label: "Thunderstorm outlook", icon: CloudLightning },
   { href: "/community", label: "Community", icon: Users },
 ] as const;
 
 export const MORE_NAV = [
-  { href: "/archive", label: "Archive" },
-  { href: "/models", label: "Models" },
-  { href: "/model-comparison", label: "Model comparison" },
-  { href: "/ensemble", label: "Ensemble" },
-  { href: "/soundings", label: "Soundings" },
+  { href: "/ai", label: "Experimental tools hub" },
+  {
+    href: "/soundings?mode=model&engine=predict&model=pulse&lat=-31.95&lon=115.86&place=Perth",
+    label: "Experimental storm profiles",
+  },
+  {
+    href: "/models?model=icon&skewt=1&engine=predict&lat=-31.95&lon=115.86",
+    label: "Experimental forecast models",
+  },
+  {
+    href: "/risk?source=pulse&engine=predict",
+    label: "Experimental thunderstorm outlook",
+  },
+  { href: "/archive", label: "Past weather" },
+  { href: "/models", label: "Forecast models" },
+  { href: "/model-comparison", label: "Compare forecasts" },
+  { href: "/ensemble", label: "Forecast range" },
+  { href: "/soundings", label: "Atmosphere profiles" },
   { href: "/climate", label: "Climate" },
-  { href: "/risk", label: "Risk outlook" },
-  { href: "/hazards", label: "Hazards (UV · Fire · Marine)" },
+  { href: "/risk", label: "Thunderstorm outlook" },
+  { href: "/hazards", label: "Hazards (UV, fire, marine)" },
 ] as const;
 
 export const MOBILE_NAV = [

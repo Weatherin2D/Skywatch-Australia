@@ -17,15 +17,15 @@ const display = Oswald({
 });
 
 export const metadata: Metadata = {
-  title: "CloudCountry | Real weather. Deeper insight.",
+  title: "StormFront Australia | Australian weather",
   description:
-    "Australian weather, observed and forecast — radar, warnings, outlooks, and deeper insight for a safer Australia.",
-  applicationName: "CloudCountry",
+    "Australian radar, forecasts, lightning activity, and severe weather information.",
+  applicationName: "StormFront Australia",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "CloudCountry",
+    title: "StormFront Australia",
   },
   icons: {
     icon: [{ url: "/icon", type: "image/png" }],

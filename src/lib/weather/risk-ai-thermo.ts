@@ -46,9 +46,9 @@ export function riskAiThermoFromSounding(
 
   const label =
     engine === "skywatch-ai-v1"
-      ? "CloudCountry AI V1"
+      ? "StormFront Australia experimental model"
       : engine === "skywatch-ai"
-        ? "CloudCountry AI engine"
+        ? "StormFront Australia weather model"
         : engineModeLabel(engineMode);
 
   return {
@@ -57,7 +57,7 @@ export function riskAiThermoFromSounding(
     message:
       sounding.engineMessage ??
       (engine === "skywatch-ai-v1"
-        ? "Neural residual on Open-Meteo teacher — local sidecar"
+        ? "Experimental forecast model; results may be incomplete."
         : undefined),
     conditions,
     soundingUrl: `/soundings?${qs}`,

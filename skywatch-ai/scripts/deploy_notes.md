@@ -1,4 +1,4 @@
-# Deploying the CloudCountry AI sidecar
+# Deploying the StormFront Australia weather service
 
 ## Env
 

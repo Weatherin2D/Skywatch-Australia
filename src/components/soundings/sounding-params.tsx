@@ -87,15 +87,15 @@ export function SoundingParamsTables({
       >
         <span className="font-semibold tracking-wide">
           {neural
-            ? "CloudCountry AI V1"
+            ? "StormFront Australia experimental model"
             : ai
-              ? "CloudCountry AI engine"
+              ? "StormFront Australia weather model"
               : "Legacy thermo"}
         </span>
         {ai && engineHemisphere ? (
           <span className="text-white/50">
             {" "}
-            · SRH {engineHemisphere}H convention
+            · Southern Hemisphere storm-rotation calculation
           </span>
         ) : null}
         {engineMessage ? (
@@ -112,42 +112,42 @@ export function SoundingParamsTables({
         Primary hazard · {params.hazard}
       </div>
 
-      <Panel title="Thermo">
+      <Panel title="Storm potential">
         {params.parcels.map((p) => (
           <div key={p.id} className="mb-2">
             <p className="mb-0.5 text-[11px] font-semibold text-white/70">
               {p.label} ({p.id})
             </p>
-            <Row label="CAPE" value={fmt(p.cape, 0, " J/kg")} accent />
-            <Row label="CIN" value={fmt(p.cin, 0, " J/kg")} />
-            <Row label="LCL" value={`${fmt(p.lclHpa, 0, " hPa")} · ${fmt(p.lclM, 0, " m")}`} />
-            <Row label="LFC / EL" value={`${fmt(p.lfcHpa)} / ${fmt(p.elHpa)} hPa`} />
-            <Row label="LI" value={fmt(p.li, 1)} />
+            <Row label="Storm energy (CAPE)" value={fmt(p.cape, 0, " J/kg")} accent />
+            <Row label="Storm suppression (CIN)" value={fmt(p.cin, 0, " J/kg")} />
+            <Row label="Cloud base" value={`${fmt(p.lclHpa, 0, " hPa")} · ${fmt(p.lclM, 0, " m")}`} />
+            <Row label="Storm start / top" value={`${fmt(p.lfcHpa)} / ${fmt(p.elHpa)} hPa`} />
+            <Row label="Thunderstorm index (LI)" value={fmt(p.li, 1)} />
           </div>
         ))}
       </Panel>
 
       <Panel title="Moisture">
-        <Row label="Precipitable water" value={fmt(params.pwMm, 1, " mm")} accent />
-        <Row label="K-index" value={fmt(params.kIndex)} />
-        <Row label="Total totals" value={fmt(params.totalTotals)} />
-        <Row label="Mid-level RH" value={fmt(params.midRhPct, 0, "%")} />
-        <Row label="DCAPE" value={fmt(params.dcape, 0, " J/kg")} />
+        <Row label="Moisture available for rain" value={fmt(params.pwMm, 1, " mm")} accent />
+        <Row label="Thunderstorm index (K)" value={fmt(params.kIndex)} />
+        <Row label="Thunderstorm index (TT)" value={fmt(params.totalTotals)} />
+        <Row label="Humidity at mid-level" value={fmt(params.midRhPct, 0, "%")} />
+        <Row label="Downdraft potential (DCAPE)" value={fmt(params.dcape, 0, " J/kg")} />
       </Panel>
 
-      <Panel title="Lapse rates">
+      <Panel title="Temperature change with height">
         <Row label="0–3 km" value={fmt(params.lapse0to3, 1, " °C/km")} />
         <Row label="3–6 km" value={fmt(params.lapse3to6, 1, " °C/km")} />
         <Row label="850–500 hPa" value={fmt(params.lapse850to500, 1, " °C/km")} />
         <Row label="700–500 hPa" value={fmt(params.lapse700to500, 1, " °C/km")} accent />
       </Panel>
 
-      <Panel title="Shear">
+      <Panel title="Wind change with height">
         <Row label="0–1 km" value={fmt(params.shear0to1Kts, 1, " kt")} />
         <Row label="0–3 km" value={fmt(params.shear0to3Kts, 1, " kt")} />
         <Row label="0–6 km" value={fmt(params.shear0to6Kts, 1, " kt")} accent />
-        <Row label="SRH 0–1 km" value={fmt(params.srh0to1, 0, " m²/s²")} />
-        <Row label="SRH 0–3 km" value={fmt(params.srh0to3, 0, " m²/s²")} accent />
+        <Row label="Storm rotation potential, lower levels" value={fmt(params.srh0to1, 0, " m²/s²")} />
+        <Row label="Storm rotation potential, deeper layer" value={fmt(params.srh0to3, 0, " m²/s²")} accent />
       </Panel>
 
       <Panel title="Storm motion">
@@ -160,7 +160,7 @@ export function SoundingParamsTables({
           }
         />
         <Row
-          label="Bunkers RM"
+          label="Right-moving storm estimate"
           value={
             params.bunkersRightDir != null
               ? `${fmt(params.bunkersRightDir)}° / ${fmt(params.bunkersRightKts, 1)} kt`

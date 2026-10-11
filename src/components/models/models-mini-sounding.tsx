@@ -46,9 +46,9 @@ export function ModelsMiniSounding({
       : sounding?.engine === "skywatch-ai"
         ? "Engine"
         : engine === "predict"
-          ? "AI V1"
+          ? "Experimental"
           : engine === "legacy"
-            ? "Legacy"
+            ? "Original"
             : null;
 
   return (
@@ -56,7 +56,7 @@ export function ModelsMiniSounding({
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--cyan)]">
-            Mini Skew-T
+            Atmosphere profile
             {engineBadge ? (
               <span
                 className={

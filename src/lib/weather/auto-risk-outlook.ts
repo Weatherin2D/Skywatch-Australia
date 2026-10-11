@@ -217,8 +217,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "best_match",
     label: "Pulse",
     attribution:
-      "CloudCountry Pulse · Open-Meteo multi-model blend (CAPE/LI/CIN, cloud layers, showers, shear, soil/BL, VPD, weather codes, boundaries, lat/lon/month daylight heating, tropical wet-season pulse — plus cap/dry-air/blocked-heating suppressors). Guidance only — not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in CloudCountry Pulse guidance.",
+      "StormFront Australia experimental thunderstorm estimate, based on several forecast sources and atmospheric conditions. Guidance only, not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in the StormFront Australia estimate.",
     hourlyFields: [
       ...HOURLY_CORE,
       ...HOURLY_LI,
@@ -231,9 +231,9 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "bom_access_global",
     label: "Access",
     attribution:
-      "CloudCountry Access · BoM ACCESS-G via Open-Meteo (~15 km; CAPE/LI/CIN, cloud layers, soil/BL, VPD and storm suppressors when the feed is live). Guidance only — not an official warning.",
+      "Bureau of Meteorology ACCESS forecast model, provided through Open-Meteo. Guidance only, not an official warning.",
     emptyMessage:
-      "BoM ACCESS-G open data is currently unavailable (or shows no elevated risk). Access will populate when the feed resumes.",
+      "The Bureau of Meteorology ACCESS forecast is temporarily unavailable or shows no elevated thunderstorm risk.",
     // ACCESS-G often omits elevated winds on the open feed — still ask for LI/BL/soil.
     hourlyFields: [
       ...HOURLY_CORE,
@@ -246,8 +246,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "ecmwf_ifs",
     label: "IFS",
     attribution:
-      "CloudCountry IFS · ECMWF IFS HRES via Open-Meteo (~9 km; CAPE/CIN, cloud layers, showers, shear, BL/VPD, weather codes, and suppressors that weaken/prevent storms). Guidance only — not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in CloudCountry IFS guidance.",
+      "ECMWF global forecast model, provided through Open-Meteo. Guidance only, not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in the ECMWF forecast.",
     // IFS on Open-Meteo regularly leaves LI / soil moisture / freezing level null.
     hourlyFields: [
       ...HOURLY_CORE,
@@ -260,8 +260,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "ukmo_global_deterministic_10km",
     label: "UKMO",
     attribution:
-      "CloudCountry UKMO · UK Met Office Global via Open-Meteo (~10 km; CAPE/CIN, cloud layers, rain, gust shear, soil/VPD, weather codes, and storm suppressors — no elevated winds/LI on the open feed). Guidance only — not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in CloudCountry UKMO guidance.",
+      "UK Met Office global forecast model, provided through Open-Meteo. Guidance only, not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in the UK Met Office forecast.",
     hourlyFields: [...HOURLY_CORE],
   },
 };
@@ -1775,7 +1775,7 @@ async function computeOutlook(config: ModelRiskConfig): Promise<CacheEntry> {
       message: anySignal
         ? undefined
         : suppressClear
-          ? `CloudCountry ${config.label} guidance is still refreshing — try again in a moment.`
+          ? `${config.label} forecast is still updating. Try again in a moment.`
           : feedDown
             ? config.emptyMessage
             : meta.emptyMessage(config.label),

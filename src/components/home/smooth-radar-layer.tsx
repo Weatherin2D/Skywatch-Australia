@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { useMap } from "react-leaflet";
+import { TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import {
   RADAR_NATIVE_MAX_ZOOM,
@@ -18,13 +18,14 @@ function createBufferLayer(zIndex: number, smoothed: boolean): L.TileLayer {
     className: smoothed
       ? "skywatch-radar-tiles skywatch-radar-tiles--smooth"
       : "skywatch-radar-tiles",
-    // Modest buffer — large values flooded /api/weather/radar-tile on pan.
-    keepBuffer: 4,
-    // Hold painted tiles through the gesture — updating mid-zoom was blanking
-    // the radar so it looked like it "vanished" on pinch/scroll.
+    // Hold a slightly larger tile ring so the next frame is ready before the
+    // user sees the transition, without flooding every pan with a fresh tile set.
+    keepBuffer: 8,
+    // Keep painted tiles through the gesture so the map doesn't blank while a
+    // pan/zoom is settling.
     updateWhenIdle: true,
     updateWhenZooming: false,
-    updateInterval: 120,
+    updateInterval: 90,
     zIndex,
     // RainViewer only has real data through ~z7. Overzoom past that so tight
     // zooms keep showing scaled reflectivity instead of empty z8–12 tiles.
@@ -52,96 +53,48 @@ export function SmoothRadarLayer({
   /** RainViewer spatial smooth — also softens CSS image-rendering. */
   smoothed?: boolean;
 }) {
-  const map = useMap();
-  const buffersRef = useRef<[L.TileLayer, L.TileLayer] | null>(null);
-  const frontRef = useRef(0);
-  const displayedUrlRef = useRef<string | null>(null);
-  const opacityRef = useRef(opacity);
-  opacityRef.current = opacity;
+  const warmCacheRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    const a = createBufferLayer(450, smoothed);
-    const b = createBufferLayer(451, smoothed);
-    buffersRef.current = [a, b];
-    frontRef.current = 0;
-    displayedUrlRef.current = null;
-    a.addTo(map);
-    b.addTo(map);
-
-    const refreshFront = () => {
-      const buffers = buffersRef.current;
-      if (!buffers || !displayedUrlRef.current) return;
-      const front = buffers[frontRef.current]!;
-      front.redraw();
-      front.setOpacity(opacityRef.current);
-    };
-    map.on("zoomend", refreshFront);
-    map.on("moveend", refreshFront);
-
-    return () => {
-      map.off("zoomend", refreshFront);
-      map.off("moveend", refreshFront);
-      a.off();
-      b.off();
-      map.removeLayer(a);
-      map.removeLayer(b);
-      buffersRef.current = null;
-      displayedUrlRef.current = null;
-    };
-  }, [map, smoothed]);
-
-  useEffect(() => {
-    const buffers = buffersRef.current;
-    if (!buffers || !displayedUrlRef.current) return;
-    buffers[frontRef.current]!.setOpacity(opacity);
-  }, [opacity]);
-
-  useEffect(() => {
-    const buffers = buffersRef.current;
-    if (!buffers) return;
-
-    if (!url) {
-      displayedUrlRef.current = null;
-      buffers[0]!.setOpacity(0);
-      buffers[1]!.setOpacity(0);
-      return;
+    if (!url) return;
+    const now = Date.now();
+    const prev = warmCacheRef.current.get(url);
+    if (prev && now - prev < 90_000) return;
+    warmCacheRef.current.set(url, now);
+    if (warmCacheRef.current.size > 24) {
+      const oldestKey = warmCacheRef.current.keys().next().value as
+        string | undefined;
+      if (oldestKey) warmCacheRef.current.delete(oldestKey);
     }
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = url;
+  }, [url]);
 
-    if (url === displayedUrlRef.current) {
-      buffers[frontRef.current]!.setOpacity(opacityRef.current);
-      return;
-    }
+  if (!url) return null;
 
-    const frontIdx = frontRef.current;
-    const backIdx = 1 - frontIdx;
-    const front = buffers[frontIdx]!;
-    const back = buffers[backIdx]!;
-    const hasPaintedFrame = Boolean(displayedUrlRef.current);
-
-    if (hasPaintedFrame) {
-      // Instant cut: load into the back buffer and reveal immediately — do not
-      // wait for the Leaflet "load" event or any failsafe timeout.
-      back.setUrl(url, false);
-      back.setOpacity(opacityRef.current);
-      back.setZIndex(451);
-      front.setOpacity(0);
-      front.setZIndex(450);
-      frontRef.current = backIdx;
-      displayedUrlRef.current = url;
-      return;
-    }
-
-    // First paint — show as soon as the URL is set (no load wait).
-    front.setUrl(url, false);
-    front.setOpacity(opacityRef.current);
-    front.setZIndex(451);
-    back.setOpacity(0);
-    back.setZIndex(450);
-    frontRef.current = frontIdx;
-    displayedUrlRef.current = url;
-  }, [url, map]);
-
-  return null;
+  return (
+    <TileLayer
+      url={url}
+      opacity={opacity}
+      zIndex={450}
+      tileSize={256}
+      className={
+        smoothed
+          ? "skywatch-radar-tiles skywatch-radar-tiles--smooth"
+          : "skywatch-radar-tiles"
+      }
+      keepBuffer={12}
+      updateWhenIdle
+      updateWhenZooming={false}
+      updateInterval={90}
+      maxZoom={22}
+      maxNativeZoom={RADAR_NATIVE_MAX_ZOOM}
+      minZoom={0}
+      errorTileUrl={TRANSPARENT_TILE}
+      crossOrigin
+    />
+  );
 }
 
 /**
@@ -154,7 +107,8 @@ export function useRadarFramePreloader(
   enabled: boolean,
 ) {
   const map = useMap();
-  const warmed = useRef(new Set<string>());
+  const warmed = useRef(new Map<string, number>());
+  const VIEW_CACHE_TTL_MS = 2 * 60 * 1000;
 
   const templates = useMemo(
     () =>
@@ -165,7 +119,10 @@ export function useRadarFramePreloader(
   );
 
   useEffect(() => {
-    if (!enabled || templates.length === 0) return;
+    if (!enabled || templates.length === 0) {
+      warmed.current.clear();
+      return;
+    }
 
     let cancelled = false;
     const queue: string[] = [];
@@ -206,8 +163,9 @@ export function useRadarFramePreloader(
       if (!tpl) return;
       const zooms = zoomLevels();
       const cacheKey = `${tpl}|${zooms.join(",")}|${Math.round(map.getZoom())}`;
-      if (!force && warmed.current.has(cacheKey)) return;
-      warmed.current.add(cacheKey);
+      const lastWarm = warmed.current.get(cacheKey) ?? 0;
+      if (!force && Date.now() - lastWarm < VIEW_CACHE_TTL_MS) return;
+      warmed.current.set(cacheKey, Date.now());
       const bounds = viewportBounds();
       // Viewport-sized warm — keep caps low for Hobby invoke budget.
       const cap = zooms.includes(RADAR_NATIVE_MAX_ZOOM) ? 24 : 16;
@@ -217,14 +175,15 @@ export function useRadarFramePreloader(
     };
 
     const n = templates.length;
-    // Warm current + a few ahead — full-loop × 28 concurrency burned Hobby.
+    // Warm a short local window so the next several frames are already in the
+    // browser cache; clear this temporary cache when the map view changes.
     pushFrame(activeIndex % n, true);
-    for (let step = 1; step <= Math.min(3, n - 1); step++) {
+    for (let step = 1; step <= Math.min(8, n - 1); step++) {
       pushFrame((activeIndex + step) % n);
     }
 
     let active = 0;
-    const CONCURRENCY = 6;
+    const CONCURRENCY = 8;
     const pump = () => {
       while (!cancelled && active < CONCURRENCY && queue.length > 0) {
         const url = queue.shift()!;
@@ -244,11 +203,12 @@ export function useRadarFramePreloader(
 
     let moveTimer: number | null = null;
     const onViewChange = () => {
+      warmed.current.clear();
       if (moveTimer != null) window.clearTimeout(moveTimer);
       moveTimer = window.setTimeout(() => {
         if (cancelled) return;
-        // Re-warm the playhead + next frame only after pan/zoom settles.
-        for (const step of [0, 1]) {
+        // Re-warm the playhead + next few frames only after pan/zoom settles.
+        for (const step of [0, 1, 2, 3]) {
           pushFrame((activeIndex + step) % n, true);
         }
         pump();
@@ -260,6 +220,7 @@ export function useRadarFramePreloader(
     return () => {
       cancelled = true;
       if (moveTimer != null) window.clearTimeout(moveTimer);
+      warmed.current.clear();
       map.off("moveend", onViewChange);
       map.off("zoomend", onViewChange);
     };

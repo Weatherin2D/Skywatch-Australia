@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start CloudCountry on a home PC (Docker Compose) then print next tunnel steps.
+# Start StormFront Australia on a home PC (Docker Compose) then print next tunnel steps.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,7 +14,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Building and starting CloudCountry (app + Caddy on ports 80/443)…"
+echo "Building and starting StormFront Australia (app + Caddy on ports 80/443)…"
 docker compose up -d --build
 
 echo

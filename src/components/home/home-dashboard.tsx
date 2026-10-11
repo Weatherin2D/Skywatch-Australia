@@ -472,7 +472,7 @@ function HomeDashboardInner({
   async function copyShareLink() {
     const { shareContent } = await import("@/lib/share");
     const result = await shareContent({
-      title: "CloudCountry",
+      title: "StormFront Australia",
       text: "Live weather across Australia — radar, lightning and satellite.",
       url: window.location.href,
     });
@@ -482,8 +482,10 @@ function HomeDashboardInner({
     }
   }
 
+  const [mapTypeMenuOpen, setMapTypeMenuOpen] = useState(false);
   const [satMenuOpen, setSatMenuOpen] = useState(false);
   const [regionMenuOpen, setRegionMenuOpen] = useState(false);
+  const mapTypeMenuRef = useRef<HTMLDivElement>(null);
   const satMenuRef = useRef<HTMLDivElement>(null);
   const regionMenuRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -829,9 +831,16 @@ function HomeDashboardInner({
   // a second dashboard-wide storm of tile requests burned Fluid Active CPU.
 
   useEffect(() => {
-    if (!satMenuOpen && !regionMenuOpen) return;
+    if (!mapTypeMenuOpen && !satMenuOpen && !regionMenuOpen) return;
     function onPointerDown(e: MouseEvent) {
       const t = e.target as Node;
+      if (
+        mapTypeMenuOpen &&
+        mapTypeMenuRef.current &&
+        !mapTypeMenuRef.current.contains(t)
+      ) {
+        setMapTypeMenuOpen(false);
+      }
       if (satMenuOpen && satMenuRef.current && !satMenuRef.current.contains(t)) {
         setSatMenuOpen(false);
       }
@@ -847,6 +856,7 @@ function HomeDashboardInner({
     document.addEventListener("click", onPointerDown);
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        setMapTypeMenuOpen(false);
         setSatMenuOpen(false);
         setRegionMenuOpen(false);
       }
@@ -856,7 +866,7 @@ function HomeDashboardInner({
       document.removeEventListener("click", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [satMenuOpen, regionMenuOpen]);
+  }, [mapTypeMenuOpen, satMenuOpen, regionMenuOpen]);
 
   const scrubLabel = useMemo(() => {
     if (!useTimeline) return "";
@@ -955,7 +965,7 @@ function HomeDashboardInner({
     focus === "radar"
       ? "Live rain radar with lightning and national map overlays."
       : focus === "satellite"
-        ? "Himawari loops across Australia — infrared, visible and air mass."
+        ? "Satellite images across Australia — infrared, natural colour and air-mass views."
         : null;
 
   return (
@@ -995,90 +1005,129 @@ function HomeDashboardInner({
             <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-white/55">
               View
             </span>
-            {MAP_MODES.map((m) => {
-              if (m === "Satellite") {
-                return (
-                  <div key={m} className="relative" ref={satMenuRef}>
-                    <button
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={satMenuOpen}
-                      onClick={() => {
-                        setRegionMenuOpen(false);
-                        if (mode === "Satellite") {
-                          setSatMenuOpen((open) => !open);
-                        } else {
-                          setMode("Satellite");
-                          setSatMenuOpen(true);
-                        }
-                      }}
-                      className={cn(
-                        "sw-chip inline-flex items-center gap-1",
-                        mode === "Satellite" ? "sw-chip-active" : "sw-chip-idle",
-                      )}
-                    >
-                      Satellite
-                      <span className="hidden font-normal opacity-80 sm:inline">
-                        · {satProductMeta.label}
-                      </span>
-                      <ChevronDown
+            <div className="relative z-[70]" ref={mapTypeMenuRef}>
+              <button
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={mapTypeMenuOpen}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSatMenuOpen(false);
+                  setRegionMenuOpen(false);
+                  setMapTypeMenuOpen((open) => !open);
+                }}
+                className={cn(
+                  "sw-chip inline-flex items-center gap-1",
+                  mapTypeMenuOpen ? "sw-chip-active" : "sw-chip-idle",
+                )}
+              >
+                Map type
+                <span className="font-normal opacity-80">· {mode}</span>
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 opacity-80 transition",
+                    mapTypeMenuOpen && "rotate-180",
+                  )}
+                  aria-hidden
+                />
+              </button>
+              {mapTypeMenuOpen ? (
+                <ul
+                  role="listbox"
+                  aria-label="Map type"
+                  className="absolute left-0 top-full z-[80] mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {MAP_MODES.map((mapType) => (
+                    <li key={mapType} role="option" aria-selected={mode === mapType}>
+                      <button
+                        type="button"
                         className={cn(
-                          "h-3.5 w-3.5 opacity-80 transition",
-                          satMenuOpen && "rotate-180",
+                          "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                          mode === mapType
+                            ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                            : "text-white/80 hover:bg-white/5 hover:text-white",
                         )}
-                        aria-hidden
-                      />
-                    </button>
-                    {satMenuOpen ? (
-                      <ul
-                        role="listbox"
-                        aria-label="Satellite product"
-                        className="absolute left-0 top-full z-[70] mt-1 max-h-72 min-w-[13rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                        onClick={() => {
+                          setMode(mapType);
+                          setMapTypeMenuOpen(false);
+                          setSatMenuOpen(false);
+                        }}
                       >
-                        {SATELLITE_PRODUCTS.map((p) => (
-                          <li key={p.id} role="option" aria-selected={satProduct === p.id}>
-                            <button
-                              type="button"
-                              className={cn(
-                                "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
-                                satProduct === p.id
-                                  ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
-                                  : "text-white/80 hover:bg-white/5 hover:text-white",
-                              )}
-                              onClick={() => {
-                                setSatProduct(p.id);
-                                setMode("Satellite");
-                                setSatMenuOpen(false);
-                              }}
-                            >
-                              {p.label}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                );
-              }
+                        {mapType}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
 
-              return (
+            {mode === "Satellite" ? (
+              <div className="relative z-[70]" ref={satMenuRef}>
                 <button
-                  key={m}
                   type="button"
-                  onClick={() => {
-                    setMode(m);
-                    setSatMenuOpen(false);
+                  aria-haspopup="listbox"
+                  aria-expanded={satMenuOpen}
+                  aria-label={`Satellite imagery: ${satProductMeta.label}`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMapTypeMenuOpen(false);
                     setRegionMenuOpen(false);
+                    setSatMenuOpen((open) => !open);
                   }}
                   className={cn(
-                    "sw-chip inline-flex items-center gap-0.5",
-                    mode === m ? "sw-chip-active" : "sw-chip-idle",
+                    "sw-chip inline-flex items-center gap-1",
+                    satMenuOpen ? "sw-chip-active" : "sw-chip-idle",
                   )}
                 >
-                  {m}
+                  Satellite imagery
+                  <span className="font-normal opacity-80">
+                    · {satProductMeta.label}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "h-3.5 w-3.5 opacity-80 transition",
+                      satMenuOpen && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
                 </button>
-              );
-            })}
+                {satMenuOpen ? (
+                  <ul
+                    role="listbox"
+                    aria-label="Satellite product"
+                    className="absolute left-0 top-full z-[80] mt-1 max-h-72 min-w-[13rem] overflow-y-auto rounded-xl border border-white/10 bg-[#0f172a]/95 py-1 text-white shadow-xl backdrop-blur-xl"
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {SATELLITE_PRODUCTS.map((product) => (
+                      <li
+                        key={product.id}
+                        role="option"
+                        aria-selected={satProduct === product.id}
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center px-3 py-2 text-left text-sm font-semibold transition",
+                            satProduct === product.id
+                              ? "bg-[var(--cyan)]/20 text-[var(--cyan)]"
+                              : "text-white/80 hover:bg-white/5 hover:text-white",
+                          )}
+                          onClick={() => {
+                            setSatProduct(product.id);
+                            setSatMenuOpen(false);
+                          }}
+                        >
+                          {product.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="relative z-[70]" ref={regionMenuRef}>
               <button
@@ -1306,7 +1355,7 @@ function HomeDashboardInner({
                             ? `Latest frame ${liveTipLabel} · checks for a new frame regularly`
                             : useRadarLoop
                               ? "Live rain radar updates"
-                              : "Live Himawari updates"
+                              : "Live satellite updates"
                         }
                       >
                         <span

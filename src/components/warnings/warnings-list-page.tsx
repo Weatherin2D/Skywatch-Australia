@@ -117,7 +117,7 @@ function AutoAlertCard({ alert }: { alert: StormCellAlert }) {
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wide text-white/70">
-            CloudCountry {alert.alertLevel}
+            StormFront Australia estimate: {alert.alertLevel}
           </span>
           <span className="text-[11px] uppercase tracking-wide text-white/40">
             score {alert.score}/100
@@ -221,7 +221,7 @@ export function WarningsListPage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cyan)]">
             {source === "bom"
               ? "Bureau of Meteorology"
-              : "CloudCountry automated thunderstorm cells"}
+              : "StormFront Australia thunderstorm estimates"}
           </p>
           <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-white sm:text-3xl">
             Current warnings
@@ -229,7 +229,7 @@ export function WarningsListPage() {
           <p className="mt-1.5 max-w-xl text-sm text-white/70">
             {source === "bom"
               ? "Live Australian weather warnings by severity — Critical, Severe, Moderate, and Minor."
-              : "Lightning-tracked active cells scored out of 100 with Watch / Warning levels. Guidance only — not official BoM warnings."}
+              : "Thunderstorm cells identified from lightning activity. Scores are estimates, not official Bureau of Meteorology warnings."}
           </p>
         </div>
 
@@ -426,7 +426,7 @@ export function WarningsListPage() {
               <section>
                 <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-orange-400/30 pb-2 text-orange-200">
                   <h2 className="text-sm font-bold uppercase tracking-wide">
-                    CloudCountry Warning
+                    StormFront Australia warning estimate
                   </h2>
                   <span className="rounded-full border border-orange-400/40 bg-orange-500/15 px-2 py-0.5 text-[11px] font-bold">
                     {autoWarnings.length}
@@ -446,7 +446,7 @@ export function WarningsListPage() {
               <section>
                 <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-amber-300/30 pb-2 text-amber-100">
                   <h2 className="text-sm font-bold uppercase tracking-wide">
-                    CloudCountry Watch
+                    StormFront Australia watch estimate
                   </h2>
                   <span className="rounded-full border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-[11px] font-bold">
                     {autoWatches.length}
@@ -465,7 +465,7 @@ export function WarningsListPage() {
             <p className="flex items-center gap-1.5 text-[11px] text-white/45">
               <Radio className="h-3.5 w-3.5" aria-hidden />
               {cellsData?.note ??
-                "CloudCountry guidance — lightning clusters, not official BoM tracks."}
+                "StormFront Australia estimates based on lightning activity. Not official Bureau of Meteorology warnings."}
             </p>
           </div>
         )}

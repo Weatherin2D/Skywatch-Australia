@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  Circle,
   CircleMarker,
   ImageOverlay,
+  Marker,
+  Popup,
   MapContainer,
   Polyline,
   TileLayer,
@@ -52,9 +55,374 @@ import type { SynopticGeoJson } from "@/lib/weather/synoptic-contour";
 import {
   GIBS_AU_ASPECT,
   boundsMercatorAspect,
+  lonLatToBoundsPct,
   type WeatherFrame,
 } from "@/lib/weather/maps";
+import { useWarnings } from "@/hooks/use-warnings";
+import type {
+  BomWarningDetail,
+  BomWarningSummary,
+} from "@/lib/weather/warnings";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+const AUSTRALIA_MAP_BOUNDS = [
+  [-48, 100],
+  [-5, 170],
+] as [[number, number], [number, number]];
+
+const BOM_RADAR_SITES = [
+  { name: "Darwin", lat: -12.46, lng: 130.84 },
+  { name: "Townsville", lat: -19.25, lng: 146.77 },
+  { name: "Cairns", lat: -16.93, lng: 145.77 },
+  { name: "Brisbane", lat: -27.47, lng: 153.03 },
+  { name: "Sydney", lat: -33.86, lng: 151.21 },
+  { name: "Melbourne", lat: -37.81, lng: 144.96 },
+  { name: "Adelaide", lat: -34.93, lng: 138.6 },
+  { name: "Perth", lat: -31.95, lng: 115.86 },
+  { name: "Hobart", lat: -42.88, lng: 147.33 },
+  { name: "Alice Springs", lat: -23.7, lng: 133.88 },
+  { name: "Broome", lat: -17.95, lng: 122.23 },
+  { name: "Geraldton", lat: -28.78, lng: 114.61 },
+  { name: "Longreach", lat: -23.44, lng: 144.26 },
+] as const;
+
+function warningDisplayTitle(warning: BomWarningSummary): string {
+  const text = warning.shortTitle || warning.title || "Warning";
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function fallbackWarningPoint(warning: BomWarningSummary): {
+  lat: number;
+  lng: number;
+} {
+  const stateMap: Record<string, [number, number]> = {
+    nsw: [-32.9, 147.6],
+    vic: [-37.2, 144.8],
+    qld: [-24.5, 145.6],
+    wa: [-25.3, 121.8],
+    sa: [-31.5, 135.8],
+    tas: [-42.0, 146.8],
+    nt: [-20.8, 133.8],
+    act: [-35.5, 149.1],
+  };
+
+  const state = (warning.states[0] || warning.state).toLowerCase();
+  const point = stateMap[state];
+  if (point) {
+    return { lat: point[0], lng: point[1] };
+  }
+
+  return { lat: -25.3, lng: 133.8 };
+}
+
+const bomWarningIcon = L.divIcon({
+  className: "",
+  html: '<span style="display:flex;width:28px;height:28px;align-items:center;justify-content:center;border:2px solid #fff;border-radius:4px;background:#c2410c;color:#fff;font-size:18px;font-weight:800;box-shadow:0 1px 5px #0009">!</span>',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
+
+type LiveLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+};
+
+const liveLocationIcon = L.divIcon({
+  className: "",
+  html: '<span style="display:flex;width:24px;height:24px;align-items:center;justify-content:center;border:2px solid #fff;border-radius:50%;background:#0284c7;box-shadow:0 1px 6px #000a"><span style="width:7px;height:7px;border-radius:50%;background:#fff"></span></span>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+function useLiveLocation(enabled: boolean): {
+  position: LiveLocation | null;
+  error: string | null;
+} {
+  const [position, setPosition] = useState<LiveLocation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setPosition(null);
+      setError(null);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setError("Location is not supported by this browser.");
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      ({ coords }) => {
+        setPosition({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          accuracy: coords.accuracy,
+        });
+        setError(null);
+      },
+      (locationError) => {
+        setError(
+          locationError.code === locationError.PERMISSION_DENIED
+            ? "Allow location access in your browser to show your position."
+            : "Your live location is temporarily unavailable.",
+        );
+      },
+      { enableHighAccuracy: true, maximumAge: 1_000, timeout: 20_000 },
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [enabled]);
+
+  return { position, error };
+}
+
+function LiveLocationStatus({
+  enabled,
+  position,
+  error,
+}: {
+  enabled: boolean;
+  position: LiveLocation | null;
+  error: string | null;
+}) {
+  if (!enabled || (position && !error)) return null;
+
+  return (
+    <div
+      role="status"
+      className="pointer-events-none absolute bottom-3 left-3 z-[1001] max-w-[min(22rem,calc(100%-1.5rem))] rounded-md border border-white/15 bg-[#0f172a]/95 px-3 py-2 text-xs text-white shadow-lg"
+    >
+      {error ?? "Finding your live location…"}
+    </div>
+  );
+}
+
+function LiveLocationMarker({ position }: { position: LiveLocation }) {
+  const point: [number, number] = [position.latitude, position.longitude];
+  const accuracy = Math.max(10, position.accuracy);
+
+  return (
+    <>
+      <Circle
+        center={point}
+        radius={accuracy}
+        pathOptions={{
+          color: "#38bdf8",
+          weight: 1.5,
+          fillColor: "#38bdf8",
+          fillOpacity: 0.12,
+        }}
+      />
+      <Marker position={point} icon={liveLocationIcon} zIndexOffset={2000}>
+        <Tooltip direction="top" offset={[0, -12]}>
+          Your live location (accuracy ±{Math.round(position.accuracy)} m)
+        </Tooltip>
+      </Marker>
+    </>
+  );
+}
+
+function SatelliteLiveLocation({
+  position,
+  bounds,
+}: {
+  position: LiveLocation;
+  bounds: RegionBounds;
+}) {
+  const { x, y } = lonLatToBoundsPct(
+    position.longitude,
+    position.latitude,
+    bounds,
+  );
+  if (x < 0 || x > 100 || y < 0 || y > 100) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+      <span
+        aria-label={`Your live location, accuracy about ${Math.round(position.accuracy)} metres`}
+        title={`Your live location (accuracy ±${Math.round(position.accuracy)} m)`}
+        className="pointer-events-auto absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-sky-600 shadow-[0_1px_6px_rgba(0,0,0,0.7)]"
+        style={{ left: `${x}%`, top: `${y}%` }}
+      >
+        <span className="h-2 w-2 rounded-full bg-white" />
+      </span>
+    </div>
+  );
+}
+
+function RadarSitesOverlay({ enabled }: { enabled: boolean }) {
+  if (!enabled) return null;
+
+  return (
+    <>
+      {BOM_RADAR_SITES.map((site) => (
+        <CircleMarker
+          key={site.name}
+          center={[site.lat, site.lng]}
+          radius={5}
+          pathOptions={{
+            color: "#7dd3fc",
+            weight: 1.5,
+            fillColor: "#7dd3fc",
+            fillOpacity: 0.9,
+          }}
+        >
+          <Tooltip direction="top" offset={[0, -8]} permanent>
+            {site.name}
+          </Tooltip>
+        </CircleMarker>
+      ))}
+    </>
+  );
+}
+
+function BomWarningOverlay({
+  enabled,
+  warnings,
+}: {
+  enabled: boolean;
+  warnings: BomWarningSummary[];
+}) {
+  if (!enabled) return null;
+
+  const items = warnings.filter((warning) => {
+    const type = warning.type.toLowerCase();
+    return (
+      warning.severity !== "cancelled" &&
+      (type.includes("severe_weather_warning") ||
+        type.includes("severe_thunderstorm_warning"))
+    );
+  });
+
+  return (
+    <>
+      {items.map((warning) => (
+        <BomWarningMapMarker key={warning.id} warning={warning} />
+      ))}
+    </>
+  );
+}
+
+function BomWarningMapMarker({ warning }: { warning: BomWarningSummary }) {
+  const [detail, setDetail] = useState<BomWarningDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const loadOfficialMap = () => {
+    if (detail || loading) return;
+    setLoading(true);
+    void fetch(`/api/weather/warnings/${encodeURIComponent(warning.id)}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Warning map unavailable");
+        const payload = (await response.json()) as {
+          warning: BomWarningDetail;
+        };
+        setDetail(payload.warning);
+      })
+      .catch(() => setLoadFailed(true))
+      .finally(() => setLoading(false));
+  };
+
+  const openWarning = () => {
+    if (
+      window.confirm(
+        `Open the Bureau of Meteorology warning for ${warningDisplayTitle(warning)}?`,
+      )
+    ) {
+      window.location.assign(warning.href);
+    }
+  };
+
+  const officialMap = detail?.images[0];
+
+  return (
+    <Marker
+      position={fallbackWarningPoint(warning)}
+      icon={bomWarningIcon}
+      eventHandlers={{ click: loadOfficialMap }}
+    >
+      <Tooltip direction="top" offset={[0, -14]}>
+        {`Warning location: ${warningDisplayTitle(warning)}`}
+      </Tooltip>
+      <Popup minWidth={260} maxWidth={320}>
+        <div className="space-y-2">
+          <p className="font-semibold">{warningDisplayTitle(warning)}</p>
+          {officialMap ? (
+            <img
+              src={officialMap.src}
+              alt={`Official Bureau of Meteorology warning map: ${warning.title}`}
+              className="block h-auto max-h-64 w-full object-contain"
+            />
+          ) : loading ? (
+            <p className="text-sm">Loading the official BoM warning map…</p>
+          ) : detail ? (
+            <p className="text-sm">BoM has not provided a map for this warning.</p>
+          ) : loadFailed ? (
+            <p className="text-sm">The official BoM map could not be loaded.</p>
+          ) : (
+            <p className="text-sm">Loading the official BoM warning map…</p>
+          )}
+          <button
+            type="button"
+            onClick={openWarning}
+            className="rounded bg-orange-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600"
+          >
+            Open warning
+          </button>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+function ForecastDistrictOverlay({
+  enabled,
+  warnings,
+}: {
+  enabled: boolean;
+  warnings: BomWarningSummary[];
+}) {
+  if (!enabled) return null;
+
+  const items = warnings.filter((warning) => {
+    const type = warning.type.toLowerCase();
+    return (
+      type.includes("severe_weather_warning") ||
+      type.includes("severe_thunderstorm_warning")
+    );
+  });
+
+  return (
+    <>
+      {items.map((warning) => {
+        const point = fallbackWarningPoint(warning);
+        if (!point) return null;
+
+        return (
+          <CircleMarker
+            key={`${warning.id}-district`}
+            center={[point.lat, point.lng]}
+            radius={6}
+            pathOptions={{
+              color: "#f8fafc",
+              weight: 1.2,
+              fillColor: warning.severity === "critical" ? "#fca5a5" : "#fde68a",
+              fillOpacity: 0.95,
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -10]}>
+              {warningDisplayTitle(warning)}
+            </Tooltip>
+          </CircleMarker>
+        );
+      })}
+    </>
+  );
+}
 
 type Props = {
   mode: MapMode;
@@ -492,6 +860,10 @@ export function HomeMap({
     ? GIBS_AU_ASPECT
     : boundsMercatorAspect(bounds);
   const useSatelliteBasemap = mapSettings.satelliteBasemap;
+  const { position: liveLocation, error: liveLocationError } = useLiveLocation(
+    mapSettings.liveLocation,
+  );
+  const { warnings } = useWarnings();
   const lightningIconStyle = mapSettings.lightningBolts
     ? ("bolt" as const)
     : ("crosshair" as const);
@@ -584,6 +956,14 @@ export function HomeMap({
           bounds={bounds}
           colorCoded={mapSettings.stationColorValues}
         />
+        {liveLocation ? (
+          <SatelliteLiveLocation position={liveLocation} bounds={bounds} />
+        ) : null}
+        <LiveLocationStatus
+          enabled={mapSettings.liveLocation}
+          position={liveLocation}
+          error={liveLocationError}
+        />
       </div>
     );
   }
@@ -598,6 +978,8 @@ export function HomeMap({
         zoom={4}
         minZoom={3}
         maxZoom={18}
+        maxBounds={AUSTRALIA_MAP_BOUNDS}
+        maxBoundsViscosity={1.0}
         className="h-full w-full !bg-[#0a1628]"
         style={{ background: "#0a1628" }}
         zoomControl={false}
@@ -649,6 +1031,13 @@ export function HomeMap({
             smoothed={radarSmoothed}
           />
         ) : null}
+        {mapSettings.radarSites ? <RadarSitesOverlay enabled /> : null}
+        {mapSettings.bomWarnings ? (
+          <BomWarningOverlay enabled warnings={warnings} />
+        ) : null}
+        {mapSettings.forecastDistricts ? (
+          <ForecastDistrictOverlay enabled warnings={warnings} />
+        ) : null}
         {showRadarOverlay && radarLoopFrames.length > 0 ? (
           <RadarFramePreloader
             frames={radarLoopFrames}
@@ -684,6 +1073,7 @@ export function HomeMap({
           enabled={showStations}
           colorCoded={mapSettings.stationColorValues}
         />
+        {liveLocation ? <LiveLocationMarker position={liveLocation} /> : null}
         {probePoint ? (
           <CircleMarker
             center={[probePoint.lat, probePoint.lng]}
@@ -747,6 +1137,11 @@ export function HomeMap({
           fullscreenTarget={fullscreenTarget}
         />
       </MapContainer>
+      <LiveLocationStatus
+        enabled={mapSettings.liveLocation}
+        position={liveLocation}
+        error={liveLocationError}
+      />
       {riskImageUrl && riskImageDisplay === "sheet" ? (
         <div className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center bg-[#070b16]/55 p-3 sm:p-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}

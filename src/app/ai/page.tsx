@@ -3,25 +3,25 @@ import { SiteShell } from "@/components/site/site-shell";
 
 const CARDS = [
   {
-    title: "AI Soundings",
+    title: "Storm profiles",
     blurb:
-      "Model Skew-T with CloudCountry AI V1 neural residual (Open-Meteo teacher). Skip Observed while UWYO is down.",
+      "Explore forecast conditions at different heights in the atmosphere. Compare the forecast with weather-balloon observations.",
     href: "/soundings?mode=model&engine=predict&model=pulse&lat=-31.95&lon=115.86&place=Perth",
-    cta: "Open AI V1 sounding",
+    cta: "Explore storm profiles",
   },
   {
-    title: "AI Models",
+    title: "Forecast models",
     blurb:
-      "National model map with mini Skew-T. AI V1 and Skew-T turn on from this link — click the map near land.",
+      "Explore weather forecasts on a map and compare conditions at different locations.",
     href: "/models?model=icon&skewt=1&engine=predict&lat=-31.95&lon=115.86",
-    cta: "Open AI Models",
+    cta: "Explore forecast models",
   },
   {
-    title: "AI Risk",
+    title: "Thunderstorm outlook",
     blurb:
-      "Pulse risk outlook. Tap a coloured area — the inspect panel shows CloudCountry AI thermo (CAPE, shear, SRH).",
+      "View estimated thunderstorm risk areas and the weather conditions behind them. These estimates are not official warnings.",
     href: "/risk?source=pulse&engine=predict",
-    cta: "Open AI Risk",
+    cta: "View thunderstorm outlook",
   },
 ] as const;
 
@@ -31,16 +31,15 @@ export default function AiHubPage() {
       <div className="mx-auto w-full max-w-3xl space-y-6 px-3 py-8 sm:px-4">
         <header className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-300">
-            Local AI demo
+            Experimental tools
           </p>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold text-white sm:text-4xl">
-            CloudCountry AI V1
+            Weather insights in development
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-white/65">
-            The Hobby production host (ausrisk.vercel.app) is disabled by Vercel
-            fair-use limits. Use these links on this live tunnel — each one opens
-            with <span className="font-semibold text-amber-200">AI V1</span>{" "}
-            already selected.
+            Try experimental tools for exploring storm conditions and forecast
+            risk. Results may be incomplete and should not replace official
+            Bureau of Meteorology warnings.
           </p>
         </header>
 

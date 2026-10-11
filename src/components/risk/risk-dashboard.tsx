@@ -256,42 +256,28 @@ function isModelSource(source: RiskSource): boolean {
 }
 
 const RISK_SOURCE_OPTIONS: { id: RiskSource; label: string }[] = [
-  { id: "bom", label: "BoM" },
-  { id: "pulse", label: "Pulse" },
-  { id: "ifs", label: "IFS" },
-  { id: "ukmo", label: "UKMO" },
-  { id: "access", label: "Access" },
+  { id: "bom", label: "Official forecast" },
+  { id: "pulse", label: "StormFront estimate" },
+  { id: "ifs", label: "ECMWF model" },
+  { id: "ukmo", label: "UK Met Office" },
+  { id: "access", label: "Bureau ACCESS model" },
 ];
 
 function sourceBlurb(source: RiskSource, product: ModelRiskProduct): string {
   if (source === "bom") {
-    return "Official BoM MetEye thunderstorm forecast — Chance of and Likely areas for the full MetEye horizon.";
+    return "Official Bureau of Meteorology thunderstorm forecast, showing areas where storms are possible or likely.";
   }
-  const model =
-    source === "access"
-      ? "Access"
-      : source === "ifs"
-        ? "IFS"
-        : source === "ukmo"
-          ? "UKMO"
-          : "Pulse";
+  const model = riskSourceName(source);
   const meta = PRODUCT_META[product];
-  return `CloudCountry ${model} — ${meta.description}`;
+  return `StormFront Australia ${model} estimate — ${meta.description}`;
 }
 
 function sourceLoadingLabel(
   source: RiskSource,
   product: ModelRiskProduct,
 ): string {
-  if (source === "bom") return "Loading MetEye thunderstorm forecast…";
-  const model =
-    source === "access"
-      ? "Access"
-      : source === "ifs"
-        ? "IFS"
-        : source === "ukmo"
-          ? "UKMO"
-          : "Pulse";
+  if (source === "bom") return "Loading the Bureau of Meteorology thunderstorm forecast…";
+  const model = riskSourceName(source);
   return `Building ${model} ${PRODUCT_META[product].shortLabel.toLowerCase()} outlook…`;
 }
 
@@ -300,17 +286,17 @@ function sourceEmptyFallback(
   product: ModelRiskProduct,
 ): string {
   if (source === "bom") {
-    return "No thunderstorm areas in the current BoM MetEye forecast.";
+    return "The latest Bureau of Meteorology forecast shows no thunderstorm areas.";
   }
-  const model =
-    source === "access"
-      ? "Access"
-      : source === "ifs"
-        ? "IFS"
-        : source === "ukmo"
-          ? "UKMO"
-          : "Pulse";
+  const model = riskSourceName(source);
   return PRODUCT_META[product].emptyMessage(model);
+}
+
+function riskSourceName(source: Exclude<RiskSource, "bom">): string {
+  if (source === "access") return "Bureau of Meteorology ACCESS model";
+  if (source === "ifs") return "ECMWF forecast model";
+  if (source === "ukmo") return "UK Met Office forecast";
+  return "StormFront Australia estimate";
 }
 
 function sourceKeyTitle(source: RiskSource, product: ModelRiskProduct): string {
@@ -921,9 +907,9 @@ export function RiskDashboard() {
 
           <p className="text-xs text-white/45">
             {source === "bom"
-              ? "Source: BoM MetEye thunderstorm layer (IDZ73094)"
+              ? "Source: Bureau of Meteorology thunderstorm forecast"
               : catalog?.attribution ??
-                `Source: CloudCountry ${source === "access" ? "Access" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"} · Open-Meteo`}
+                `Source: StormFront Australia forecast · ${source === "access" ? "ACCESS" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"}`}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",
@@ -932,7 +918,7 @@ export function RiskDashboard() {
                 })} (AEST/AEDT)`
               : ""}
             {source === "bom"
-              ? ". Each day uses the same 3-hourly MetEye frame BoM shows for that period (out to ~7 days)."
+              ? ". Updated every three hours, with forecasts up to about seven days ahead."
               : ". Guidance only — not an official warning product."}
           </p>
         </section>
@@ -954,8 +940,8 @@ export function RiskDashboard() {
                 activeId={activeLegendId}
               />
               <p className="text-xs leading-relaxed text-white/50">
-                Same Chance / Likely colours as MetEye. Dimmed = not on this
-                day&apos;s map. Tap a swatch or the map for details.
+                The same colours as the Bureau of Meteorology forecast. Dimmed
+                areas are not forecast for this day. Select an area for details.
               </p>
             </>
           ) : (
@@ -967,7 +953,7 @@ export function RiskDashboard() {
               />
               <p className="text-xs leading-relaxed text-white/50">
                 {product === "risk"
-                  ? "Only colours that survive onto today's painted map stay bright — higher ladder steps need organised shear/CAPE and are often capped in the tropics. Tap a swatch or the map for why."
+                  ? "Higher risk levels need stronger signs of organised storms, so fewer areas may appear in tropical regions. Select a colour or map area for details."
                   : `${PRODUCT_META[product].description} Dimmed bands are not on this day's map. Tap a swatch or coloured area for local odds.`}
               </p>
               <ModelProductBlurbList

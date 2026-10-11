@@ -30,7 +30,11 @@ export const DEFAULT_RADAR_WEATHER_LAYERS: Record<LayerId, boolean> = {
 /** Cartographic toggles for the national map (below weather overlays). */
 export const MAP_SETTINGS = [
   { id: "satelliteBasemap", label: "Satellite imagery" },
+  { id: "liveLocation", label: "Live location" },
   { id: "radarSmoothing", label: "Radar soft edges" },
+  { id: "radarSites", label: "Radar sites" },
+  { id: "bomWarnings", label: "BoM warnings" },
+  { id: "forecastDistricts", label: "Forecast zone districts" },
   { id: "lightningBolts", label: "Lightning bolt icons" },
   { id: "stationColorValues", label: "Colour station values" },
   { id: "cityLabels", label: "City labels" },
@@ -70,11 +74,18 @@ export type MapSettingsState = {
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   /** Esri World Imagery under the open Map (pan/zoom) */
   satelliteBasemap: false,
+  liveLocation: false,
   /**
    * Soft CSS upscale only — RainViewer spatial smooth (1_0) breaks our dBZ
    * recolour (blended pixels fall out of the Universal Blue LUT).
    */
   radarSmoothing: false,
+  /** Show every official BoM radar site location in Australia. */
+  radarSites: false,
+  /** Draw active severe weather and thunderstorm warning areas. */
+  bomWarnings: false,
+  /** Label the forecast districts attached to active warning polygons. */
+  forecastDistricts: false,
   /** Bolt glyphs instead of crosshair markers */
   lightningBolts: false,
   /** Thermal / pressure colour coding on station-model numbers */
@@ -93,6 +104,9 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
 /** /radar page cartography — bolts + coloured stations on. */
 export const DEFAULT_RADAR_MAP_SETTINGS: MapSettingsState = {
   ...DEFAULT_MAP_SETTINGS,
+  radarSites: true,
+  bomWarnings: true,
+  forecastDistricts: true,
   lightningBolts: true,
   stationColorValues: true,
 };

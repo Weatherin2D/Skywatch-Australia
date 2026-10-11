@@ -74,8 +74,8 @@ function App() {
 
       <header className="brand-bar">
         <div className="brand">
-          <p className="brand-mark">CloudCountry</p>
-          <p className="brand-sub">Australia · Pages lite</p>
+          <p className="brand-mark">StormFront Australia</p>
+          <p className="brand-sub">Australian weather</p>
         </div>
         <p className="tagline">
           Live rain radar and capital forecasts — static hosting, no server.
@@ -231,8 +231,7 @@ function App() {
             ) : null}
 
             <p className="lite-disclaimer">
-              Lite build for GitHub Pages. Full CloudCountry (BoM forecasts, Himawari
-              products, cells, warnings) needs a Node host when budget allows.
+              This version provides live radar and capital-city forecasts.
             </p>
           </div>
         ) : null}

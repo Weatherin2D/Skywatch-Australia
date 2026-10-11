@@ -7,14 +7,13 @@ export const ENGINE_UI_OPTIONS: {
   label: string;
   title?: string;
 }[] = [
-  { id: "auto", label: "Engine" },
+  { id: "auto", label: "Standard model" },
   {
     id: "predict",
-    label: "AI V1",
-    title:
-      "CloudCountry AI V1 — ETL-trained neural residual on Open-Meteo teacher (local sidecar)",
+    label: "Experimental model",
+    title: "Experimental forecast model. Results may be incomplete.",
   },
-  { id: "legacy", label: "Legacy" },
+  { id: "legacy", label: "Original model" },
 ];
 
 export function parseEngineUiMode(raw: string | null | undefined): EngineUiMode {
@@ -27,7 +26,7 @@ export function parseEngineUiMode(raw: string | null | undefined): EngineUiMode 
 }
 
 export function engineModeLabel(mode: EngineUiMode): string {
-  if (mode === "predict") return "CloudCountry AI V1";
-  if (mode === "legacy") return "Legacy thermo";
-  return "CloudCountry AI engine";
+  if (mode === "predict") return "Experimental forecast model";
+  if (mode === "legacy") return "Original weather model";
+  return "StormFront Australia weather model";
 }

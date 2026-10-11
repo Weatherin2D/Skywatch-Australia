@@ -11,7 +11,7 @@ import {
   getClientCooldownRemainingSec,
   markClientCooldown,
 } from "@/lib/community/client-cooldown";
-import type { CommunityPost, StorageStatus } from "@/lib/community/types";
+import type { CommunityPost } from "@/lib/community/types";
 
 const MAX_PHOTOS = 8;
 
@@ -29,7 +29,6 @@ export function CommunityDashboard() {
   const formId = useId();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [adminDeleteConfigured, setAdminDeleteConfigured] = useState(false);
-  const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -64,12 +63,10 @@ export function CommunityDashboard() {
       const json = (await res.json()) as {
         posts?: CommunityPost[];
         adminDeleteConfigured?: boolean;
-        storage?: StorageStatus;
       };
       if (signal?.aborted) return;
       setPosts(Array.isArray(json.posts) ? json.posts : []);
       setAdminDeleteConfigured(Boolean(json.adminDeleteConfigured));
-      setStorage(json.storage ?? null);
       setLoading(false);
     } catch (err) {
       if (signal?.aborted) return;
@@ -178,9 +175,9 @@ export function CommunityDashboard() {
       setEventDate(todayLocalISO());
       setFiles([]);
       setFormOk(
-        files.length > 1
-          ? `Posted ${files.length} photos — thanks for sharing. Next post from this network in 20 minutes.`
-          : "Posted — thanks for sharing. Next post from this network in 20 minutes.",
+          files.length > 1
+          ? `Posted ${files.length} photos — thanks for sharing. You can share again in 20 minutes.`
+          : "Posted — thanks for sharing. You can share again in 20 minutes.",
       );
     } catch (err) {
       setFormError(
@@ -198,23 +195,9 @@ export function CommunityDashboard() {
           Community
         </h1>
         <p className="max-w-2xl text-sm text-white/70 sm:text-base">
-          Share photos of weather that has happened across Australia — storms,
-          fog, rainbows, and more. Filter, like, and comment in the library.
+          Share photos of weather you have seen around Australia, from storms
+          and fog to rainbows. Browse photos, like them, and join the conversation.
         </p>
-        {storage ? (
-          <p
-            className={
-              storage.durable
-                ? "text-xs text-emerald-300/90"
-                : "text-xs text-amber-200/90"
-            }
-          >
-            Storage: {storage.backend}
-            {storage.durable ? " · durable across deploys" : " · not durable yet"}
-            {" — "}
-            {storage.detail}
-          </p>
-        ) : null}
       </div>
 
       <section

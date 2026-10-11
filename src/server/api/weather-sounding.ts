@@ -62,8 +62,8 @@ export async function GET(req: NextRequest) {
           ],
           engines: [
             { id: "auto", label: "Auto (engine)" },
-            { id: "skywatch", label: "CloudCountry AI engine" },
-            { id: "predict", label: "CloudCountry AI V1" },
+            { id: "skywatch", label: "StormFront Australia weather model" },
+            { id: "predict", label: "Experimental forecast model" },
             { id: "legacy", label: "Legacy" },
           ],
           skywatchAiConfigured: Boolean(skywatchAiBaseUrl()),

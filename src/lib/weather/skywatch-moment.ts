@@ -36,8 +36,8 @@ export function buildSkywatchMoment(opts: {
   const hot = maxTemp(opts.models);
 
   if (top && top.ratePerMin >= 2) {
-    const headline = `Lightning punching ${top.label}`;
-    const detail = `${top.ratePerMin}/min · ${top.strikes15m} strikes in 15 min — CloudCountry is watching the cells.`;
+    const headline = `Lightning detected near ${top.label}`;
+    const detail = `About ${top.ratePerMin} detections per minute, with ${top.strikes15m} in the past 15 minutes. View the live map for details.`;
     return {
       eyebrow: "Live moment",
       headline,
@@ -50,7 +50,7 @@ export function buildSkywatchMoment(opts: {
 
   if (top && (opts.storm?.total15m ?? 0) >= 20) {
     const headline = `Storms lighting up ${top.label}`;
-    const detail = `National network: ${opts.storm!.total15m} strikes / 15 min. Tap in for the live map.`;
+    const detail = `The lightning network recorded ${opts.storm!.total15m} strikes in the past 15 minutes. View the live map for details.`;
     return {
       eyebrow: "Live moment",
       headline,
@@ -63,7 +63,7 @@ export function buildSkywatchMoment(opts: {
 
   if (rain != null && rain >= 5) {
     const headline = `Wet day shaping up for ${place}`;
-    const detail = `ECMWF sees about ${Math.round(rain * 10) / 10} mm today — compare models side by side.`;
+    const detail = `The forecast shows about ${Math.round(rain * 10) / 10} mm of rain today. Compare forecasts to see how they differ.`;
     return {
       eyebrow: "Near you",
       headline,
@@ -76,7 +76,7 @@ export function buildSkywatchMoment(opts: {
 
   if (hot != null && hot >= 32) {
     const headline = `Heat building toward ${Math.round(hot)}° in ${place}`;
-    const detail = `ECMWF max today · stay cool and keep an eye on the afternoon sky.`;
+    const detail = `The forecast maximum is ${Math.round(hot)}° today. Stay cool and keep an eye on the afternoon sky.`;
     return {
       eyebrow: "Near you",
       headline,
@@ -89,7 +89,7 @@ export function buildSkywatchMoment(opts: {
 
   if (rain != null && rain >= 1) {
     const headline = `A few showers in the mix for ${place}`;
-    const detail = `Models lean ~${Math.round(rain * 10) / 10} mm — scrub the ECMWF rain field for the pattern.`;
+    const detail = `Forecasts suggest about ${Math.round(rain * 10) / 10} mm of rain. View the map to see where showers may fall.`;
     return {
       eyebrow: "Near you",
       headline,
@@ -101,11 +101,11 @@ export function buildSkywatchMoment(opts: {
   }
 
   return {
-    eyebrow: "CloudCountry moment",
+    eyebrow: "Weather near you",
     headline: `Quiet skies near ${place}`,
     detail:
-      "No strong lightning clusters right now — explore radar, satellite, and ECMWF models while it’s calm.",
-    shareText: `Quiet skies near ${place} on CloudCountry — live radar, lightning and ECMWF models.`,
+      "No strong lightning activity right now. Explore radar, satellite images, and forecasts while it’s calm.",
+    shareText: `Quiet skies near ${place} on StormFront Australia — live radar, lightning and forecasts.`,
     href: "/models",
     mood: "calm",
   };
