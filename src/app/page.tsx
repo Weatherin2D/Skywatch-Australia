@@ -1,18 +1,10 @@
-import { Suspense } from "react";
-import { WarningsListPage } from "@/components/warnings/warnings-list-page";
+import { HomeDashboard } from "@/components/home/home-dashboard";
+import { SiteShell } from "@/components/site/site-shell";
 
-export const dynamic = "force-dynamic";
-
-export default function WarningsPage() {
+export default function HomePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[var(--page)] text-white/70">
-          Loading warnings…
-        </div>
-      }
-    >
-      <WarningsListPage />
-    </Suspense>
+    <SiteShell>
+      <HomeDashboard />
+    </SiteShell>
   );
 }
