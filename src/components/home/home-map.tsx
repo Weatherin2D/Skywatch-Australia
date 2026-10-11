@@ -131,9 +131,9 @@ type LiveLocation = {
 
 const liveLocationIcon = L.divIcon({
   className: "",
-  html: '<span style="display:flex;width:24px;height:24px;align-items:center;justify-content:center;border:2px solid #fff;border-radius:50%;background:#0284c7;box-shadow:0 1px 6px #000a"><span style="width:7px;height:7px;border-radius:50%;background:#fff"></span></span>',
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+  html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 64" width="36" height="48" style="filter:drop-shadow(0 1px 3px #0009)"><path fill="#c8102e" d="M24 0C10.75 0 0 10.75 0 24c0 6.2 2.4 11.6 6.2 17.1L19.4 61c2.1 4 7.1 4 9.2 0l13.2-19.9C45.6 35.6 48 30.2 48 24 48 10.75 37.25 0 24 0Z"/><circle cx="24" cy="24" r="9.5" fill="#fff"/></svg>',
+  iconSize: [36, 48],
+  iconAnchor: [18, 45],
 });
 
 function useLiveLocation(enabled: boolean): {
@@ -245,10 +245,20 @@ function SatelliteLiveLocation({
       <span
         aria-label={`Your live location, accuracy about ${Math.round(position.accuracy)} metres`}
         title={`Your live location (accuracy ±${Math.round(position.accuracy)} m)`}
-        className="pointer-events-auto absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-sky-600 shadow-[0_1px_6px_rgba(0,0,0,0.7)]"
+        className="pointer-events-auto absolute h-12 w-9 -translate-x-1/2 -translate-y-[94%] drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]"
         style={{ left: `${x}%`, top: `${y}%` }}
       >
-        <span className="h-2 w-2 rounded-full bg-white" />
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 48 64"
+          className="h-full w-full"
+        >
+          <path
+            fill="#c8102e"
+            d="M24 0C10.75 0 0 10.75 0 24c0 6.2 2.4 11.6 6.2 17.1L19.4 61c2.1 4 7.1 4 9.2 0l13.2-19.9C45.6 35.6 48 30.2 48 24 48 10.75 37.25 0 24 0Z"
+          />
+          <circle cx="24" cy="24" r="9.5" fill="#fff" />
+        </svg>
       </span>
     </div>
   );
