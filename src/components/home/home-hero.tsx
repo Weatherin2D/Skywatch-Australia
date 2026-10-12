@@ -34,7 +34,7 @@ export function HomeHero() {
 
       <div className="relative flex min-h-[240px] flex-col justify-end gap-4 px-5 py-7 sm:min-h-[280px] sm:px-8 sm:py-9 lg:min-h-[320px]">
         <p className="animate-fade-up font-[family-name:var(--font-display)] text-xs font-bold uppercase tracking-[0.28em] text-[var(--cyan)] drop-shadow-[0_0_18px_rgba(34,211,238,0.45)]">
-          StormFront Australia
+          Thunderstate
         </p>
         <div className="animate-fade-up-delay max-w-md space-y-3 sm:max-w-lg">
           <h1 className="sw-hero-title font-[family-name:var(--font-display)] text-[3.4rem] font-bold uppercase leading-[0.88] sm:text-[4.25rem] lg:text-[5.1rem]">

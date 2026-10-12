@@ -257,7 +257,7 @@ function isModelSource(source: RiskSource): boolean {
 
 const RISK_SOURCE_OPTIONS: { id: RiskSource; label: string }[] = [
   { id: "bom", label: "Official forecast" },
-  { id: "pulse", label: "StormFront estimate" },
+  { id: "pulse", label: "Thunderstate estimate" },
   { id: "ifs", label: "ECMWF model" },
   { id: "ukmo", label: "UK Met Office" },
   { id: "access", label: "Bureau ACCESS model" },
@@ -269,7 +269,7 @@ function sourceBlurb(source: RiskSource, product: ModelRiskProduct): string {
   }
   const model = riskSourceName(source);
   const meta = PRODUCT_META[product];
-  return `StormFront Australia ${model} estimate — ${meta.description}`;
+  return `Thunderstate ${model} estimate — ${meta.description}`;
 }
 
 function sourceLoadingLabel(
@@ -296,7 +296,7 @@ function riskSourceName(source: Exclude<RiskSource, "bom">): string {
   if (source === "access") return "Bureau of Meteorology ACCESS model";
   if (source === "ifs") return "ECMWF forecast model";
   if (source === "ukmo") return "UK Met Office forecast";
-  return "StormFront Australia estimate";
+  return "Thunderstate estimate";
 }
 
 function sourceKeyTitle(source: RiskSource, product: ModelRiskProduct): string {
@@ -848,7 +848,7 @@ export function RiskDashboard() {
             ) : (
               <>
                 <HomeMapDynamic
-                  mode="Map"
+                  mode="Zoomable"
                   regionId={regionId}
                   mapSettings={RISK_MAP_SETTINGS}
                   showRadarOverlay={false}
@@ -909,7 +909,7 @@ export function RiskDashboard() {
             {source === "bom"
               ? "Source: Bureau of Meteorology thunderstorm forecast"
               : catalog?.attribution ??
-                `Source: StormFront Australia forecast · ${source === "access" ? "ACCESS" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"}`}
+                `Source: Thunderstate forecast · ${source === "access" ? "ACCESS" : source === "ifs" ? "IFS" : source === "ukmo" ? "UKMO" : "Pulse"}`}
             {data?.issuedAt
               ? ` · issued ${new Date(data.issuedAt).toLocaleString("en-AU", {
                   timeZone: "Australia/Sydney",

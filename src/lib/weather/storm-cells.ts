@@ -430,11 +430,11 @@ function buildAnalysis(opts: {
 
   if (opts.alertLevel === "warning") {
     analysis.push(
-      "StormFront Australia warning estimate — intense lightning activity may indicate an increased thunderstorm risk nearby. This is not an official warning.",
+      "Thunderstate warning estimate — intense lightning activity may indicate an increased thunderstorm risk nearby. This is not an official warning.",
     );
   } else if (opts.alertLevel === "watch") {
     analysis.push(
-      "StormFront Australia watch estimate — lightning activity has been detected nearby. Follow official weather warnings.",
+      "Thunderstate watch estimate — lightning activity has been detected nearby. Follow official weather warnings.",
     );
   } else {
     analysis.push("Below automated alert threshold — guidance only.");
@@ -596,7 +596,7 @@ export function buildStormCells(
     cells,
     alerts,
     attribution: "Blitzortung / LightningMaps · RainViewer timing",
-    note: "StormFront Australia estimates based on lightning activity. Not official Bureau of Meteorology warnings.",
+    note: "Thunderstate estimates based on lightning activity. Not official Bureau of Meteorology warnings.",
   };
 }
 

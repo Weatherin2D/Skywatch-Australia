@@ -46,9 +46,9 @@ export function riskAiThermoFromSounding(
 
   const label =
     engine === "skywatch-ai-v1"
-      ? "StormFront Australia experimental model"
+      ? "Thunderstate experimental model"
       : engine === "skywatch-ai"
-        ? "StormFront Australia weather model"
+        ? "Thunderstate weather model"
         : engineModeLabel(engineMode);
 
   return {

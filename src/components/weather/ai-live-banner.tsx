@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { X } from "lucide-react";
 
-const DISMISSED_KEY = "stormfront-experimental-banner-dismissed";
-const DISMISS_EVENT = "stormfront-experimental-banner-change";
+const DISMISSED_KEY = "thunderstate-experimental-banner-dismissed";
+const DISMISS_EVENT = "thunderstate-experimental-banner-change";
 
 function subscribeToDismissal(onChange: () => void) {
   window.addEventListener(DISMISS_EVENT, onChange);

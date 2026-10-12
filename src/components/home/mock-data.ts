@@ -104,7 +104,7 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
 /** /radar page cartography — bolts + coloured stations on. */
 export const DEFAULT_RADAR_MAP_SETTINGS: MapSettingsState = {
   ...DEFAULT_MAP_SETTINGS,
-  radarSites: true,
+  radarSites: false,
   bomWarnings: true,
   forecastDistricts: true,
   lightningBolts: true,
@@ -112,7 +112,7 @@ export const DEFAULT_RADAR_MAP_SETTINGS: MapSettingsState = {
 };
 
 /** Primary map view — not the same as overlay layers. */
-export const MAP_MODES = ["Map", "Satellite"] as const;
+export const MAP_MODES = ["Zoomable", "Static"] as const;
 
 export type MapMode = (typeof MAP_MODES)[number];
 

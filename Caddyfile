@@ -1,4 +1,4 @@
-# Reverse proxy for StormFront Australia on Oracle Cloud / VPS.
+# Reverse proxy for Thunderstate on Oracle Cloud / VPS.
 # - With a domain pointed at this VM: set SKYWATCH_DOMAIN (see docker-compose notes)
 # - IP-only / first boot: serve on :80 without TLS
 

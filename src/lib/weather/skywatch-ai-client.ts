@@ -356,7 +356,7 @@ export function soundingPayloadFromAiPredict(
     levels,
     params: mergeAiIntoParams(analysis.params, pred.diagnostics),
     parcelTraces: analysis.parcelTraces,
-    attribution: "StormFront Australia experimental forecast model. Guidance only.",
+    attribution: "Thunderstate experimental forecast model. Guidance only.",
     engine: "skywatch-ai-v1",
     engineHemisphere: pred.hemisphere,
     engineMessage: pred.disclaimer,
@@ -435,7 +435,7 @@ export async function attachSkywatchAiEngine(
       engineHemisphere: pred.hemisphere,
       engineMessage: pred.disclaimer,
       aiDiagnostics: pred.diagnostics,
-      attribution: `${payload.attribution} · StormFront Australia experimental model`,
+      attribution: `${payload.attribution} · Thunderstate experimental model`,
     };
   }
 

@@ -95,7 +95,7 @@ export function HomeMomentCard() {
 
   async function onShare() {
     const result = await shareContent({
-      title: "StormFront Australia",
+      title: "Thunderstate",
       text: moment.shareText,
       url: absoluteAppUrl(moment.href),
     });
@@ -157,7 +157,7 @@ export function HomeMomentCard() {
               href={moment.href}
               className="inline-flex text-xs font-semibold text-[var(--cyan)] hover:underline"
             >
-              Open on StormFront Australia →
+              Open on Thunderstate →
             </Link>
           </>
         )}

@@ -1,4 +1,4 @@
-# Deploying the StormFront Australia weather service
+# Deploying the Thunderstate weather service
 
 ## Env
 

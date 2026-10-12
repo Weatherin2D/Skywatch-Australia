@@ -74,7 +74,7 @@ function App() {
 
       <header className="brand-bar">
         <div className="brand">
-          <p className="brand-mark">StormFront Australia</p>
+          <p className="brand-mark">Thunderstate</p>
           <p className="brand-sub">Australian weather</p>
         </div>
         <p className="tagline">

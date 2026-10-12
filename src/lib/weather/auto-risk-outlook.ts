@@ -217,8 +217,8 @@ const MODEL_CONFIG: Record<ModelRiskKind, ModelRiskConfig> = {
     openMeteoModels: "best_match",
     label: "Pulse",
     attribution:
-      "StormFront Australia experimental thunderstorm estimate, based on several forecast sources and atmospheric conditions. Guidance only, not an official warning.",
-    emptyMessage: "No elevated thunderstorm risk in the StormFront Australia estimate.",
+      "Thunderstate experimental thunderstorm estimate, based on several forecast sources and atmospheric conditions. Guidance only, not an official warning.",
+    emptyMessage: "No elevated thunderstorm risk in the Thunderstate estimate.",
     hourlyFields: [
       ...HOURLY_CORE,
       ...HOURLY_LI,

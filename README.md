@@ -1,4 +1,4 @@
-# StormFront Australia
+# Thunderstate
 
 Professional Australian weather site — radar, forecasts, severe weather, and deeper insight.
 
@@ -134,14 +134,14 @@ Copy the `https://….trycloudflare.com` link it prints. Keep that terminal open
 
 | Route | Status |
 |-------|--------|
-| `/` | StormFront Australia homepage — local weather, Bureau of Meteorology forecasts, satellite images, radar, storm activity, and forecast comparisons |
+| `/` | Thunderstate homepage — local weather, Bureau of Meteorology forecasts, satellite images, radar, storm activity, and forecast comparisons |
 | `/satellite` | Himawari satellite loops (IR, visible, shortwave, air mass, dust, day/night microphysics) |
 | `/models` | Multi-model map lab (ECMWF / ICON / GFS) — product picker, diff mode, click values, meteogram, mini Skew-T, transect cross-section |
 | `/model-comparison` | Multi-day ECMWF / ICON / GFS comparison (Open-Meteo) |
 | `/ensemble` | ECMWF ensemble spaghetti (2 m temp / precip) for saved place |
 | `/radar` | Active Cell Tracker overlay (`?chase=1&cell=`) — scores, projected paths, details |
 | `/warnings` | BoM warnings, or Automated thunderstorm cells via `?source=auto` |
-| `/warnings/auto/[cellId]` | StormFront Australia thunderstorm estimate details |
+| `/warnings/auto/[cellId]` | Thunderstate thunderstorm estimate details |
 | `/soundings` | Observed UWYO radiosondes, model Skew-T, and 3×3 model sounding boxes |
 | `/climate` | 14–16 day temp/rain guidance + links to official BoM seasonal products |
 | `/hazards` | UV strip, fire danger / FWI guidance, marine waves (Open-Meteo Marine) |

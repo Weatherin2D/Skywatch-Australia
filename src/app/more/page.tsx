@@ -32,7 +32,7 @@ export default function MorePage() {
 
         {installHint ? (
           <div className="rounded-2xl border border-[var(--cyan)]/30 bg-[var(--cyan)]/10 px-4 py-3 text-sm text-white/80">
-            <p className="font-semibold text-[var(--cyan)]">Install StormFront Australia</p>
+            <p className="font-semibold text-[var(--cyan)]">Install Thunderstate</p>
             <p className="mt-1 text-xs text-white/65">
               Add to your home screen for a full-screen app and offline last
               radar or satellite image. On iPhone or iPad, tap Share, then Add to

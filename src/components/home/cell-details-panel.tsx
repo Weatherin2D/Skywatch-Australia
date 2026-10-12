@@ -170,7 +170,7 @@ export function CellDetailsPanel({
       </div>
 
       <p className="text-[10px] text-white/40">
-        StormFront Australia estimates based on lightning activity. This is not
+        Thunderstate estimates based on lightning activity. This is not
         an official Bureau of Meteorology warning.
       </p>
     </section>

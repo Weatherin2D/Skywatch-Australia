@@ -87,9 +87,9 @@ export function SoundingParamsTables({
       >
         <span className="font-semibold tracking-wide">
           {neural
-            ? "StormFront Australia experimental model"
+            ? "Thunderstate experimental model"
             : ai
-              ? "StormFront Australia weather model"
+              ? "Thunderstate weather model"
               : "Legacy thermo"}
         </span>
         {ai && engineHemisphere ? (

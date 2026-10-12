@@ -20,6 +20,7 @@ export const PRIMARY_NAV = [
   { href: "/radar", label: "Radar", icon: CloudRain },
   { href: "/satellite", label: "Satellite", icon: Satellite },
   { href: "/forecast", label: "Forecast", icon: CloudSun },
+  { href: "/cyclone-centre", label: "Cyclones", icon: Wind },
 ] as const;
 
 /** Right-aligned primary items (sit beside More / search). */
@@ -40,6 +41,7 @@ export const SECONDARY_NAV = [
 
 export const MORE_NAV = [
   { href: "/ai", label: "Experimental tools hub" },
+  { href: "/cyclone-centre", label: "Cyclone centre" },
   {
     href: "/soundings?mode=model&engine=predict&model=pulse&lat=-31.95&lon=115.86&place=Perth",
     label: "Experimental storm profiles",

@@ -105,7 +105,7 @@ export function buildSkywatchMoment(opts: {
     headline: `Quiet skies near ${place}`,
     detail:
       "No strong lightning activity right now. Explore radar, satellite images, and forecasts while it’s calm.",
-    shareText: `Quiet skies near ${place} on StormFront Australia — live radar, lightning and forecasts.`,
+    shareText: `Quiet skies near ${place} on Thunderstate — live radar, lightning and forecasts.`,
     href: "/models",
     mood: "calm",
   };

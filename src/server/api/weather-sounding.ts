@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
           ],
           engines: [
             { id: "auto", label: "Auto (engine)" },
-            { id: "skywatch", label: "StormFront Australia weather model" },
+            { id: "skywatch", label: "Thunderstate weather model" },
             { id: "predict", label: "Experimental forecast model" },
             { id: "legacy", label: "Legacy" },
           ],

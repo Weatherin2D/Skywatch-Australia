@@ -34,6 +34,7 @@ import {
 const STORAGE_KEY = "skywatch.map-ui.v4";
 /** Previous single-blob key — migrated into home + satellite once. */
 const LEGACY_STORAGE_KEY = "skywatch.map-ui.v3";
+const RADAR_SITES_DEFAULT_MIGRATION_KEY = "skywatch.map-ui.radar-sites-default.v1";
 
 export type MapPageId = "home" | "radar" | "satellite";
 
@@ -63,7 +64,7 @@ export function defaultsForMapPage(page: MapPageId): MapUiPrefs {
     return {
       layers,
       mapSettings: { ...DEFAULT_RADAR_MAP_SETTINGS },
-      mode: "Map",
+      mode: "Zoomable",
       regionId: DEFAULT_MAP_REGION,
       satProduct: DEFAULT_SATELLITE_PRODUCT,
       playbackSpeed: DEFAULT_PLAYBACK_SPEED,
@@ -75,7 +76,7 @@ export function defaultsForMapPage(page: MapPageId): MapUiPrefs {
   return {
     layers,
     mapSettings: { ...DEFAULT_MAP_SETTINGS },
-    mode: "Satellite",
+    mode: "Static",
     regionId: DEFAULT_MAP_REGION,
     satProduct: DEFAULT_SATELLITE_PRODUCT,
     playbackSpeed: DEFAULT_PLAYBACK_SPEED,
@@ -156,7 +157,7 @@ function parsePagePrefs(
   return {
     layers,
     mapSettings: parseMapSettings(raw.mapSettings, defaults.mapSettings),
-    mode: page === "radar" ? "Map" : page === "satellite" ? "Satellite" : mode,
+    mode: page === "radar" ? "Zoomable" : page === "satellite" ? "Static" : mode,
     regionId,
     satProduct,
     playbackSpeed,
@@ -170,7 +171,19 @@ function readStore(): StoredMapUi {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as StoredMapUi;
-      return parsed && typeof parsed === "object" ? parsed : {};
+      if (!parsed || typeof parsed !== "object") return {};
+      if (window.localStorage.getItem(RADAR_SITES_DEFAULT_MIGRATION_KEY) !== "1") {
+        const radarPrefs = parsed.radar;
+        if (radarPrefs?.mapSettings) {
+          parsed.radar = {
+            ...radarPrefs,
+            mapSettings: { ...radarPrefs.mapSettings, radarSites: false },
+          };
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        }
+        window.localStorage.setItem(RADAR_SITES_DEFAULT_MIGRATION_KEY, "1");
+      }
+      return parsed;
     }
 
     // One-time migrate v3 single-blob → home + satellite slots.

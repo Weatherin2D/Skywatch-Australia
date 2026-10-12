@@ -21,7 +21,7 @@ const MAX_STRIKES = 4_000;
 const CACHE_TTL_SEC = 45;
 const KEEP_SEC = 3 * 60 * 60;
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; StormFrontAustralia/1.0)";
+  "Mozilla/5.0 (compatible; Thunderstate/1.0)";
 
 export type GeoJsonBackfillResult = {
   strikes: LightningStrike[];

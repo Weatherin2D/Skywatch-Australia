@@ -1,11 +1,11 @@
-# StormFront Australia experimental weather model
+# Thunderstate experimental weather model
 
 Implements `01_ARCHITECTURE`, `02_DATA_PIPELINE`, `03_V1_SOUNDING_MODEL`.
 Contract: **neural net → atmospheric state · deterministic engine → diagnostics · evaluation through the engine.**
 
 ## Site integration
 
-Served to StormFront Australia atmosphere profiles through the Python service (`serve.py`):
+Served to Thunderstate atmosphere profiles through the Python service (`serve.py`):
 
 ```bash
 # Train stack (torch) + run sidecar

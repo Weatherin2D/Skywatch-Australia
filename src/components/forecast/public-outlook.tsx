@@ -139,7 +139,7 @@ export function PublicOutlook() {
 
               <p className="mt-3 text-xs text-white/45">
                 {active.features.length
-                  ? `${active.features.length} risk area${active.features.length === 1 ? "" : "s"} · ${active.source === "customLayers" ? "StormFront Australia estimate" : "risk categories"}`
+                  ? `${active.features.length} risk area${active.features.length === 1 ? "" : "s"} · ${active.source === "customLayers" ? "Thunderstate estimate" : "risk categories"}`
                   : "No polygons drawn for this day."}
                 {data.issuedAt
                   ? ` · Issued ${new Date(data.issuedAt).toLocaleString("en-AU", { timeZone: "Australia/Sydney" })} AEST/AEDT`

@@ -17,15 +17,15 @@ const display = Oswald({
 });
 
 export const metadata: Metadata = {
-  title: "StormFront Australia | Australian weather",
+  title: "Thunderstate | Australian weather",
   description:
     "Australian radar, forecasts, lightning activity, and severe weather information.",
-  applicationName: "StormFront Australia",
+  applicationName: "Thunderstate",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "StormFront Australia",
+    title: "Thunderstate",
   },
   icons: {
     icon: [{ url: "/icon", type: "image/png" }],

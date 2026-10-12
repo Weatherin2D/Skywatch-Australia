@@ -109,7 +109,7 @@ async function fetchUwyoCsv(
       fetch(url, {
         headers: {
           Accept: "text/html,text/plain,*/*",
-          "User-Agent": "StormFrontAustralia/1.0 (+soundings)",
+          "User-Agent": "Thunderstate/1.0 (+soundings)",
         },
         cache: "no-store",
         signal: ac.signal,
@@ -256,7 +256,7 @@ async function fetchUwyoInventoryYear(
   const res = await fetch(url, {
     headers: {
       Accept: "text/html,text/plain,*/*",
-      "User-Agent": "StormFrontAustralia/1.0 (+soundings-archive)",
+      "User-Agent": "Thunderstate/1.0 (+soundings-archive)",
     },
     cache: "no-store",
     signal: AbortSignal.timeout(12_000),

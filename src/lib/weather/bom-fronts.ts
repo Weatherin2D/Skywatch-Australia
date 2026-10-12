@@ -20,7 +20,7 @@ import fit from "@/lib/weather/synoptic-fit.json";
 
 const BOM_CHART_BASE = "https://www.bom.gov.au/fwo";
 const BOM_PRODUCT = "IDY00030";
-const USER_AGENT = "StormFrontAustralia/1.0";
+const USER_AGENT = "Thunderstate/1.0";
 
 /** Palette targets (exact BoM legend colours). */
 const COLD_RGB: [number, number, number] = [0, 0, 255];

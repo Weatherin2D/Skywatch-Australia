@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "StormFront Australia",
-    short_name: "StormFront",
+    name: "Thunderstate",
+    short_name: "Thunderstate",
     description:
       "Australian weather — radar, warnings, forecasts, and deeper insight.",
     start_url: "/",

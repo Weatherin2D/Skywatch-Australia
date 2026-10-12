@@ -1,4 +1,4 @@
-# StormFront Australia — GitHub Pages version
+# Thunderstate — GitHub Pages version
 
 Static Vite + React build that runs on **GitHub Pages** (no Docker, no Node server).
 
@@ -9,7 +9,7 @@ Static Vite + React build that runs on **GitHub Pages** (no Docker, no Node serv
 - Optional RainViewer infrared satellite tiles
 - **Open-Meteo** current conditions for the eight capital cities
 
-This is a lightweight version of StormFront Australia with live radar and capital-city forecasts.
+This is a lightweight version of Thunderstate with live radar and capital-city forecasts.
 
 ## Local
 

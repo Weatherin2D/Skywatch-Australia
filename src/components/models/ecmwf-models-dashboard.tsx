@@ -590,14 +590,14 @@ export function EcmwfModelsDashboard() {
     const when = activeTime ? formatHourLabel(activeTime) : "latest";
     const pair = diffLabel ? `${modelLabel}−${diffLabel}` : modelLabel;
     if (probeSample?.formatted) {
-      return `StormFront Australia ${pair} · ${probeSample.formatted} · ${productLabel} · ${when}`;
+      return `Thunderstate ${pair} · ${probeSample.formatted} · ${productLabel} · ${when}`;
     }
-    return `StormFront Australia ${pair} · ${productLabel} · ${when}`;
+    return `Thunderstate ${pair} · ${productLabel} · ${when}`;
   }, [activeProduct, activeTime, probeSample, modelLabel, diffLabel]);
 
   async function onShareMoment() {
     const result = await shareContent({
-      title: "StormFront Australia forecast models",
+      title: "Thunderstate forecast models",
       text: momentShareText,
       url: absoluteAppUrl(
         typeof window !== "undefined"
@@ -841,7 +841,7 @@ export function EcmwfModelsDashboard() {
           <section className="min-w-0 space-y-2">
             <div className="relative h-[min(68vh,720px)] min-h-[360px] overflow-hidden rounded-xl border border-white/10">
               <HomeMapDynamic
-                mode="Map"
+                mode="Zoomable"
                 regionId="national"
                 mapSettings={MAP_SETTINGS}
                 riskImageUrl={imageUrl}

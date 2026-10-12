@@ -273,18 +273,14 @@ function RadarSitesOverlay({ enabled }: { enabled: boolean }) {
         <CircleMarker
           key={site.name}
           center={[site.lat, site.lng]}
-          radius={5}
+          radius={4}
           pathOptions={{
-            color: "#7dd3fc",
-            weight: 1.5,
-            fillColor: "#7dd3fc",
-            fillOpacity: 0.9,
+            color: "#7f1d1d",
+            weight: 1,
+            fillColor: "#ef4444",
+            fillOpacity: 1,
           }}
-        >
-          <Tooltip direction="top" offset={[0, -8]} permanent>
-            {site.name}
-          </Tooltip>
-        </CircleMarker>
+        />
       ))}
     </>
   );
@@ -863,7 +859,7 @@ export function HomeMap({
   const region = getMapRegion(regionId);
   const bounds = region.bounds;
   const isNational = regionId === "national";
-  const satelliteLoop = mode === "Satellite";
+  const satelliteLoop = mode === "Static";
   const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
   const radarSmoothed = mapSettings.radarSmoothing;
   const satAspect = isNational
@@ -905,7 +901,7 @@ export function HomeMap({
         ref={mapShellRef}
         className="skywatch-map relative z-0 w-full overflow-hidden bg-black"
         style={{ aspectRatio: `${satAspect}` }}
-        data-map-mode="Satellite"
+        data-map-mode="Static"
         data-region={regionId}
       >
         <div className="absolute right-3 top-3 z-[20]">

@@ -75,6 +75,11 @@ import { cn } from "@/lib/utils";
 
 export type HomeDashboardFocus = "radar" | "satellite";
 
+const MAP_MODE_LABELS: Record<MapMode, string> = {
+  Zoomable: "Zoomable",
+  Static: "Static",
+};
+
 function mapPageId(focus?: HomeDashboardFocus): MapPageId {
   if (focus === "radar") return "radar";
   if (focus === "satellite") return "satellite";
@@ -300,8 +305,8 @@ function HomeDashboardInner({
     () => savedUi.mapSettings,
   );
   const [mode, setMode] = useState<MapMode>(() => {
-    if (page === "radar") return "Map";
-    if (page === "satellite") return "Satellite";
+    if (page === "radar") return "Zoomable";
+    if (page === "satellite") return "Static";
     return savedUi.mode;
   });
   const [regionId, setRegionId] = useState<MapRegionId>(() => savedUi.regionId);
@@ -328,8 +333,8 @@ function HomeDashboardInner({
     setPlaybackSpeed(saved.playbackSpeed);
     setSatProduct(saved.satProduct);
     setRegionId(saved.regionId);
-    if (page === "radar") setMode("Map");
-    else if (page === "satellite") setMode("Satellite");
+    if (page === "radar") setMode("Zoomable");
+    else if (page === "satellite") setMode("Static");
     else setMode(saved.mode);
 
     const region = searchParams.get("region");
@@ -337,10 +342,10 @@ function HomeDashboardInner({
     const modeParam = searchParams.get("mode");
     if (modeParam && page === "home") {
       const normalized =
-        modeParam.toLowerCase() === "map"
-          ? "Map"
-          : modeParam.toLowerCase() === "satellite"
-            ? "Satellite"
+        modeParam.toLowerCase() === "map" || modeParam.toLowerCase() === "zoomable"
+          ? "Zoomable"
+          : modeParam.toLowerCase() === "satellite" || modeParam.toLowerCase() === "static"
+            ? "Static"
             : modeParam;
       if (isMapMode(normalized)) setMode(normalized);
     }
@@ -397,10 +402,10 @@ function HomeDashboardInner({
 
   useEffect(() => {
     if (page === "radar") {
-      setMode("Map");
+      setMode("Zoomable");
       setLayers((prev) => (prev.radar ? prev : { ...prev, radar: true }));
     } else if (page === "satellite") {
-      setMode("Satellite");
+      setMode("Static");
     }
   }, [page]);
 
@@ -410,7 +415,7 @@ function HomeDashboardInner({
     writeMapUiPrefs(page, {
       layers,
       mapSettings,
-      mode: page === "radar" ? "Map" : page === "satellite" ? "Satellite" : mode,
+      mode: page === "radar" ? "Zoomable" : page === "satellite" ? "Static" : mode,
       regionId,
       satProduct,
       playbackSpeed,
@@ -439,7 +444,7 @@ function HomeDashboardInner({
     const params = new URLSearchParams();
     if (regionId !== DEFAULT_MAP_REGION) params.set("region", regionId);
     const defaultMode: MapMode =
-      focus === "radar" ? "Map" : "Satellite";
+      focus === "radar" ? "Zoomable" : "Static";
     if (mode !== defaultMode) params.set("mode", mode.toLowerCase());
     if (layers.radar !== (focus === "radar")) {
       params.set("radar", layers.radar ? "1" : "0");
@@ -450,7 +455,7 @@ function HomeDashboardInner({
     if (layers.cells) params.set("cells", "1");
     // Always publish product on Satellite so region deep-links stay stable and
     // we never re-hydrate into a different product after a replace.
-    if (mode === "Satellite" || satProduct !== DEFAULT_SATELLITE_PRODUCT) {
+    if (mode === "Static" || satProduct !== DEFAULT_SATELLITE_PRODUCT) {
       params.set("product", satProduct);
     }
     if (selectedCellId) params.set("cell", selectedCellId);
@@ -472,7 +477,7 @@ function HomeDashboardInner({
   async function copyShareLink() {
     const { shareContent } = await import("@/lib/share");
     const result = await shareContent({
-      title: "StormFront Australia",
+      title: "Thunderstate",
       text: "Live weather across Australia — radar, lightning and satellite.",
       url: window.location.href,
     });
@@ -538,9 +543,9 @@ function HomeDashboardInner({
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
   /** Fixed-crop Himawari loop (Satellite view). */
-  const showSatelliteLoop = mode === "Satellite";
+  const showSatelliteLoop = mode === "Static";
   /** Himawari IR on the pannable Map when Satellite imagery is enabled. */
-  const himawariOnMap = mode === "Map" && mapSettings.satelliteBasemap;
+  const himawariOnMap = mode === "Zoomable" && mapSettings.satelliteBasemap;
   /** Satellite drives the timeline (Satellite view, or Map + satellite imagery). */
   const useSatelliteFrames = showSatelliteLoop || himawariOnMap;
   /**
@@ -548,7 +553,7 @@ function HomeDashboardInner({
    * imagery is not already owning the loop (same play/scrub UX as Himawari).
    */
   const useRadarLoop =
-    showRadarOverlay && mode === "Map" && !himawariOnMap;
+    showRadarOverlay && mode === "Zoomable" && !himawariOnMap;
   const useTimeline = useSatelliteFrames || useRadarLoop;
 
   const loopFrames = useMemo(() => {
@@ -1023,7 +1028,7 @@ function HomeDashboardInner({
                 )}
               >
                 Map type
-                <span className="font-normal opacity-80">· {mode}</span>
+                <span className="font-normal opacity-80">· {MAP_MODE_LABELS[mode]}</span>
                 <ChevronDown
                   className={cn(
                     "h-3.5 w-3.5 opacity-80 transition",
@@ -1055,7 +1060,7 @@ function HomeDashboardInner({
                           setSatMenuOpen(false);
                         }}
                       >
-                        {mapType}
+                        {MAP_MODE_LABELS[mapType]}
                       </button>
                     </li>
                   ))}
@@ -1063,7 +1068,7 @@ function HomeDashboardInner({
               ) : null}
             </div>
 
-            {mode === "Satellite" ? (
+            {mode === "Static" ? (
               <div className="relative z-[70]" ref={satMenuRef}>
                 <button
                   type="button"

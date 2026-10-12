@@ -60,7 +60,7 @@ export function ChaseHud({
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
     try {
-      new Notification("StormFront Australia cell alert", {
+      new Notification("Thunderstate cell alert", {
         body: `${near.cell.alertLevel.toUpperCase()} ${near.cell.score}/100 near ${near.cell.label} — ${Math.round(near.km)} km ${compassLabel(near.bearing)} of ${origin.label}`,
         tag: `skywatch-auto-${near.cell.id}`,
       });
@@ -181,7 +181,7 @@ export function ChaseHud({
           </ul>
           <p className="flex items-center gap-1 text-[10px] text-white/40">
             <Radio className="h-3 w-3" aria-hidden />
-            StormFront Australia estimates from lightning activity. These are
+            Thunderstate estimates from lightning activity. These are
             not official Bureau of Meteorology tracks.
           </p>
         </>

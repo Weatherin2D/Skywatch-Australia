@@ -54,7 +54,7 @@ export function CloudCountryLogo({
           )}
         >
           <span className={inverted ? "text-[var(--brand)]" : "text-white"}>
-            StormFront
+            Thunderstate
           </span>
           <span className="text-[var(--cyan)]"> Australia</span>
         </span>

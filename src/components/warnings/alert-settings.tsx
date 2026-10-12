@@ -49,7 +49,7 @@ export function WarningAlertSettings() {
           </h2>
           <p className="mt-1 max-w-xl text-xs text-white/65">
             Get alerts for new Critical or Severe Bureau of Meteorology warnings
-            in your selected states, and for StormFront Australia thunderstorm
+            in your selected states, and for Thunderstate thunderstorm
             estimates. Alert settings stay on this device; no account or email
             is needed.
           </p>

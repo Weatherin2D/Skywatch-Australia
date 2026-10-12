@@ -1,6 +1,6 @@
-/* StormFront Australia — offline shell + cache-first weather assets */
-const SHELL_CACHE = "stormfront-shell-v1";
-const FRAME_CACHE = "stormfront-frames-v1";
+/* Thunderstate — offline shell + cache-first weather assets */
+const SHELL_CACHE = "thunderstate-shell-v1";
+const FRAME_CACHE = "thunderstate-frames-v1";
 /** Do not precache HTML routes — that trapped navigations on stale shells. */
 const SHELL_URLS = ["/manifest.webmanifest"];
 

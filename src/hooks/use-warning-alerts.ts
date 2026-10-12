@@ -98,7 +98,7 @@ export function useWarningAlerts(pollMs = 180_000) {
       }
     }
 
-    // Also notify when StormFront Australia estimates a nearby thunderstorm.
+    // Also notify when Thunderstate estimates a nearby thunderstorm.
     try {
       const res = await fetch("/api/weather/storm-cells", { cache: "no-store" });
       if (!res.ok) return;
@@ -126,7 +126,7 @@ export function useWarningAlerts(pollMs = 180_000) {
       for (const a of freshCells.slice(0, 3)) {
         try {
           const n = new Notification(
-            `StormFront Australia ${a.alertLevel}: ${a.label}`,
+            `Thunderstate ${a.alertLevel}: ${a.label}`,
             {
               body: a.summary,
               tag: `skywatch-auto-${a.id}`,

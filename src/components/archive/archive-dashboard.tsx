@@ -1128,7 +1128,7 @@ function ArchiveDashboardInner() {
 
           <div className="relative z-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
             <HomeMapDynamic
-              mode="Satellite"
+              mode="Static"
               regionId={regionId}
               showRadarOverlay={false}
               frameImageUrl={activeFrame?.imageUrl ?? null}

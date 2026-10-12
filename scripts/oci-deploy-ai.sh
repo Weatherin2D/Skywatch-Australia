@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy the StormFront Australia experimental model service on an OCI Ubuntu VM (run ON the VM).
+# Deploy the Thunderstate experimental model service on an OCI Ubuntu VM (run ON the VM).
 # Prereq: scripts/oci-bootstrap.sh already ran (Docker installed).
 #
 #   cd /opt/skywatch   # or wherever the repo lives
