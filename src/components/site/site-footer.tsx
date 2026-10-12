@@ -17,7 +17,7 @@ export function SiteFooter() {
         className="absolute inset-0 bg-cover bg-center opacity-40"
         style={{
           backgroundImage:
-            "linear-gradient(90deg, rgba(7,11,22,0.92), rgba(7,11,22,0.55)), url('https://images.unsplash.com/photo-1501594907352-04cda38ebc29?auto=format&fit=crop&w=1600&q=70')",
+            "linear-gradient(90deg, rgba(7,11,22,0.92), rgba(7,11,22,0.55)), url('https://upload.wikimedia.org/wikipedia/commons/6/6a/Storm_Cell_over_the_Gold_Coast.jpg')",
         }}
         aria-hidden
       />

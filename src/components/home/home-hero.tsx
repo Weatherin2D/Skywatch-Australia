@@ -19,7 +19,7 @@ export function HomeHero() {
       <div
         className="animate-hero-drift absolute inset-0 bg-cover bg-[center_35%]"
         style={{
-          backgroundImage: "url('/images/hero-storm.jpg')",
+          backgroundImage: "url('https://upload.wikimedia.org/wikipedia/commons/3/3a/Cloud_to_ground_lightning_strikes_south-west_of_Wagga_Wagga.jpg')",
         }}
         aria-hidden
       />
