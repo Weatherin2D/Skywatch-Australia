@@ -16,11 +16,11 @@ export function useHobbyBudget(): boolean {
   return process.env.VERCEL === "1";
 }
 
-/** Skip CloudCountry dBZ recolour proxy — serve RainViewer tiles direct (zero CPU). */
+/** Skip the CloudCountry dBZ palette proxy only when direct tiles are explicitly enabled. */
 export function useDirectRadarTiles(): boolean {
   if (process.env.SKYWATCH_RADAR_DIRECT === "0") return false;
   if (process.env.SKYWATCH_RADAR_DIRECT === "1") return true;
-  return useHobbyBudget();
+  return false;
 }
 
 /** Allow server-side radar / satellite cache warming. */
