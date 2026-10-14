@@ -639,7 +639,7 @@ function SatelliteRadarOverlay({
   smoothed?: boolean;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-[30]">
+    <div className="pointer-events-none absolute inset-0 z-[10]">
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}
@@ -999,7 +999,7 @@ export function HomeMap({
         <div className="absolute right-3 top-3 z-[20]">
           <MapFullscreenButton target={fullscreenTarget} compact />
         </div>
-        <div className="absolute inset-0 z-10">
+        <div className="absolute inset-0 z-[1]">
           <SatelliteFrameView
             key={
               typeof frameKey === "string"
@@ -1018,13 +1018,11 @@ export function HomeMap({
           />
         </div>
         {showRadarOverlay && frameTileUrl ? (
-          <div className="absolute inset-0 z-[30]">
-            <SatelliteRadarOverlay
-              tileUrl={frameTileUrl}
-              bounds={bounds}
-              smoothed={radarSmoothed}
-            />
-          </div>
+          <SatelliteRadarOverlay
+            tileUrl={frameTileUrl}
+            bounds={bounds}
+            smoothed={radarSmoothed}
+          />
         ) : null}
         <SatelliteSynopticOverlay
           frames={synopticFrames}
