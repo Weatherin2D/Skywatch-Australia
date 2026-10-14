@@ -860,12 +860,13 @@ export function HomeMap({
   const bounds = region.bounds;
   const isNational = regionId === "national";
   const satelliteLoop = mode === "Static";
+  const satelliteBasemap = mapSettings.satelliteBasemap;
   const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
   const radarSmoothed = mapSettings.radarSmoothing;
   const satAspect = isNational
     ? GIBS_AU_ASPECT
     : boundsMercatorAspect(bounds);
-  const useSatelliteBasemap = mapSettings.satelliteBasemap;
+  const useSatelliteBasemap = satelliteBasemap;
   const { position: liveLocation, error: liveLocationError } = useLiveLocation(
     mapSettings.liveLocation,
   );
@@ -895,7 +896,8 @@ export function HomeMap({
   // Satellite: full-bleed region crop (national or state) — image is already
   // georeferenced to `bounds`, so CSS overlays use the same projection.
   // Aspect must match the crop so mobile viewports don't clip the state.
-  if (satelliteLoop) {
+  // Only show satellite loop when satelliteBasemap toggle is enabled.
+  if (satelliteLoop && useSatelliteBasemap) {
     return (
       <div
         ref={mapShellRef}

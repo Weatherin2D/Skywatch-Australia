@@ -8,6 +8,7 @@ import {
   DEFAULT_MAP_REGION,
   DEFAULT_MAP_SETTINGS,
   DEFAULT_RADAR_MAP_SETTINGS,
+  DEFAULT_SATELLITE_MAP_SETTINGS,
   DEFAULT_RADAR_WEATHER_LAYERS,
   DEFAULT_WEATHER_LAYERS,
   MAP_MODES,
@@ -71,7 +72,19 @@ export function defaultsForMapPage(page: MapPageId): MapUiPrefs {
       chaseEnabled: layers.cells,
     };
   }
-  // Home + Satellite share the same starting defaults, then diverge in storage.
+  if (page === "satellite") {
+    const layers = { ...DEFAULT_WEATHER_LAYERS };
+    return {
+      layers,
+      mapSettings: { ...DEFAULT_SATELLITE_MAP_SETTINGS },
+      mode: "Static",
+      regionId: DEFAULT_MAP_REGION,
+      satProduct: DEFAULT_SATELLITE_PRODUCT,
+      playbackSpeed: DEFAULT_PLAYBACK_SPEED,
+      chaseEnabled: layers.cells,
+    };
+  }
+  // Home defaults
   const layers = { ...DEFAULT_WEATHER_LAYERS };
   return {
     layers,

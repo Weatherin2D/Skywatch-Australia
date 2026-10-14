@@ -542,8 +542,8 @@ function HomeDashboardInner({
   const region = getMapRegion(regionId);
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
-  /** Fixed-crop Himawari loop (Satellite view). */
-  const showSatelliteLoop = mode === "Static";
+  /** Fixed-crop Himawari loop (Satellite view) - controlled by satelliteBasemap toggle. */
+  const showSatelliteLoop = mode === "Static" && mapSettings.satelliteBasemap;
   /** Himawari IR on the pannable Map when Satellite imagery is enabled. */
   const himawariOnMap = mode === "Zoomable" && mapSettings.satelliteBasemap;
   /** Satellite drives the timeline (Satellite view, or Map + satellite imagery). */

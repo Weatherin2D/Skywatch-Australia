@@ -101,6 +101,12 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   lightningIconScale: DEFAULT_LIGHTNING_ICON_SCALE,
 };
 
+/** /satellite page cartography — satellite basemap on by default. */
+export const DEFAULT_SATELLITE_MAP_SETTINGS: MapSettingsState = {
+  ...DEFAULT_MAP_SETTINGS,
+  satelliteBasemap: true,
+};
+
 /** /radar page cartography — bolts + coloured stations on. */
 export const DEFAULT_RADAR_MAP_SETTINGS: MapSettingsState = {
   ...DEFAULT_MAP_SETTINGS,
