@@ -415,7 +415,7 @@ function HomeDashboardInner({
     writeMapUiPrefs(page, {
       layers,
       mapSettings,
-      mode: page === "radar" ? "Zoomable" : page === "satellite" ? "Static" : mode,
+      mode,
       regionId,
       satProduct,
       playbackSpeed,
@@ -542,8 +542,8 @@ function HomeDashboardInner({
   const region = getMapRegion(regionId);
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
-  /** Fixed-crop Himawari loop (Satellite view) - controlled by satelliteBasemap toggle. */
-  const showSatelliteLoop = mode === "Static" && mapSettings.satelliteBasemap;
+  /** Fixed-crop Himawari loop (Satellite view) - always shows in Static mode. */
+  const showSatelliteLoop = mode === "Static";
   /** Himawari IR on the pannable Map when Satellite imagery is enabled. */
   const himawariOnMap = mode === "Zoomable" && mapSettings.satelliteBasemap;
   /** Satellite drives the timeline (Satellite view, or Map + satellite imagery). */

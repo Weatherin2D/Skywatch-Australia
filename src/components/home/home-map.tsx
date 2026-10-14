@@ -896,8 +896,8 @@ export function HomeMap({
   // Satellite: full-bleed region crop (national or state) — image is already
   // georeferenced to `bounds`, so CSS overlays use the same projection.
   // Aspect must match the crop so mobile viewports don't clip the state.
-  // Only show satellite loop when satelliteBasemap toggle is enabled.
-  if (satelliteLoop && useSatelliteBasemap) {
+  // Static mode always shows satellite loop; satelliteBasemap toggle affects Zoomable mode.
+  if (satelliteLoop) {
     return (
       <div
         ref={mapShellRef}

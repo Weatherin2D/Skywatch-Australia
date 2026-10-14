@@ -170,7 +170,7 @@ function parsePagePrefs(
   return {
     layers,
     mapSettings: parseMapSettings(raw.mapSettings, defaults.mapSettings),
-    mode: page === "radar" ? "Zoomable" : page === "satellite" ? "Static" : mode,
+    mode,
     regionId,
     satProduct,
     playbackSpeed,
