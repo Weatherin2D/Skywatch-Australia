@@ -641,7 +641,7 @@ function SatelliteRadarOverlay({
   smoothed?: boolean;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-[10]">
+    <div className="skywatch-radar-overlay pointer-events-none absolute inset-0 z-[10]">
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}

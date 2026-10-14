@@ -228,6 +228,17 @@
   min-height: 100% !important;
 }
 
+/* Satellite radar overlay: reset pane backgrounds to transparent so the
+   satellite image beneath shows through between radar tiles. The parent
+   .skywatch-map rule sets #0a1628 on all leaflet panes — override it here. */
+.skywatch-radar-overlay .leaflet-container,
+.skywatch-radar-overlay .leaflet-pane,
+.skywatch-radar-overlay .leaflet-tile-pane,
+.skywatch-radar-overlay .leaflet-map-pane {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* Keep CloudCountry dBZ colours exact — no browser blending between stops. */
 .skywatch-radar-tiles img,
 .leaflet-tile-pane .skywatch-radar-tiles img {
