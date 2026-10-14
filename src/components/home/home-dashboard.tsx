@@ -542,12 +542,18 @@ function HomeDashboardInner({
   const region = getMapRegion(regionId);
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
-  /** Fixed-crop Himawari loop (Satellite view) - shows when product is not 'none'. */
-  const showSatelliteLoop = mode === "Static" && satProduct !== "none";
+  /**
+   * Static mode: the inner map's mercator aspect ratio drives container height.
+   * This is true for any satellite product including "none" (which shows the
+   * dark basemap without a satellite image overlaid).
+   */
+  const showSatelliteLoop = mode === "Static";
+  /** Fixed-crop Himawari satellite image loop (Static view, product is not 'none'). */
+  const showSatelliteImage = mode === "Static" && satProduct !== "none";
   /** Himawari IR on the pannable Map when Satellite imagery is enabled. */
   const himawariOnMap = mode === "Zoomable" && satProduct !== "none";
-  /** Satellite drives the timeline (Satellite view, or Map + satellite imagery). */
-  const useSatelliteFrames = showSatelliteLoop || himawariOnMap;
+  /** Satellite drives the timeline (Satellite view with image, or Map + satellite imagery). */
+  const useSatelliteFrames = showSatelliteImage || himawariOnMap;
   /**
    * Radar drives the timeline on open Map when rain radar is on and satellite
    * is not driving the loop. Radar can now display alongside satellite.
@@ -1229,10 +1235,10 @@ function HomeDashboardInner({
                   : null
               }
               frameImageUrl={
-                showSatelliteLoop ? (activeFrame?.imageUrl ?? null) : null
+                showSatelliteImage ? (activeFrame?.imageUrl ?? null) : null
               }
               frameImageBounds={
-                showSatelliteLoop ? (activeFrame?.imageBounds ?? null) : null
+                showSatelliteImage ? (activeFrame?.imageBounds ?? null) : null
               }
               frameKey={
                 useSatelliteFrames && activeFrame

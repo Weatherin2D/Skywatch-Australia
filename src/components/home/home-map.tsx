@@ -627,6 +627,49 @@ function MapTools({
 }
 
 /**
+ * Esri dark basemap locked into the fixed Himawari frame.
+ * Used when satellite product is "none" so the Static map shows the same
+ * cartographic base as the Zoomable map, without pan/zoom interaction.
+ */
+function StaticBasemapBackground({ bounds }: { bounds: RegionBounds }) {
+  const basemapUrl =
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[1]">
+      <MapContainer
+        center={[-25.5, 134.5]}
+        zoom={4}
+        className="h-full w-full !bg-[#0a1628] [&_.leaflet-container]:!bg-[#0a1628]"
+        zoomControl={false}
+        attributionControl={false}
+        dragging={false}
+        doubleClickZoom={false}
+        scrollWheelZoom={false}
+        boxZoom={false}
+        keyboard={false}
+        touchZoom={false}
+        style={{ background: "#0a1628" }}
+      >
+        <MapChromeFix />
+        <FitRegionBounds
+          bounds={bounds}
+          animate={false}
+          padding={0}
+          isNational={false}
+        />
+        <TileLayer
+          url={basemapUrl}
+          attribution="Esri"
+          keepBuffer={4}
+          updateWhenZooming={false}
+          updateWhenIdle={true}
+        />
+      </MapContainer>
+    </div>
+  );
+}
+
+/**
  * RainViewer tiles over the fixed national Himawari frame.
  */
 function SatelliteRadarOverlay({
@@ -906,24 +949,28 @@ export function HomeMap({
         <div className="absolute right-3 top-3 z-[20]">
           <MapFullscreenButton target={fullscreenTarget} compact />
         </div>
-        <div className="absolute inset-0 z-10">
-          <SatelliteFrameView
-            key={
-              typeof frameKey === "string"
-                ? frameKey.replace(/-\d+$/, "")
-                : regionId
-            }
-            loopKey={
-              typeof frameKey === "string"
-                ? frameKey.replace(/-\d+$/, "")
-                : String(regionId)
-            }
-            url={frameImageUrl}
-            fallbackUrl={frameImageFallbackUrl}
-            alt={frameAlt}
-            opacity={frameOpacity}
-          />
-        </div>
+        {frameImageUrl ? (
+          <div className="absolute inset-0 z-10">
+            <SatelliteFrameView
+              key={
+                typeof frameKey === "string"
+                  ? frameKey.replace(/-\d+$/, "")
+                  : regionId
+              }
+              loopKey={
+                typeof frameKey === "string"
+                  ? frameKey.replace(/-\d+$/, "")
+                  : String(regionId)
+              }
+              url={frameImageUrl}
+              fallbackUrl={frameImageFallbackUrl}
+              alt={frameAlt}
+              opacity={frameOpacity}
+            />
+          </div>
+        ) : (
+          <StaticBasemapBackground bounds={bounds} />
+        )}
         {showRadarOverlay && frameTileUrl ? (
           <div className="absolute inset-0 z-[30]">
             <SatelliteRadarOverlay
