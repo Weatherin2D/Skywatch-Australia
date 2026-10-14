@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Circle,
   CircleMarker,
@@ -630,12 +630,21 @@ function MapTools({
  * Esri dark basemap locked into the fixed Himawari frame.
  * Used when satellite product is "none" so the Static map shows the same
  * cartographic base as the Zoomable map, without pan/zoom interaction.
+ * Takes an `isNational` flag so FitRegionBounds uses the right maxZoom.
  */
-function StaticBasemapBackground({ bounds }: { bounds: RegionBounds }) {
+function StaticBasemapBackground({
+  bounds,
+  isNational,
+  children,
+}: {
+  bounds: RegionBounds;
+  isNational: boolean;
+  children?: ReactNode;
+}) {
   const basemapUrl =
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
   return (
-    <div className="pointer-events-none absolute inset-0 z-[1]">
+    <div className="absolute inset-0 z-[1]">
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}
@@ -655,7 +664,7 @@ function StaticBasemapBackground({ bounds }: { bounds: RegionBounds }) {
           bounds={bounds}
           animate={false}
           padding={0}
-          isNational={false}
+          isNational={isNational}
         />
         <TileLayer
           url={basemapUrl}
@@ -664,6 +673,7 @@ function StaticBasemapBackground({ bounds }: { bounds: RegionBounds }) {
           updateWhenZooming={false}
           updateWhenIdle={true}
         />
+        {children}
       </MapContainer>
     </div>
   );
@@ -969,51 +979,90 @@ export function HomeMap({
             />
           </div>
         ) : (
-          <StaticBasemapBackground bounds={bounds} />
-        )}
-        {showRadarOverlay && frameTileUrl ? (
-          <div className="absolute inset-0 z-[30]">
-            <SatelliteRadarOverlay
-              tileUrl={frameTileUrl}
-              bounds={bounds}
-              smoothed={radarSmoothed}
+          <StaticBasemapBackground bounds={bounds} isNational={isNational}>
+            {/* Leaflet-native annotations so they align to the basemap tiles */}
+            <LeafletMapAnnotations settings={mapSettings} />
+            <LeafletSynopticOverlay
+              frames={synopticFrames}
+              enabled={showSynoptic}
+              referenceTime={synopticReferenceTime}
+              geojson={synopticGeoJson}
+              validTime={synopticValidTime}
             />
-          </div>
-        ) : null}
-        <SatelliteSynopticOverlay
-          frames={synopticFrames}
-          enabled={showSynoptic}
-          referenceTime={synopticReferenceTime}
-          geojson={synopticGeoJson}
-          validTime={synopticValidTime}
-          bounds={bounds}
-        />
-        <SatelliteMapAnnotations
-          settings={mapSettings}
-          cities={CITY_MARKERS}
-          bounds={bounds}
-        />
-        <SatelliteLightningOverlay
-          strikes={lightningStrikes}
-          enabled={showLightning}
-          referenceTime={lightningReferenceTime}
-          timelineStart={lightningTimelineStart}
-          timelineEnd={lightningTimelineEnd}
-          playing={lightningPlaying}
-          msPerFrame={lightningMsPerFrame}
-          nextFrameTime={lightningNextFrameTime}
-          bounds={bounds}
-          iconStyle={lightningIconStyle}
-          iconScale={lightningIconScale}
-        />
-        <SatelliteStationOverlay
-          stations={stations}
-          enabled={showStations}
-          bounds={bounds}
-          colorCoded={mapSettings.stationColorValues}
-        />
-        {liveLocation ? (
-          <SatelliteLiveLocation position={liveLocation} bounds={bounds} />
+            <LeafletLightningOverlay
+              strikes={lightningStrikes}
+              enabled={showLightning}
+              referenceTime={lightningReferenceTime}
+              timelineStart={lightningTimelineStart}
+              timelineEnd={lightningTimelineEnd}
+              playing={lightningPlaying}
+              msPerFrame={lightningMsPerFrame}
+              nextFrameTime={lightningNextFrameTime}
+              iconStyle={lightningIconStyle}
+              iconScale={lightningIconScale}
+            />
+            <LeafletStationOverlay
+              stations={stations}
+              enabled={showStations}
+              colorCoded={mapSettings.stationColorValues}
+            />
+            {radarTiles ? (
+              <SmoothRadarLayer
+                url={radarTiles}
+                opacity={0.88}
+                smoothed={radarSmoothed}
+              />
+            ) : null}
+          </StaticBasemapBackground>
+        )}
+        {/* CSS/SVG-based satellite-mode overlays — only used when a satellite image is the base */}
+        {frameImageUrl ? (
+          <>
+            {showRadarOverlay && frameTileUrl ? (
+              <div className="absolute inset-0 z-[30]">
+                <SatelliteRadarOverlay
+                  tileUrl={frameTileUrl}
+                  bounds={bounds}
+                  smoothed={radarSmoothed}
+                />
+              </div>
+            ) : null}
+            <SatelliteSynopticOverlay
+              frames={synopticFrames}
+              enabled={showSynoptic}
+              referenceTime={synopticReferenceTime}
+              geojson={synopticGeoJson}
+              validTime={synopticValidTime}
+              bounds={bounds}
+            />
+            <SatelliteMapAnnotations
+              settings={mapSettings}
+              cities={CITY_MARKERS}
+              bounds={bounds}
+            />
+            <SatelliteLightningOverlay
+              strikes={lightningStrikes}
+              enabled={showLightning}
+              referenceTime={lightningReferenceTime}
+              timelineStart={lightningTimelineStart}
+              timelineEnd={lightningTimelineEnd}
+              playing={lightningPlaying}
+              msPerFrame={lightningMsPerFrame}
+              nextFrameTime={lightningNextFrameTime}
+              bounds={bounds}
+              iconStyle={lightningIconStyle}
+              iconScale={lightningIconScale}
+            />
+            <SatelliteStationOverlay
+              stations={stations}
+              enabled={showStations}
+              bounds={bounds}
+              colorCoded={mapSettings.stationColorValues}
+            />
+            {liveLocation ? (
+              <SatelliteLiveLocation position={liveLocation} bounds={bounds} />
+            ) : null}
+          </>
         ) : null}
         <LiveLocationStatus
           enabled={mapSettings.liveLocation}
