@@ -550,10 +550,10 @@ function HomeDashboardInner({
   const useSatelliteFrames = showSatelliteLoop || himawariOnMap;
   /**
    * Radar drives the timeline on open Map when rain radar is on and satellite
-   * imagery is not already owning the loop (same play/scrub UX as Himawari).
+   * is not driving the loop. Radar can now display alongside satellite.
    */
   const useRadarLoop =
-    showRadarOverlay && mode === "Zoomable" && !himawariOnMap;
+    showRadarOverlay && mode === "Zoomable" && !useSatelliteFrames;
   const useTimeline = useSatelliteFrames || useRadarLoop;
 
   const loopFrames = useMemo(() => {
@@ -1223,8 +1223,8 @@ function HomeDashboardInner({
               regionId={regionId}
               showRadarOverlay={showRadarOverlay}
               frameTileUrl={
-                showRadarOverlay
-                  ? (overlayRadarFrame?.tileUrlTemplate ?? null)
+                showRadarOverlay && overlayRadarFrame
+                  ? overlayRadarFrame.tileUrlTemplate
                   : null
               }
               frameImageUrl={
@@ -1236,7 +1236,7 @@ function HomeDashboardInner({
               frameKey={
                 useSatelliteFrames && activeFrame
                   ? `${satProduct}-${regionId}-${activeFrame.time}`
-                  : showRadarOverlay && overlayRadarFrame
+                  : useRadarLoop && overlayRadarFrame
                     ? `radar-${overlayRadarFrame.time}`
                     : undefined
               }

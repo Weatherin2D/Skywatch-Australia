@@ -909,28 +909,32 @@ export function HomeMap({
         <div className="absolute right-3 top-3 z-[20]">
           <MapFullscreenButton target={fullscreenTarget} compact />
         </div>
-        <SatelliteFrameView
-          key={
-            typeof frameKey === "string"
-              ? frameKey.replace(/-\d+$/, "")
-              : regionId
-          }
-          loopKey={
-            typeof frameKey === "string"
-              ? frameKey.replace(/-\d+$/, "")
-              : String(regionId)
-          }
-          url={frameImageUrl}
-          fallbackUrl={frameImageFallbackUrl}
-          alt={frameAlt}
-          opacity={frameOpacity}
-        />
-        {showRadarOverlay && frameTileUrl ? (
-          <SatelliteRadarOverlay
-            tileUrl={frameTileUrl}
-            bounds={bounds}
-            smoothed={radarSmoothed}
+        <div className="absolute inset-0 z-10">
+          <SatelliteFrameView
+            key={
+              typeof frameKey === "string"
+                ? frameKey.replace(/-\d+$/, "")
+                : regionId
+            }
+            loopKey={
+              typeof frameKey === "string"
+                ? frameKey.replace(/-\d+$/, "")
+                : String(regionId)
+            }
+            url={frameImageUrl}
+            fallbackUrl={frameImageFallbackUrl}
+            alt={frameAlt}
+            opacity={frameOpacity}
           />
+        </div>
+        {showRadarOverlay && frameTileUrl ? (
+          <div className="absolute inset-0 z-20">
+            <SatelliteRadarOverlay
+              tileUrl={frameTileUrl}
+              bounds={bounds}
+              smoothed={radarSmoothed}
+            />
+          </div>
         ) : null}
         <SatelliteSynopticOverlay
           frames={synopticFrames}
