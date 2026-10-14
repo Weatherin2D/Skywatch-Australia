@@ -15,7 +15,7 @@ export { RADAR_PALETTE_ID, RADAR_RENDER_REV };
  */
 
 export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
-  { dbz: 0, rgba: [0, 0, 0, 255] },
+  { dbz: 0, rgba: [0, 0, 0, 0] },
   { dbz: 10, rgba: [75, 62, 217, 255] },
   { dbz: 15, rgba: [99, 208, 255, 255] },
   { dbz: 22, rgba: [50, 60, 128, 255] },
@@ -37,7 +37,7 @@ export const RADAR_DBZ_STOPS: ReadonlyArray<{ dbz: number; rgba: Rgba }> = [
   { dbz: 75, rgba: [0, 236, 252, 255] },
   { dbz: 80, rgba: [130, 88, 48, 255] },
   { dbz: 85, rgba: [92, 60, 32, 255] },
-  { dbz: 90, rgba: [0, 0, 0, 255] },
+  { dbz: 90, rgba: [0, 0, 0, 0] },
   { dbz: 255, rgba: [255, 255, 255, 255] },
 ] as const;
 

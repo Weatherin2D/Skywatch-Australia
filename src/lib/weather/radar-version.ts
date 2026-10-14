@@ -7,4 +7,4 @@
  * encode behaviour changes.
  */
 export const RADAR_PALETTE_ID = "swdbz3";
-export const RADAR_RENDER_REV = "9";
+export const RADAR_RENDER_REV = "10";
