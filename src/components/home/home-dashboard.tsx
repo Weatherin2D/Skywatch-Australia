@@ -591,6 +591,7 @@ function HomeDashboardInner({
   /**
    * Rain radar tile: time-matched to the satellite timeline when that drives
    * the loop; otherwise the active radar-loop frame (or latest).
+   * In Static mode with satellite, always provide radar frame for overlay.
    */
   const overlayRadarFrame = useMemo(() => {
     if (!showRadarOverlay || radarFrames.length === 0) return null;

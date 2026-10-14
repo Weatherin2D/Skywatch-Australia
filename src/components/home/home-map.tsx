@@ -639,7 +639,7 @@ function SatelliteRadarOverlay({
   smoothed?: boolean;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-[4]">
+    <div className="pointer-events-none absolute inset-0 z-[30]">
       <MapContainer
         center={[-25.5, 134.5]}
         zoom={4}
@@ -928,7 +928,7 @@ export function HomeMap({
           />
         </div>
         {showRadarOverlay && frameTileUrl ? (
-          <div className="absolute inset-0 z-20">
+          <div className="absolute inset-0 z-[30]">
             <SatelliteRadarOverlay
               tileUrl={frameTileUrl}
               bounds={bounds}
