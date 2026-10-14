@@ -632,10 +632,12 @@ function MapTools({
 function SatelliteRadarOverlay({
   tileUrl,
   bounds,
+  isNational = false,
   smoothed = false,
 }: {
   tileUrl: string;
   bounds: RegionBounds;
+  isNational?: boolean;
   smoothed?: boolean;
 }) {
   return (
@@ -659,7 +661,7 @@ function SatelliteRadarOverlay({
           bounds={bounds}
           animate={false}
           padding={0}
-          isNational={false}
+          isNational={isNational}
         />
         <SmoothRadarLayer url={tileUrl} opacity={0.88} smoothed={smoothed} />
       </MapContainer>
@@ -1021,6 +1023,7 @@ export function HomeMap({
           <SatelliteRadarOverlay
             tileUrl={frameTileUrl}
             bounds={bounds}
+            isNational={isNational}
             smoothed={radarSmoothed}
           />
         ) : null}

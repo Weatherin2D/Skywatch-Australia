@@ -602,7 +602,14 @@ function HomeDashboardInner({
   const overlayRadarFrame = useMemo(() => {
     if (!showRadarOverlay || radarFrames.length === 0) return null;
     if (useSatelliteFrames && activeFrame) {
-      return pickWeatherFrame(radarFrames, activeFrame.time, 15 * 60);
+      // Match within 30 min (radar ~6 min cadence, satellite 10 min).
+      // Fall back to latest radar frame so the overlay is never suppressed
+      // just because no frame lands in the exact window.
+      return (
+        pickWeatherFrame(radarFrames, activeFrame.time, 30 * 60) ??
+        radarFrames[radarFrames.length - 1] ??
+        null
+      );
     }
     if (useRadarLoop) {
       return activeFrame ?? radarFrames[radarFrames.length - 1] ?? null;
