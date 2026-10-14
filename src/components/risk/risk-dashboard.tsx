@@ -56,7 +56,6 @@ const RISK_MAP_SETTINGS: MapSettingsState = {
   outlines: true,
   stateOutlines: true,
   cityLabels: false,
-  satelliteBasemap: false,
 };
 
 type RiskSource = "bom" | "pulse" | "access" | "ifs" | "ukmo";

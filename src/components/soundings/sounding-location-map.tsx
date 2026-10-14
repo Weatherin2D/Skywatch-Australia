@@ -30,7 +30,6 @@ const MAP_SETTINGS = {
   outlines: true,
   stateOutlines: true,
   cityLabels: false,
-  satelliteBasemap: false,
 };
 
 function formatCoordLabel(lat: number, lon: number): string {

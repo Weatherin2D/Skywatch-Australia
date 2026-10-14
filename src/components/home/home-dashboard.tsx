@@ -542,10 +542,10 @@ function HomeDashboardInner({
   const region = getMapRegion(regionId);
   const satProductMeta = getSatelliteProduct(satProduct);
   const playback = getPlaybackSpeed(playbackSpeed);
-  /** Fixed-crop Himawari loop (Satellite view) - always shows in Static mode. */
-  const showSatelliteLoop = mode === "Static";
+  /** Fixed-crop Himawari loop (Satellite view) - shows when product is not 'none'. */
+  const showSatelliteLoop = mode === "Static" && satProduct !== "none";
   /** Himawari IR on the pannable Map when Satellite imagery is enabled. */
-  const himawariOnMap = mode === "Zoomable" && mapSettings.satelliteBasemap;
+  const himawariOnMap = mode === "Zoomable" && satProduct !== "none";
   /** Satellite drives the timeline (Satellite view, or Map + satellite imagery). */
   const useSatelliteFrames = showSatelliteLoop || himawariOnMap;
   /**

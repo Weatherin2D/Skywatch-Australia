@@ -85,7 +85,6 @@ const MAP_SETTINGS: MapSettingsState = {
   outlines: true,
   stateOutlines: true,
   cityLabels: false,
-  satelliteBasemap: false,
 };
 
 const GROUP_ORDER: EcmwfProductGroup[] = [

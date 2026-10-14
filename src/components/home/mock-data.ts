@@ -29,7 +29,6 @@ export const DEFAULT_RADAR_WEATHER_LAYERS: Record<LayerId, boolean> = {
 
 /** Cartographic toggles for the national map (below weather overlays). */
 export const MAP_SETTINGS = [
-  { id: "satelliteBasemap", label: "Satellite imagery" },
   { id: "liveLocation", label: "Live location" },
   { id: "radarSmoothing", label: "Radar soft edges" },
   { id: "radarSites", label: "Radar sites" },
@@ -72,8 +71,6 @@ export type MapSettingsState = {
 
 /** Home + Satellite cartography defaults. */
 export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
-  /** Esri World Imagery under the open Map (pan/zoom) */
-  satelliteBasemap: false,
   liveLocation: false,
   /**
    * Soft CSS upscale only — RainViewer spatial smooth (1_0) breaks our dBZ
@@ -101,10 +98,9 @@ export const DEFAULT_MAP_SETTINGS: MapSettingsState = {
   lightningIconScale: DEFAULT_LIGHTNING_ICON_SCALE,
 };
 
-/** /satellite page cartography — satellite basemap on by default. */
+/** /satellite page cartography defaults. */
 export const DEFAULT_SATELLITE_MAP_SETTINGS: MapSettingsState = {
   ...DEFAULT_MAP_SETTINGS,
-  satelliteBasemap: true,
 };
 
 /** /radar page cartography — bolts + coloured stations on. */

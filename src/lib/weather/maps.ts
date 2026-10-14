@@ -20,6 +20,7 @@ export type WeatherFrame = {
 };
 
 export type SatelliteProductId =
+  | "none"
   | "infrared"
   | "visible"
   | "shortwave"
@@ -44,6 +45,12 @@ export type SatelliteProductMeta = {
 };
 
 export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
+  {
+    id: "none",
+    label: "None",
+    loopLabel: "No satellite",
+    provider: "realearth",
+  },
   {
     id: "infrared",
     label: "Infrared",
@@ -100,7 +107,7 @@ export const SATELLITE_PRODUCTS: readonly SatelliteProductMeta[] = [
   },
 ] as const;
 
-export const DEFAULT_SATELLITE_PRODUCT: SatelliteProductId = "visible";
+export const DEFAULT_SATELLITE_PRODUCT: SatelliteProductId = "infrared";
 
 export function isSatelliteProductId(value: string): value is SatelliteProductId {
   return SATELLITE_PRODUCTS.some((p) => p.id === value);

@@ -860,13 +860,11 @@ export function HomeMap({
   const bounds = region.bounds;
   const isNational = regionId === "national";
   const satelliteLoop = mode === "Static";
-  const satelliteBasemap = mapSettings.satelliteBasemap;
   const radarTiles = frameTileUrl && showRadarOverlay ? frameTileUrl : null;
   const radarSmoothed = mapSettings.radarSmoothing;
   const satAspect = isNational
     ? GIBS_AU_ASPECT
     : boundsMercatorAspect(bounds);
-  const useSatelliteBasemap = satelliteBasemap;
   const { position: liveLocation, error: liveLocationError } = useLiveLocation(
     mapSettings.liveLocation,
   );
@@ -886,17 +884,16 @@ export function HomeMap({
 
   // Esri Canvas dark base. Unloaded areas must stay navy (not Leaflet #ddd) —
   // see globals.css. keepBuffer + updateWhenZooming:false cut grey flash on pan.
-  const basemapUrl = useSatelliteBasemap
-    ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-    : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
-  const basemapAttr = useSatelliteBasemap ? "Esri World Imagery" : "Esri";
+  const basemapUrl =
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+  const basemapAttr = "Esri";
   const darkTilePlaceholder =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
   // Satellite: full-bleed region crop (national or state) — image is already
   // georeferenced to `bounds`, so CSS overlays use the same projection.
   // Aspect must match the crop so mobile viewports don't clip the state.
-  // Static mode always shows satellite loop; satelliteBasemap toggle affects Zoomable mode.
+  // Static mode shows satellite loop when product is not 'none'.
   if (satelliteLoop) {
     return (
       <div
@@ -1003,7 +1000,6 @@ export function HomeMap({
         <MapClickHandler onMapClick={onMapClick} />
         <FitRegionBounds bounds={bounds} animate isNational={isNational} />
         <TileLayer
-          key={useSatelliteBasemap ? "sat" : "esri-dark"}
           url={basemapUrl}
           attribution={basemapAttr}
           keepBuffer={16}
@@ -1019,7 +1015,7 @@ export function HomeMap({
             key={mapSatelliteImageUrl}
             url={mapSatelliteImageUrl}
             bounds={mapSatelliteImageBounds}
-            opacity={useSatelliteBasemap ? 0.55 : 0.82}
+            opacity={0.82}
             zIndex={350}
             className="skywatch-map-himawari"
           />
