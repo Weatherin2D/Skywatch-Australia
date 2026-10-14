@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Circle,
   CircleMarker,
@@ -627,59 +627,6 @@ function MapTools({
 }
 
 /**
- * Esri dark basemap locked into the fixed Himawari frame.
- * Used when satellite product is "none" so the Static map shows the same
- * cartographic base as the Zoomable map, without pan/zoom interaction.
- * Takes an `isNational` flag so FitRegionBounds uses the right maxZoom.
- */
-function StaticBasemapBackground({
-  bounds,
-  isNational,
-  children,
-}: {
-  bounds: RegionBounds;
-  isNational: boolean;
-  children?: ReactNode;
-}) {
-  const basemapUrl =
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
-  return (
-    <div className="absolute inset-0 z-[1]">
-      <MapContainer
-        center={[-25.5, 134.5]}
-        zoom={4}
-        className="h-full w-full !bg-[#0a1628] [&_.leaflet-container]:!bg-[#0a1628]"
-        zoomControl={false}
-        attributionControl={false}
-        dragging={false}
-        doubleClickZoom={false}
-        scrollWheelZoom={false}
-        boxZoom={false}
-        keyboard={false}
-        touchZoom={false}
-        style={{ background: "#0a1628" }}
-      >
-        <MapChromeFix />
-        <FitRegionBounds
-          bounds={bounds}
-          animate={false}
-          padding={0}
-          isNational={isNational}
-        />
-        <TileLayer
-          url={basemapUrl}
-          attribution="Esri"
-          keepBuffer={4}
-          updateWhenZooming={false}
-          updateWhenIdle={true}
-        />
-        {children}
-      </MapContainer>
-    </div>
-  );
-}
-
-/**
  * RainViewer tiles over the fixed national Himawari frame.
  */
 function SatelliteRadarOverlay({
@@ -943,10 +890,103 @@ export function HomeMap({
   const darkTilePlaceholder =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-  // Satellite: full-bleed region crop (national or state) — image is already
-  // georeferenced to `bounds`, so CSS overlays use the same projection.
-  // Aspect must match the crop so mobile viewports don't clip the state.
-  // Static mode shows satellite loop when product is not 'none'.
+  // When product is "none": locked Zoomable-style Leaflet map (no pan/zoom).
+  // Uses the same aspect-ratio container as the satellite image path so the
+  // layout doesn't shift when switching products.
+  if (satelliteLoop && !frameImageUrl) {
+    return (
+      <div
+        ref={mapShellRef}
+        className="skywatch-map relative z-0 w-full overflow-hidden bg-[#0a1628]"
+        style={{ aspectRatio: `${satAspect}` }}
+        data-map-mode="Static"
+        data-region={regionId}
+      >
+        <MapContainer
+          center={[-25.5, 134.5]}
+          zoom={4}
+          className="h-full w-full !bg-[#0a1628]"
+          style={{ background: "#0a1628" }}
+          zoomControl={false}
+          attributionControl={false}
+          dragging={false}
+          doubleClickZoom={false}
+          scrollWheelZoom={false}
+          boxZoom={false}
+          keyboard={false}
+          touchZoom={false}
+          fadeAnimation={false}
+        >
+          <MapChromeFix />
+          <FitRegionBounds bounds={bounds} animate={false} padding={0} isNational={isNational} />
+          <TileLayer
+            url={basemapUrl}
+            attribution={basemapAttr}
+            keepBuffer={16}
+            updateWhenZooming={false}
+            updateWhenIdle
+            maxZoom={18}
+            maxNativeZoom={16}
+            errorTileUrl={darkTilePlaceholder}
+            crossOrigin
+          />
+          {radarTiles ? (
+            <SmoothRadarLayer url={radarTiles} opacity={0.88} smoothed={radarSmoothed} />
+          ) : null}
+          {mapSettings.radarSites ? <RadarSitesOverlay enabled /> : null}
+          {mapSettings.bomWarnings ? (
+            <BomWarningOverlay enabled warnings={warnings} />
+          ) : null}
+          {mapSettings.forecastDistricts ? (
+            <ForecastDistrictOverlay enabled warnings={warnings} />
+          ) : null}
+          <LeafletSynopticOverlay
+            frames={synopticFrames}
+            enabled={showSynoptic}
+            referenceTime={synopticReferenceTime}
+            geojson={synopticGeoJson}
+            validTime={synopticValidTime}
+          />
+          <LeafletMapAnnotations settings={mapSettings} />
+          <LeafletLightningOverlay
+            strikes={lightningStrikes}
+            enabled={showLightning}
+            referenceTime={lightningReferenceTime}
+            timelineStart={lightningTimelineStart}
+            timelineEnd={lightningTimelineEnd}
+            playing={lightningPlaying}
+            msPerFrame={lightningMsPerFrame}
+            nextFrameTime={lightningNextFrameTime}
+            iconStyle={lightningIconStyle}
+            iconScale={lightningIconScale}
+          />
+          <LeafletStationOverlay
+            stations={stations}
+            enabled={showStations}
+            colorCoded={mapSettings.stationColorValues}
+          />
+          {liveLocation ? <LiveLocationMarker position={liveLocation} /> : null}
+          <StormCellOverlay
+            cells={stormCells}
+            enabled={showStormCells}
+            selectedId={selectedStormCellId}
+            focusId={focusStormCellId}
+            onSelect={onSelectStormCell}
+          />
+          <div className="absolute right-3 top-3 z-[1000]">
+            <MapFullscreenButton target={fullscreenTarget} compact />
+          </div>
+        </MapContainer>
+        <LiveLocationStatus
+          enabled={mapSettings.liveLocation}
+          position={liveLocation}
+          error={liveLocationError}
+        />
+      </div>
+    );
+  }
+
+  // Satellite image path: fixed-crop Himawari loop with CSS/SVG overlays.
   if (satelliteLoop) {
     return (
       <div
@@ -959,110 +999,67 @@ export function HomeMap({
         <div className="absolute right-3 top-3 z-[20]">
           <MapFullscreenButton target={fullscreenTarget} compact />
         </div>
-        {frameImageUrl ? (
-          <div className="absolute inset-0 z-10">
-            <SatelliteFrameView
-              key={
-                typeof frameKey === "string"
-                  ? frameKey.replace(/-\d+$/, "")
-                  : regionId
-              }
-              loopKey={
-                typeof frameKey === "string"
-                  ? frameKey.replace(/-\d+$/, "")
-                  : String(regionId)
-              }
-              url={frameImageUrl}
-              fallbackUrl={frameImageFallbackUrl}
-              alt={frameAlt}
-              opacity={frameOpacity}
+        <div className="absolute inset-0 z-10">
+          <SatelliteFrameView
+            key={
+              typeof frameKey === "string"
+                ? frameKey.replace(/-\d+$/, "")
+                : regionId
+            }
+            loopKey={
+              typeof frameKey === "string"
+                ? frameKey.replace(/-\d+$/, "")
+                : String(regionId)
+            }
+            url={frameImageUrl}
+            fallbackUrl={frameImageFallbackUrl}
+            alt={frameAlt}
+            opacity={frameOpacity}
+          />
+        </div>
+        {showRadarOverlay && frameTileUrl ? (
+          <div className="absolute inset-0 z-[30]">
+            <SatelliteRadarOverlay
+              tileUrl={frameTileUrl}
+              bounds={bounds}
+              smoothed={radarSmoothed}
             />
           </div>
-        ) : (
-          <StaticBasemapBackground bounds={bounds} isNational={isNational}>
-            {/* Leaflet-native annotations so they align to the basemap tiles */}
-            <LeafletMapAnnotations settings={mapSettings} />
-            <LeafletSynopticOverlay
-              frames={synopticFrames}
-              enabled={showSynoptic}
-              referenceTime={synopticReferenceTime}
-              geojson={synopticGeoJson}
-              validTime={synopticValidTime}
-            />
-            <LeafletLightningOverlay
-              strikes={lightningStrikes}
-              enabled={showLightning}
-              referenceTime={lightningReferenceTime}
-              timelineStart={lightningTimelineStart}
-              timelineEnd={lightningTimelineEnd}
-              playing={lightningPlaying}
-              msPerFrame={lightningMsPerFrame}
-              nextFrameTime={lightningNextFrameTime}
-              iconStyle={lightningIconStyle}
-              iconScale={lightningIconScale}
-            />
-            <LeafletStationOverlay
-              stations={stations}
-              enabled={showStations}
-              colorCoded={mapSettings.stationColorValues}
-            />
-            {radarTiles ? (
-              <SmoothRadarLayer
-                url={radarTiles}
-                opacity={0.88}
-                smoothed={radarSmoothed}
-              />
-            ) : null}
-          </StaticBasemapBackground>
-        )}
-        {/* CSS/SVG-based satellite-mode overlays — only used when a satellite image is the base */}
-        {frameImageUrl ? (
-          <>
-            {showRadarOverlay && frameTileUrl ? (
-              <div className="absolute inset-0 z-[30]">
-                <SatelliteRadarOverlay
-                  tileUrl={frameTileUrl}
-                  bounds={bounds}
-                  smoothed={radarSmoothed}
-                />
-              </div>
-            ) : null}
-            <SatelliteSynopticOverlay
-              frames={synopticFrames}
-              enabled={showSynoptic}
-              referenceTime={synopticReferenceTime}
-              geojson={synopticGeoJson}
-              validTime={synopticValidTime}
-              bounds={bounds}
-            />
-            <SatelliteMapAnnotations
-              settings={mapSettings}
-              cities={CITY_MARKERS}
-              bounds={bounds}
-            />
-            <SatelliteLightningOverlay
-              strikes={lightningStrikes}
-              enabled={showLightning}
-              referenceTime={lightningReferenceTime}
-              timelineStart={lightningTimelineStart}
-              timelineEnd={lightningTimelineEnd}
-              playing={lightningPlaying}
-              msPerFrame={lightningMsPerFrame}
-              nextFrameTime={lightningNextFrameTime}
-              bounds={bounds}
-              iconStyle={lightningIconStyle}
-              iconScale={lightningIconScale}
-            />
-            <SatelliteStationOverlay
-              stations={stations}
-              enabled={showStations}
-              bounds={bounds}
-              colorCoded={mapSettings.stationColorValues}
-            />
-            {liveLocation ? (
-              <SatelliteLiveLocation position={liveLocation} bounds={bounds} />
-            ) : null}
-          </>
+        ) : null}
+        <SatelliteSynopticOverlay
+          frames={synopticFrames}
+          enabled={showSynoptic}
+          referenceTime={synopticReferenceTime}
+          geojson={synopticGeoJson}
+          validTime={synopticValidTime}
+          bounds={bounds}
+        />
+        <SatelliteMapAnnotations
+          settings={mapSettings}
+          cities={CITY_MARKERS}
+          bounds={bounds}
+        />
+        <SatelliteLightningOverlay
+          strikes={lightningStrikes}
+          enabled={showLightning}
+          referenceTime={lightningReferenceTime}
+          timelineStart={lightningTimelineStart}
+          timelineEnd={lightningTimelineEnd}
+          playing={lightningPlaying}
+          msPerFrame={lightningMsPerFrame}
+          nextFrameTime={lightningNextFrameTime}
+          bounds={bounds}
+          iconStyle={lightningIconStyle}
+          iconScale={lightningIconScale}
+        />
+        <SatelliteStationOverlay
+          stations={stations}
+          enabled={showStations}
+          bounds={bounds}
+          colorCoded={mapSettings.stationColorValues}
+        />
+        {liveLocation ? (
+          <SatelliteLiveLocation position={liveLocation} bounds={bounds} />
         ) : null}
         <LiveLocationStatus
           enabled={mapSettings.liveLocation}
