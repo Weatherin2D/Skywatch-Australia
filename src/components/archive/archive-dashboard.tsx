@@ -1065,7 +1065,7 @@ function ArchiveDashboardInner() {
             />
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
-            <span>Radar (RainViewer)</span>
+            <span>Archived Radar</span>
             <Toggle
               on={showRadar}
               onChange={setShowRadar}

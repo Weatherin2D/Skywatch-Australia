@@ -5,7 +5,12 @@ import {
   radarFrameExists,
 } from "@/lib/weather/archive-storage";
 import { quantizeArchiveStamp } from "@/lib/weather/archive-time";
-import { rainviewerRawTileUrl } from "@/lib/weather/radar-palette";
+import {
+  isRainviewerPlaceholderPng,
+  rainviewerRawTileUrl,
+  recolourRadarPng,
+  transparentRadarTilePng,
+} from "@/lib/weather/radar-palette";
 import { ensureArchiveMeta } from "@/lib/weather/archive-storage";
 
 const RAINVIEWER_URL = "https://api.rainviewer.com/public/weather-maps.json";
@@ -81,7 +86,10 @@ export async function ensureArchiveRadarAt(targetUnix: number): Promise<boolean>
         });
         if (!res.ok) continue;
         const buf = Buffer.from(await res.arrayBuffer());
-        await putRadarFrame(best.path, z, x, y, buf);
+        const out = isRainviewerPlaceholderPng(buf)
+           ? transparentRadarTilePng()
+           : recolourRadarPng(buf);
+         await putRadarFrame(best.path, z, x, y, out);
         stored += 1;
       } catch {
         /* skip individual tile failures */

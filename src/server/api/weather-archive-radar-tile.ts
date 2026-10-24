@@ -4,8 +4,12 @@ import {
   putRadarFrame,
   radarFrameExists,
 } from "@/lib/weather/archive-storage";
-import { quantizeArchiveStamp } from "@/lib/weather/archive-time";
-import { rainviewerRawTileUrl } from "@/lib/weather/radar-palette";
+import {
+  isRainviewerPlaceholderPng,
+  rainviewerRawTileUrl,
+  recolourRadarPng,
+  transparentRadarTilePng,
+} from "@/lib/weather/radar-palette";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +18,9 @@ export const maxDuration = 60;
 
 /**
  * GET /api/weather/archive/radar-tile?path=&z=&x=&y=
- * Serves archived RainViewer radar tiles; on miss fetches live and caches.
+ * Serves archived RainViewer radar tiles recoloured to the CloudCountry dBZ
+ * scale (same as /api/weather/radar-tile). On miss fetches live, recolours,
+ * and caches in background.
  */
 export async function GET(request: NextRequest) {
   const pathRaw = request.nextUrl.searchParams.get("path") ?? "";
@@ -33,10 +39,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid tile coordinates" }, { status: 400 });
   }
 
-  const stamp = quantizeArchiveStamp(Math.floor(Date.now() / 1000));
-
   try {
-    // 1) Try archive storage first.
+    // 1) Try archive storage first (already recoloured when stored).
     const cached = await getRadarFrame(pathRaw, z, x, y);
     if (cached) {
       return new NextResponse(new Uint8Array(cached), {
@@ -49,7 +53,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 2) Not archived — fetch live from RainViewer and cache in background.
+    // 2) Not archived — fetch live from RainViewer, recolour, cache.
     const host = "https://tilecache.rainviewer.com";
     const url = rainviewerRawTileUrl(host, pathRaw, z, x, y, 256, false);
     const res = await fetch(url, {
@@ -62,12 +66,19 @@ export async function GET(request: NextRequest) {
     }
     const buf = Buffer.from(await res.arrayBuffer());
 
-    // Persist so future requests hit the archive path.
-    void putRadarFrame(pathRaw, z, x, y, buf).catch((err) => {
+    let out: Buffer;
+    if (isRainviewerPlaceholderPng(buf)) {
+      out = transparentRadarTilePng();
+    } else {
+      out = recolourRadarPng(buf);
+    }
+
+    // Persist recoloured tile so future requests hit the archive path.
+    void putRadarFrame(pathRaw, z, x, y, out).catch((err) => {
       console.warn("[weather/archive/radar-tile] background persist", err);
     });
 
-    return new NextResponse(new Uint8Array(buf), {
+    return new NextResponse(new Uint8Array(out), {
       status: 200,
       headers: {
         "Content-Type": "image/png",
