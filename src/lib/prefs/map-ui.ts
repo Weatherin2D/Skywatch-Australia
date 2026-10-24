@@ -245,6 +245,7 @@ export type ArchiveUiPrefs = {
   showLightning: boolean;
   showSynoptic: boolean;
   showStations: boolean;
+  showRadar: boolean;
   mapSettings: MapSettingsState;
   product: SatelliteProductId;
   regionId: MapRegionId;
@@ -256,6 +257,7 @@ export const DEFAULT_ARCHIVE_UI_PREFS: ArchiveUiPrefs = {
   showLightning: true,
   showSynoptic: true,
   showStations: false,
+  showRadar: false,
   mapSettings: { ...DEFAULT_MAP_SETTINGS },
   product: DEFAULT_SATELLITE_PRODUCT,
   regionId: DEFAULT_MAP_REGION,
@@ -300,6 +302,10 @@ export function readArchiveUiPrefs(): ArchiveUiPrefs {
         typeof parsed.showStations === "boolean"
           ? parsed.showStations
           : DEFAULT_ARCHIVE_UI_PREFS.showStations,
+      showRadar:
+        typeof parsed.showRadar === "boolean"
+          ? parsed.showRadar
+          : DEFAULT_ARCHIVE_UI_PREFS.showRadar,
       mapSettings: parseMapSettings(
         parsed.mapSettings,
         DEFAULT_ARCHIVE_UI_PREFS.mapSettings,

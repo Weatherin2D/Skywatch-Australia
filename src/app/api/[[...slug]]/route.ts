@@ -30,6 +30,7 @@ import * as weatherArchiveFrame from "@/server/api/weather-archive-frame";
 import * as weatherArchiveSynoptic from "@/server/api/weather-archive-synoptic";
 import * as weatherArchiveLightning from "@/server/api/weather-archive-lightning";
 import * as weatherArchiveIngest from "@/server/api/weather-archive-ingest";
+import * as weatherArchiveRadarTile from "@/server/api/weather-archive-radar-tile";
 import * as community from "@/server/api/community";
 import * as communityImage from "@/server/api/community-image";
 import * as communityLike from "@/server/api/community-like";
@@ -84,6 +85,7 @@ const ROUTES: Record<string, RouteHandlers> = {
   "weather/archive/synoptic": weatherArchiveSynoptic as RouteHandlers,
   "weather/archive/lightning": weatherArchiveLightning as RouteHandlers,
   "weather/archive/ingest": weatherArchiveIngest as RouteHandlers,
+  "weather/archive/radar-tile": weatherArchiveRadarTile as RouteHandlers,
   community: community as RouteHandlers,
   "community/image": communityImage as RouteHandlers,
   "community/like": communityLike as RouteHandlers,

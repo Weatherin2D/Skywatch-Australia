@@ -121,4 +121,23 @@ export function buildArchiveScrubFrames(
     }));
 }
 
+/** Build an archived radar tile URL: /api/weather/archive/radar-tile?path=&z=&x=&y= */
+export function archiveRadarTileUrl(
+  path: string,
+  z: number,
+  x: number,
+  y: number,
+): string {
+  const q = new URLSearchParams({ path, z: String(z), x: String(x), y: String(y) });
+  return `/api/weather/archive/radar-tile?${q.toString()}`;
+}
+
+/**
+ * Build a RainViewer tile URL template for an archived radar frame.
+ * The template uses {z}/{x}/{y} placeholders consumed by Leaflet TileLayer.
+ */
+export function archiveRadarTileTemplate(path: string): string {
+  return `/api/weather/archive/radar-tile?path=${encodeURIComponent(path)}&z={z}&x={x}&y={y}`;
+}
+
 export { ARCHIVE_STEP_SEC };

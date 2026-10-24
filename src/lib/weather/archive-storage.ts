@@ -567,6 +567,20 @@ export function satObjectPath(
   return `archive/sat/${product}/${y}/${m}/${d}/${hhmm}.jpg`;
 }
 
+/**
+ * Hash a RainViewer path so slashes don't collide with object-store prefixes.
+ * Each radar tile is stored individually keyed by path + z/x/y.
+ */
+export function radarObjectPath(
+  path: string,
+  z: number,
+  x: number,
+  y: number,
+): string {
+  const digest = Buffer.from(path).toString("base64url");
+  return `archive/radar/${digest}/${z}/${x}/${y}.png`;
+}
+
 export function synopticObjectPath(stamp: string): string {
   return `archive/synoptic/${stamp}.json`;
 }
@@ -690,6 +704,81 @@ export async function getSatFrame(
     }
   }
   return getBytes(satObjectPath(product, timeUnix));
+}
+
+/** Radars tiles keyed by RainViewer path + tile coords. */
+export async function radarFrameExists(
+  path: string,
+  z: number,
+  x: number,
+  y: number,
+): Promise<boolean> {
+  const digest = Buffer.from(path).toString("base64url");
+  if (redisConfigured()) {
+    try {
+      const redis = getRedis();
+      if (!redis) return false;
+      const n = await redis.exists(`archive:radar:${digest}:${z}:${x}:${y}`);
+      return n === 1;
+    } catch (err) {
+      console.warn("[archive-storage] redis radar exists failed", err);
+    }
+  }
+  return (await getBytes(radarObjectPath(path, z, x, y))) != null;
+}
+
+export async function putRadarFrame(
+  path: string,
+  z: number,
+  x: number,
+  y: number,
+  png: Buffer,
+): Promise<void> {
+  const digest = Buffer.from(path).toString("base64url");
+  const redisKey = `archive:radar:${digest}:${z}:${x}:${y}`;
+  if (redisConfigured()) {
+    try {
+      const redis = getRedis();
+      if (!redis) throw new Error("Redis is not configured.");
+      const record: RedisBinaryRecord = {
+        contentType: "image/png",
+        data: png.toString("base64"),
+      };
+      await redis.set(redisKey, record, { ex: REDIS_SAT_TTL_SEC });
+      if (!process.env.VERCEL) {
+        await putLocal(radarObjectPath(path, z, x, y), png).catch(() => undefined);
+      }
+      return;
+    } catch (err) {
+      console.warn("[archive-storage] redis putRadarFrame failed", err);
+    }
+  }
+  await putBytes(radarObjectPath(path, z, x, y), png, "image/png", true);
+}
+
+export async function getRadarFrame(
+  path: string,
+  z: number,
+  x: number,
+  y: number,
+): Promise<Buffer | null> {
+  const digest = Buffer.from(path).toString("base64url");
+  if (redisConfigured()) {
+    try {
+      const redis = getRedis();
+      if (!redis) return null;
+      const raw = await redis.get(`archive:radar:${digest}:${z}:${x}:${y}`);
+      if (!raw || typeof raw !== "object") return null;
+      const rec = raw as RedisBinaryRecord;
+      if (typeof rec.data !== "string") return null;
+      return Buffer.from(rec.data, "base64");
+    } catch (err) {
+      console.warn("[archive-storage] redis getRadarFrame failed", err);
+    }
+  }
+  const fromBlob = await getBlobBytes(radarObjectPath(path, z, x, y));
+  if (fromBlob) return fromBlob;
+  return getLocal(radarObjectPath(path, z, x, y));
 }
 
 export async function listSatTimesForDay(

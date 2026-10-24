@@ -28,6 +28,7 @@ import {
 import {
   ARCHIVE_LOOP_OPTIONS,
   archiveFrameUrl,
+  archiveRadarTileTemplate,
   buildArchiveScrubFrames,
   clampArchiveLoopHours,
   parseArchiveLoopParam,
@@ -68,6 +69,7 @@ type Catalog = {
     satellite: string;
     synoptic: string;
     lightning: string;
+    radar?: string;
   };
 };
 
@@ -159,6 +161,9 @@ function ArchiveDashboardInner() {
   );
   const [showSynoptic, setShowSynoptic] = useState(() => savedUi.showSynoptic);
   const [showStations, setShowStations] = useState(() => savedUi.showStations);
+  const [showRadar, setShowRadar] = useState(() => savedUi.showRadar);
+  const [radarFrames, setRadarFrames] = useState<WeatherFrame[]>([]);
+  const [radarHost, setRadarHost] = useState<string | null>(null);
   const { stations: weatherStations } = useStations(showStations);
   const [loopHours, setLoopHours] = useState(() => savedUi.loopHours);
   const [playing, setPlaying] = useState(false);
@@ -256,6 +261,9 @@ function ArchiveDashboardInner() {
           const stations = searchParams.get("stations");
           if (stations === "0") setShowStations(false);
           else if (stations === "1") setShowStations(true);
+          const radar = searchParams.get("radar");
+          if (radar === "0") setShowRadar(false);
+          else if (radar === "1") setShowRadar(true);
           const loop = parseArchiveLoopParam(searchParams.get("loop"));
           if (loop != null) setLoopHours(loop);
           hydrated.current = true;
@@ -408,8 +416,82 @@ function ArchiveDashboardInner() {
   const activeFrame = frames[frameIndex] ?? null;
   const activeTime = activeFrame?.time ?? selectedUnix;
 
+  // Pick the archived radar frame closest to the active satellite time.
+  const radarFrameIndex = useMemo(() => {
+    if (radarFrames.length === 0 || activeTime == null) return 0;
+    let best = 0;
+    let bestDelta = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < radarFrames.length; i++) {
+      const delta = Math.abs(radarFrames[i]!.time - activeTime);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = i;
+      }
+    }
+    return best;
+  }, [radarFrames, activeTime]);
+
+  const frameTileUrl =
+    radarFrames.length > 0
+      ? radarFrames[radarFrameIndex]!.tileUrlTemplate ?? null
+      : null;
+
   const loopStartUnix = frames[0]?.time ?? null;
   const loopEndUnix = frames.length > 0 ? frames[frames.length - 1]!.time : null;
+
+  // Build archived radar frames from RainViewer when radar overlay is on.
+  useEffect(() => {
+    if (!showRadar || !selectedUnix) {
+      setRadarFrames([]);
+      setRadarHost(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("https://api.rainviewer.com/public/weather-maps.json", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) {
+          if (!cancelled) setRadarFrames([]);
+          return;
+        }
+        const data = (await res.json()) as {
+          host?: string;
+          radar?: {
+            past?: Array<{ time: number; path: string }>;
+            nowcast?: Array<{ time: number; path: string }>;
+          };
+        };
+        if (cancelled) return;
+        setRadarHost(data.host ?? null);
+        const all = [
+          ...(data.radar?.past ?? []),
+          ...(data.radar?.nowcast ?? []),
+        ].sort((a, b) => a.time - b.time);
+        // Keep frames within the archive loop window, centred on selectedUnix.
+        const windowStart = Math.max(
+          catalog?.epochUnix ?? 0,
+          selectedUnix - loopHours * 3600,
+        );
+        const windowEnd = selectedUnix + loopHours * 3600;
+        const frames: WeatherFrame[] = all
+          .filter((f) => f.time >= windowStart && f.time <= windowEnd)
+          .map((f) => ({
+            time: f.time,
+            path: f.path,
+            tileUrlTemplate: archiveRadarTileTemplate(f.path),
+          }));
+        if (!cancelled) setRadarFrames(frames);
+      } catch {
+        if (!cancelled) setRadarFrames([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showRadar, selectedUnix, loopHours, catalog]);
 
   // Lightning for the whole loop (+ 3h trail before start), not per-frame.
   useEffect(() => {
@@ -559,6 +641,8 @@ function ArchiveDashboardInner() {
     else params.set("lightning", "0");
     if (showSynoptic) params.set("synoptic", "1");
     else params.set("synoptic", "0");
+    if (showRadar) params.set("radar", "1");
+    else params.set("radar", "0");
     params.set("loop", String(loopHours));
     replaceUrlIfOnPath("/archive", `/archive?${params.toString()}`);
   }, [
@@ -569,6 +653,7 @@ function ArchiveDashboardInner() {
     regionId,
     showLightning,
     showSynoptic,
+    showRadar,
     loopHours,
     playing,
   ]);
@@ -580,6 +665,7 @@ function ArchiveDashboardInner() {
       showLightning,
       showSynoptic,
       showStations,
+      showRadar,
       mapSettings,
       product,
       regionId,
@@ -590,6 +676,7 @@ function ArchiveDashboardInner() {
     showLightning,
     showSynoptic,
     showStations,
+    showRadar,
     mapSettings,
     product,
     regionId,
@@ -978,6 +1065,14 @@ function ArchiveDashboardInner() {
             />
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-white">
+            <span>Radar (RainViewer)</span>
+            <Toggle
+              on={showRadar}
+              onChange={setShowRadar}
+              label="Radar overlay"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2 text-sm text-white">
             <span>Colour station values</span>
             <Toggle
               on={mapSettings.stationColorValues}
@@ -1130,7 +1225,8 @@ function ArchiveDashboardInner() {
             <HomeMapDynamic
               mode="Static"
               regionId={regionId}
-              showRadarOverlay={false}
+              showRadarOverlay={showRadar}
+              frameTileUrl={frameTileUrl}
               frameImageUrl={activeFrame?.imageUrl ?? null}
               frameImageFallbackUrl={
                 activeFrame && regionId === "national"
@@ -1166,6 +1262,8 @@ function ArchiveDashboardInner() {
               synopticReferenceTime={activeTime}
               showStations={showStations}
               stations={weatherStations}
+              radarLoopFrames={radarFrames}
+              radarFrameIndex={radarFrameIndex}
             />
             {!frameArchived && activeTime != null ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-12 z-[40] flex justify-center px-3">

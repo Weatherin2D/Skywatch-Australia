@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
           synoptic: "MSLP · GFS via Open-Meteo · fronts from BoM IDY00030",
           lightning:
             "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — entertainment only, not for official warning use",
+          radar: "Radar © RainViewer",
         },
       },
       {
@@ -127,6 +128,7 @@ export async function GET(request: NextRequest) {
           synoptic: "MSLP · GFS via Open-Meteo · fronts from BoM IDY00030",
           lightning:
             "Lightning © Blitzortung.org / LightningMaps.org (CC BY-SA) — entertainment only, not for official warning use",
+          radar: "Radar © RainViewer",
         },
       },
       {

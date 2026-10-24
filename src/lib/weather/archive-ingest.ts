@@ -20,6 +20,7 @@ import {
   type ArchiveMeta,
 } from "@/lib/weather/archive-storage";
 import { ensureArchiveSatFrame } from "@/lib/weather/archive-sat";
+import { ensureArchiveRadarAt } from "@/lib/weather/archive-radar";
 import { getLiveLightningSnapshot } from "@/lib/weather/blitzortung-feed";
 import {
   BOM_FRONTS_ATTRIBUTION,
@@ -52,6 +53,7 @@ export type IngestResult = {
   satStored: number;
   satSkipped: number;
   satFailed: number;
+  radarStored: number;
   synopticStored: number;
   lightningMerged: number;
   backfillRemaining: number;
@@ -200,7 +202,19 @@ export async function runArchiveIngest(): Promise<IngestResult> {
   let satStored = 0;
   let satSkipped = 0;
   let satFailed = 0;
+  let radarStored = 0;
   let stampsWorked = 0;
+
+async function ingestRadarStamp(timeUnix: number): Promise<boolean> {
+  try {
+    const stored = await ensureArchiveRadarAt(timeUnix);
+    if (stored) radarStored += 1;
+    return stored;
+  } catch (err) {
+    console.error(`[archive] radar @ ${timeUnix}`, err);
+    return false;
+  }
+}
 
   async function ingestStampProducts(
     stamp: number,
@@ -227,6 +241,11 @@ export async function runArchiveIngest(): Promise<IngestResult> {
   for (const t of synopticCandidates(epoch, effectiveTip).reverse().slice(0, 2)) {
     if (!withinBudget()) break;
     if (await ingestSynopticAt(t)) synopticStored += 1;
+  }
+
+  // Capture radar tiles for the most recent available RainViewer frame.
+  if (withinBudget() && newestFirst.length > 0) {
+    await ingestRadarStamp(newestFirst[0]!);
   }
 
   const tip = newestFirst[0];
@@ -273,6 +292,7 @@ export async function runArchiveIngest(): Promise<IngestResult> {
     satStored,
     satSkipped,
     satFailed,
+    radarStored,
     synopticStored,
     lightningMerged,
     backfillRemaining: Math.max(0, stamps.length - stampsWorked),
