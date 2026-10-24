@@ -27,6 +27,7 @@ import {
 } from "@/lib/weather/archive-time";
 import {
   ARCHIVE_LOOP_OPTIONS,
+  archiveFrameUrl,
   buildArchiveScrubFrames,
   clampArchiveLoopHours,
   parseArchiveLoopParam,
@@ -40,7 +41,6 @@ import {
   getPlaybackSpeed,
   getSatelliteProduct,
   isSatelliteProductId,
-  satelliteFrameProxyUrl,
   scrubToFrameIndex,
   timelineEdgeLabels,
   type PlaybackSpeedId,
@@ -1134,9 +1134,7 @@ function ArchiveDashboardInner() {
               frameImageUrl={activeFrame?.imageUrl ?? null}
               frameImageFallbackUrl={
                 activeFrame && regionId === "national"
-                  ? satelliteFrameProxyUrl(product, activeFrame.time, {
-                      region: "national",
-                    })
+                  ? archiveFrameUrl(product, activeFrame.time)
                   : null
               }
               frameImageBounds={
