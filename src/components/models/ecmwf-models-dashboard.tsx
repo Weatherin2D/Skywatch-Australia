@@ -225,6 +225,9 @@ export function EcmwfModelsDashboard() {
   const [playing, setPlaying] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [frameLoading, setFrameLoading] = useState(false);
+  const [frameQuality, setFrameQuality] = useState<"lo" | "hi">("lo");
+  const [framePaintedOnce, setFramePaintedOnce] = useState(false);
+  const [nationalWarming, setNationalWarming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [groupFilter, setGroupFilter] = useState<EcmwfProductGroup | "all">(
     "all",
@@ -269,7 +272,7 @@ export function EcmwfModelsDashboard() {
           model,
         });
         const res = await fetch(`/api/weather/ecmwf-map?${qs}`, {
-          cache: "no-store",
+          cache: "default",
           signal,
         });
         if (!res.ok) throw new Error(`Catalog unavailable (${res.status})`);
@@ -340,51 +343,59 @@ export function EcmwfModelsDashboard() {
     engineMode,
   ]);
 
+  // Reset to lo-res first paint when the map identity changes.
+  useEffect(() => {
+    setFrameQuality("lo");
+  }, [productId, modelId, diffModelId, activeTime]);
+
   const imageUrl = useMemo(() => {
     if (!activeTime) return null;
     const qs = new URLSearchParams({
       product: productId,
       time: activeTime,
       model: modelId,
+      q: frameQuality,
     });
     if (diffModelId && diffModelId !== modelId) qs.set("diff", diffModelId);
     return `/api/weather/ecmwf-map/frame?${qs}`;
-  }, [productId, activeTime, modelId, diffModelId]);
+  }, [productId, activeTime, modelId, diffModelId, frameQuality]);
 
   useEffect(() => {
     if (!imageUrl) return;
-    setFrameLoading(true);
-    const img = new Image();
-    img.onload = () => setFrameLoading(false);
-    img.onerror = () => setFrameLoading(false);
-    img.src = imageUrl;
-  }, [imageUrl]);
-
-  useEffect(() => {
-    if (!times.length || !activeTime) return;
-    const idxs = [timeIndex - 1, timeIndex + 1, timeIndex + 2].filter(
-      (i) => i >= 0 && i < times.length && i !== timeIndex,
-    );
-    for (const i of idxs) {
-      const t = times[i]!;
-      const qs = new URLSearchParams({
-        product: productId,
-        time: t,
-        model: modelId,
-      });
-      if (diffModelId && diffModelId !== modelId) qs.set("diff", diffModelId);
-      const img = new Image();
-      img.src = `/api/weather/ecmwf-map/frame?${qs}`;
+    // Only block scrub/play on lo (first paint). Hi upgrade is background.
+    if (frameQuality === "lo") {
+      setFrameLoading(true);
+      setNationalWarming(true);
     }
-  }, [productId, timeIndex, times, activeTime, modelId, diffModelId]);
+    const img = new Image();
+    img.onload = () => {
+      if (frameQuality === "lo") {
+        setFrameLoading(false);
+        setNationalWarming(false);
+        setFramePaintedOnce(true);
+        setFrameQuality("hi");
+      } else {
+        setFramePaintedOnce(true);
+      }
+    };
+    img.onerror = () => {
+      if (frameQuality === "lo") {
+        setFrameLoading(false);
+        setNationalWarming(false);
+      }
+    };
+    img.src = imageUrl;
+  }, [imageUrl, frameQuality]);
 
+  // Server owns neighbour prefetch — do not double-fire Image loads here.
+  // Advance play only after the current frame has loaded.
   useEffect(() => {
-    if (!playing || times.length < 2) return;
-    const id = window.setInterval(() => {
+    if (!playing || times.length < 2 || frameLoading) return;
+    const id = window.setTimeout(() => {
       setTimeIndex((i) => (i + 1) % times.length);
     }, 700);
-    return () => window.clearInterval(id);
-  }, [playing, times.length]);
+    return () => window.clearTimeout(id);
+  }, [playing, times.length, frameLoading, timeIndex]);
 
   useEffect(() => {
     if (!probe || transectMode) {
@@ -402,7 +413,7 @@ export function EcmwfModelsDashboard() {
     if (activeTime) qs.set("time", activeTime);
     if (diffModelId && diffModelId !== modelId) qs.set("diff", diffModelId);
     void fetch(`/api/weather/ecmwf-map/point?${qs}`, {
-      cache: "no-store",
+      cache: "default",
       signal: ac.signal,
     })
       .then(async (res) => {
@@ -440,7 +451,7 @@ export function EcmwfModelsDashboard() {
       series: "1",
     });
     void fetch(`/api/weather/ecmwf-map/point?${qs}`, {
-      cache: "no-store",
+      cache: "default",
       signal: ac.signal,
     })
       .then(async (res) => {
@@ -457,9 +468,9 @@ export function EcmwfModelsDashboard() {
     return () => ac.abort();
   }, [probe, place, productId, modelId]);
 
-  // Mini Skew-T when enabled + probe set (IFS preferred; fall back to pulse).
+  // Mini Skew-T after the map has painted once (avoids competing with national warm).
   useEffect(() => {
-    if (!showSkewt || !probe || transectMode) {
+    if (!showSkewt || !probe || transectMode || !framePaintedOnce) {
       if (!showSkewt) {
         setSounding(null);
         setSoundingError(null);
@@ -467,6 +478,7 @@ export function EcmwfModelsDashboard() {
       return;
     }
     const ac = new AbortController();
+    const timeout = window.setTimeout(() => ac.abort(), 20_000);
     setSoundingLoading(true);
     setSoundingError(null);
     const preferred = mapModelToSounding(modelId);
@@ -487,12 +499,17 @@ export function EcmwfModelsDashboard() {
           });
           if (activeTime) qs.set("time", activeTime);
           const res = await fetch(`/api/weather/sounding?${qs}`, {
-            cache: "no-store",
+            cache: "default",
             signal: ac.signal,
           });
           if (!res.ok) {
-            lastErr = `Sounding unavailable (${res.status})`;
-            continue;
+            // Only fall through to Pulse on a real upstream error (not abort).
+            lastErr =
+              res.status === 503
+                ? "AI sounding is still warming up — retry in a moment."
+                : `Sounding unavailable (${res.status})`;
+            if (model === preferred && preferred !== "pulse") continue;
+            break;
           }
           const json = (await res.json()) as SoundingPayload;
           if (ac.signal.aborted) return;
@@ -503,9 +520,13 @@ export function EcmwfModelsDashboard() {
             return;
           }
           lastErr = json.message ?? "No sounding levels";
+          if (model === preferred && preferred !== "pulse") continue;
+          break;
         } catch (err) {
           if (ac.signal.aborted) return;
           lastErr = err instanceof Error ? err.message : "Sounding unavailable";
+          // Aborts / timeouts should not cascade into a second model attempt.
+          break;
         }
       }
       if (ac.signal.aborted) return;
@@ -514,8 +535,19 @@ export function EcmwfModelsDashboard() {
       setSoundingError(lastErr);
     })();
 
-    return () => ac.abort();
-  }, [showSkewt, probe, modelId, activeTime, transectMode, engineMode]);
+    return () => {
+      window.clearTimeout(timeout);
+      ac.abort();
+    };
+  }, [
+    showSkewt,
+    probe,
+    modelId,
+    activeTime,
+    transectMode,
+    engineMode,
+    framePaintedOnce,
+  ]);
 
   // Cross-section when both ends set
   useEffect(() => {
@@ -544,7 +576,7 @@ export function EcmwfModelsDashboard() {
     });
     if (activeTime) qs.set("time", activeTime);
     void fetch(`/api/weather/cross-section?${qs}`, {
-      cache: "no-store",
+      cache: "default",
       signal: ac.signal,
     })
       .then(async (res) => {
@@ -870,11 +902,11 @@ export function EcmwfModelsDashboard() {
                 }
                 showTransectLine={transectMode}
               />
-              {(loadingCatalog || frameLoading) && (
+              {(loadingCatalog || frameLoading || nationalWarming) && (
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] bg-gradient-to-b from-[#0a1224]/80 to-transparent px-3 py-2 text-xs font-semibold text-white/80">
-                  Loading {modelLabel}
-                  {diffLabel ? ` − ${diffLabel}` : ""}{" "}
-                  {activeProduct?.shortLabel ?? "field"}…
+                  {nationalWarming || (frameLoading && frameQuality === "lo")
+                    ? "Still loading national data…"
+                    : `Loading ${modelLabel}${diffLabel ? ` − ${diffLabel}` : ""} ${activeProduct?.shortLabel ?? "field"}…`}
                 </div>
               )}
               {probe && !transectMode ? (

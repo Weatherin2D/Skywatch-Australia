@@ -1815,6 +1815,8 @@ type SharedPayload = {
     {
       outlook: PublicForecastResponse;
       dayPoints: Record<number, AutoRiskSamplePoint[]>;
+      /** Optional pre-rendered day PNGs (base64) so risk-image skips Delaunay. */
+      dayPngBase64?: Record<number, string>;
     }
   >;
   dayProbeSites?: Record<number, AutoRiskProbeSite[]>;
@@ -1904,9 +1906,17 @@ async function writeSharedOk(
     at: entry.at,
     products: MODEL_RISK_PRODUCTS.reduce(
       (acc, p) => {
+        const layer = entry.products[p];
+        const dayPngBase64: Record<number, string> = {};
+        for (const [day, buf] of Object.entries(layer.dayPng)) {
+          if (buf?.length) dayPngBase64[Number(day)] = buf.toString("base64");
+        }
         acc[p] = {
-          outlook: entry.products[p].outlook,
-          dayPoints: entry.products[p].dayPoints,
+          outlook: layer.outlook,
+          dayPoints: layer.dayPoints,
+          ...(Object.keys(dayPngBase64).length
+            ? { dayPngBase64 }
+            : {}),
         };
         return acc;
       },
@@ -1979,17 +1989,23 @@ async function ensureCache(
         for (const p of MODEL_RISK_PRODUCTS) {
           const layer = shared.products[p];
           if (!layer) continue;
+          const dayPng: Record<number, Buffer> = {};
+          for (const [day, b64] of Object.entries(layer.dayPngBase64 ?? {})) {
+            if (typeof b64 === "string" && b64.length) {
+              dayPng[Number(day)] = Buffer.from(b64, "base64");
+            }
+          }
           products[p] = {
             outlook: layer.outlook,
             dayPoints: layer.dayPoints,
-            dayPng: {},
+            dayPng,
           };
         }
         const entry: CacheEntry = {
           at: shared.at,
           outlook: products.risk.outlook,
           dayPoints: products.risk.dayPoints,
-          dayPng: {},
+          dayPng: products.risk.dayPng,
           products,
           dayProbeSites: shared.dayProbeSites ?? {},
         };
@@ -2007,6 +2023,12 @@ async function ensureCache(
       await writeSharedOk(kind, entry).catch((err) => {
         console.warn(`[${kind}-risk] shared cache write failed`, err);
       });
+      // Hobby: after Pulse warms, lazily warm sibling models in the background.
+      if (kind === "pulse" && HOBBY) {
+        for (const sibling of ["access", "ifs", "ukmo"] as const) {
+          void ensureCache(sibling).catch(() => undefined);
+        }
+      }
     }
     return entry;
   })().finally(() => {
@@ -2049,6 +2071,7 @@ export async function getModelRiskDayPng(
   const layer = layerFor(entry, product);
   const points = layer.dayPoints[day] ?? [];
   let png = layer.dayPng[day];
+  let rendered = false;
   if (!png) {
     if (product === "risk") {
       png = renderAutoRiskPng(points);
@@ -2061,6 +2084,11 @@ export async function getModelRiskDayPng(
       });
     }
     layer.dayPng[day] = png;
+    rendered = true;
+  }
+  // Persist newly rendered PNGs so the next cold instance skips Delaunay.
+  if (rendered) {
+    void writeSharedOk(kind, entry).catch(() => undefined);
   }
   return {
     png,

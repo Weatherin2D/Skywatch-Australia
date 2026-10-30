@@ -231,7 +231,7 @@ export function SoundingsDashboard() {
         : ac.signal;
     void fetch(
       `/api/weather/sounding?archive=1&station=${encodeURIComponent(station)}&year=${years}`,
-      { cache: "no-store", signal: combined },
+      { cache: "default", signal: combined },
     )
       .then(async (res) => {
         if (!res.ok) throw new Error(`Archive unavailable (${res.status})`);
@@ -312,11 +312,27 @@ export function SoundingsDashboard() {
           typeof AbortSignal.any === "function" && signal
             ? AbortSignal.any([signal, timeout])
             : (signal ?? timeout);
-        const res = await fetch(`/api/weather/sounding?${params}`, {
-          cache: "no-store",
+        let res = await fetch(`/api/weather/sounding?${params}`, {
+          cache: "default",
           signal: combined,
         });
-        if (!res.ok) throw new Error(`Sounding unavailable (${res.status})`);
+        // AI warm path may 503 once — single short retry before surfacing.
+        if (res.status === 503 && engineMode === "predict" && !signal?.aborted) {
+          await new Promise((r) => setTimeout(r, 2500));
+          if (signal?.aborted) return;
+          res = await fetch(`/api/weather/sounding?${params}`, {
+            cache: "reload",
+            signal: combined,
+          });
+        }
+        if (!res.ok) {
+          if (res.status === 503) {
+            throw new Error(
+              "AI sounding is still warming up — retry in a moment.",
+            );
+          }
+          throw new Error(`Sounding unavailable (${res.status})`);
+        }
         const json = (await res.json()) as SoundingPayload | SoundingBoxPayload;
         if (signal?.aborted) return;
         if (mode === "box") {

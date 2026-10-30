@@ -3,7 +3,10 @@
  * Regular AU grid → georeferenced PNG for Leaflet ImageOverlay.
  */
 
+import { promises as fs } from "fs";
+import path from "path";
 import { PNG } from "pngjs";
+import { get as blobGet, put as blobPut } from "@vercel/blob";
 
 import { useHobbyBudget } from "@/lib/runtime-budget";
 
@@ -399,6 +402,8 @@ function isThunderCode(code: number | null | undefined): boolean {
   return code === 95 || code === 96 || code === 97 || code === 99;
 }
 
+export type FrameQuality = "lo" | "hi";
+
 export type EcmwfFrameResult = {
   png: Buffer;
   empty: boolean;
@@ -411,11 +416,19 @@ export type EcmwfFrameResult = {
   gridStep: number;
   /** Sample sites in the product cache. */
   gridPoints: number;
+  quality: FrameQuality;
 };
 
 const cache = new Map<string, ProductCache>();
 const inflight = new Map<string, Promise<ProductCache>>();
 const pngCache = new Map<string, EcmwfFrameResult>();
+
+type SharedProductPayload = {
+  at: number;
+  times: string[];
+  points: GridPoint[];
+  productId: string;
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -426,13 +439,148 @@ function pngCacheKey(
   productId: string,
   time: string,
   diffModel?: MapModelId | null,
+  quality: FrameQuality = "hi",
 ): string {
   const diff = diffModel ? `|diff:${diffModel}` : "";
-  return `${CACHE_VER}|${model}|${productId}|${time}${diff}`;
+  return `${CACHE_VER}|${model}|${productId}|${time}|q:${quality}${diff}`;
 }
 
 function productCacheKey(model: MapModelId, productId: string): string {
   return `${CACHE_VER}|${model}|${productId}`;
+}
+
+function sharedProductBlobPath(model: MapModelId, productId: string): string {
+  return `ecmwf-map/${CACHE_VER}/${model}/${productId}.json`;
+}
+
+function sharedProductLocalPath(model: MapModelId, productId: string): string {
+  return path.join(
+    process.env.TMPDIR || "/tmp",
+    "skywatch-ecmwf-map",
+    CACHE_VER,
+    model,
+    `${productId}.json`,
+  );
+}
+
+function outWidthFor(quality: FrameQuality): number {
+  return quality === "lo" ? Math.max(640, Math.round(OUT_WIDTH / 2)) : OUT_WIDTH;
+}
+
+function isFreshSharedProduct(
+  parsed: SharedProductPayload | null,
+): parsed is SharedProductPayload {
+  if (!parsed?.times?.length || !parsed.points?.length) return false;
+  if (!Number.isFinite(parsed.at)) return false;
+  return Date.now() - parsed.at < CACHE_TTL_MS;
+}
+
+function isSoftStaleSharedProduct(
+  parsed: SharedProductPayload | null,
+): parsed is SharedProductPayload {
+  if (!parsed?.times?.length || !parsed.points?.length) return false;
+  if (!Number.isFinite(parsed.at)) return false;
+  return Date.now() - parsed.at < CACHE_TTL_MS * 4;
+}
+
+async function readSharedProduct(
+  model: MapModelId,
+  productId: string,
+  opts: { allowSoftStale?: boolean } = {},
+): Promise<ProductCache | null> {
+  const accept = (parsed: SharedProductPayload) =>
+    isFreshSharedProduct(parsed) ||
+    (opts.allowSoftStale === true && isSoftStaleSharedProduct(parsed));
+
+  if (
+    process.env.BLOB_READ_WRITE_TOKEN ||
+    process.env.BLOB_STORE_ID ||
+    process.env.VERCEL
+  ) {
+    for (const access of ["public", "private"] as const) {
+      try {
+        const result = await blobGet(sharedProductBlobPath(model, productId), {
+          access,
+          useCache: false,
+        });
+        if (!result?.stream) continue;
+        const text = await new Response(result.stream).text();
+        const parsed = JSON.parse(text) as SharedProductPayload;
+        if (accept(parsed)) {
+          return {
+            fetchedAt: parsed.at,
+            times: parsed.times,
+            points: parsed.points,
+            productId: parsed.productId,
+          };
+        }
+      } catch {
+        // try next access / fall through
+      }
+    }
+  }
+  try {
+    const raw = await fs.readFile(
+      sharedProductLocalPath(model, productId),
+      "utf8",
+    );
+    const parsed = JSON.parse(raw) as SharedProductPayload;
+    if (accept(parsed)) {
+      return {
+        fetchedAt: parsed.at,
+        times: parsed.times,
+        points: parsed.points,
+        productId: parsed.productId,
+      };
+    }
+  } catch {
+    // miss
+  }
+  return null;
+}
+
+async function writeSharedProduct(
+  model: MapModelId,
+  data: ProductCache,
+): Promise<void> {
+  if (!data.times.length || !data.points.length) return;
+  const payload: SharedProductPayload = {
+    at: data.fetchedAt,
+    times: data.times,
+    points: data.points,
+    productId: data.productId,
+  };
+  const body = JSON.stringify(payload);
+  try {
+    const local = sharedProductLocalPath(model, data.productId);
+    await fs.mkdir(path.dirname(local), { recursive: true });
+    await fs.writeFile(local, body, "utf8");
+  } catch {
+    // best-effort
+  }
+  if (
+    !(
+      process.env.BLOB_READ_WRITE_TOKEN ||
+      process.env.BLOB_STORE_ID ||
+      process.env.VERCEL
+    )
+  ) {
+    return;
+  }
+  for (const access of ["public", "private"] as const) {
+    try {
+      await blobPut(sharedProductBlobPath(model, data.productId), body, {
+        access,
+        contentType: "application/json",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        cacheControlMaxAge: 60,
+      });
+      return;
+    } catch {
+      // try next
+    }
+  }
 }
 
 function rememberPng(key: string, result: EcmwfFrameResult): void {
@@ -640,15 +788,29 @@ export async function getEcmwfProductCache(
   const pending = inflight.get(key);
   if (pending) return pending;
 
-  const job = loadProductGrid(product, model)
-    .then((data) => {
-      cache.set(key, data);
-      inflight.delete(key);
-      return data;
-    })
+  const job = (async () => {
+    if (!opts?.force) {
+      const fresh = await readSharedProduct(model, product.id);
+      const shared =
+        fresh ??
+        (await readSharedProduct(model, product.id, { allowSoftStale: true }));
+      if (shared?.times.length) {
+        cache.set(key, shared);
+        return shared;
+      }
+    }
+    const data = await loadProductGrid(product, model);
+    cache.set(key, data);
+    void writeSharedProduct(model, data).catch((err) => {
+      console.warn("[ecmwf-map] shared product cache write failed", err);
+    });
+    return data;
+  })()
     .catch((err) => {
-      inflight.delete(key);
       throw err;
+    })
+    .finally(() => {
+      inflight.delete(key);
     });
   inflight.set(key, job);
   return job;
@@ -1401,9 +1563,12 @@ export async function renderEcmwfFrame(opts: {
   diffModel?: string | null;
   /** Internal: skip neighbour prefetch to avoid cascades. */
   skipPrefetch?: boolean;
+  /** lo = half-width first paint; hi = full OUT_WIDTH. */
+  quality?: FrameQuality | string | null;
 }): Promise<EcmwfFrameResult> {
   const product = getEcmwfProduct(opts.productId);
   const model = resolveMapModel(opts.model);
+  const quality: FrameQuality = opts.quality === "lo" ? "lo" : "hi";
   const diffModel = opts.diffModel ? resolveMapModel(opts.diffModel) : null;
   const data = await getEcmwfProductCache(product.id, {
     force: opts.force,
@@ -1419,7 +1584,13 @@ export async function renderEcmwfFrame(opts: {
   const ti = nearestTimeIndex(data.times, opts.time);
   const time = data.times[ti] ?? null;
   const cacheKey = time
-    ? pngCacheKey(model, product.id, time, diffData ? diffModel : null)
+    ? pngCacheKey(
+        model,
+        product.id,
+        time,
+        diffData ? diffModel : null,
+        quality,
+      )
     : "";
 
   if (!opts.force && cacheKey) {
@@ -1462,6 +1633,7 @@ export async function renderEcmwfFrame(opts: {
       max: null,
       gridStep: gridStepFor(product, model),
       gridPoints: data.points.length,
+      quality,
     };
     if (cacheKey) rememberPng(cacheKey, result);
     return result;
@@ -1489,7 +1661,7 @@ export async function renderEcmwfFrame(opts: {
     if (vmax <= vmin) vmax = vmin + 1;
   }
 
-  const width = OUT_WIDTH;
+  const width = outWidthFor(quality);
   const height = Math.max(
     200,
     Math.round(
@@ -1614,10 +1786,12 @@ export async function renderEcmwfFrame(opts: {
     max: vmax,
     gridStep: gridStepFor(product, model),
     gridPoints: data.points.length,
+    quality,
   };
   if (cacheKey) rememberPng(cacheKey, result);
 
-  // Prefetch neighbour hours in the background so scrubbing stays snappy.
+  // Prefetch neighbour hours in the background (server owns this — client does not).
+  // Prefetch at the requested quality so scrubbing stays snappy.
   if (time && !opts.force && !opts.skipPrefetch) {
     const neighbors = [ti - 1, ti + 1, ti + 2].filter(
       (i) => i >= 0 && i < data.times.length && i !== ti,
@@ -1626,7 +1800,13 @@ export async function renderEcmwfFrame(opts: {
     void Promise.resolve().then(async () => {
       for (const ni of neighbors) {
         const nt = data.times[ni]!;
-        const nk = pngCacheKey(model, product.id, nt, prefetchDiff);
+        const nk = pngCacheKey(
+          model,
+          product.id,
+          nt,
+          prefetchDiff,
+          quality,
+        );
         if (pngCache.has(nk)) continue;
         try {
           await renderEcmwfFrame({
@@ -1635,6 +1815,7 @@ export async function renderEcmwfFrame(opts: {
             model,
             diffModel: prefetchDiff,
             skipPrefetch: true,
+            quality,
           });
         } catch {
           /* ignore prefetch errors */

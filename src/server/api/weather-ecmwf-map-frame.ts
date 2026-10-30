@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
   const force =
     req.nextUrl.searchParams.get("force") === "1" ||
     req.nextUrl.searchParams.get("refresh") === "1";
+  const qualityRaw = req.nextUrl.searchParams.get("q");
+  const quality = qualityRaw === "lo" ? "lo" : "hi";
 
   try {
     const result = await renderEcmwfFrame({
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
       force,
       model,
       diffModel,
+      quality,
     });
     const png = result.empty ? EMPTY_PNG : result.png;
     // HTTP headers must be ByteString (Latin-1); strip non-ASCII (e.g. Δ, °).
@@ -57,6 +60,7 @@ export async function GET(req: NextRequest) {
         "X-Ecmwf-Diff": headerSafe(diffModel ?? ""),
         "X-Ecmwf-Grid-Step": String(result.gridStep),
         "X-Ecmwf-Grid-Points": String(result.gridPoints),
+        "X-Ecmwf-Quality": result.quality,
       },
     });
   } catch (err) {

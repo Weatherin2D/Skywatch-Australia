@@ -273,11 +273,13 @@ function sourceBlurb(source: RiskSource, product: ModelRiskProduct): string {
 
 function sourceLoadingLabel(
   source: RiskSource,
-  product: ModelRiskProduct,
+  _product: ModelRiskProduct,
 ): string {
-  if (source === "bom") return "Loading the Bureau of Meteorology thunderstorm forecast…";
+  if (source === "bom") {
+    return "Loading the Bureau of Meteorology thunderstorm forecast…";
+  }
   const model = riskSourceName(source);
-  return `Building ${model} ${PRODUCT_META[product].shortLabel.toLowerCase()} outlook…`;
+  return `Still loading national ${model} data…`;
 }
 
 function sourceEmptyFallback(
@@ -349,26 +351,23 @@ export function RiskDashboard() {
     setEngineMode(readEngineFromUrl());
   }, []);
 
+  // Load once per source — all products are scored server-side in one compute.
+  // Product tabs switch client-side (legend helpers + risk-image product qs).
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const productQs =
-          isModelSource(source) && product !== "risk"
-            ? `&product=${product}`
-            : "";
         let res: Response | null = null;
         let lastErr: Error | null = null;
         // Cold model computes can 504 on Vercel — retry briefly for shared cache.
         for (let attempt = 0; attempt < 3; attempt++) {
           if (cancelled) return;
           try {
-            res = await fetch(
-              `/api/weather/risk?source=${source}${productQs}&t=${Date.now()}`,
-              { cache: "no-store" },
-            );
+            res = await fetch(`/api/weather/risk?source=${source}`, {
+              cache: "default",
+            });
             if (res.ok) break;
             lastErr = new Error(
               res.status === 504 || res.status === 502
@@ -435,7 +434,7 @@ export function RiskDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [source, product]);
+  }, [source]);
 
   const active = useMemo(() => {
     if (!data?.days?.length) return null;
@@ -463,21 +462,16 @@ export function RiskDashboard() {
     );
   };
 
-  // Prefer API imageUrl when present — avoids blank maps if legend used-flags
-  // were over-pruned while dayPoints still have signal.
-  const catalogImageUrl =
-    selectedDay != null
-      ? (catalog?.days?.find((d) => d.day === selectedDay)?.imageUrl ?? null)
-      : null;
+  // Catalog is loaded for the default risk product; product tabs rebuild the
+  // image URL client-side so switches skip another catalog round-trip.
   const productQs =
     isModelSource(source) && product !== "risk" ? `&product=${product}` : "";
   const riskImageUrl =
-    catalogImageUrl ??
-    (selectedDay != null && dayHasRisk(active)
+    selectedDay != null && (product !== "risk" || dayHasRisk(active))
       ? `/api/weather/risk-image?source=${source}${productQs}&day=${selectedDay}&t=${encodeURIComponent(
           data?.issuedAt ?? String(selectedDay),
         )}`
-      : null);
+      : null;
 
   const region = getMapRegion(regionId);
   const daySlots = data?.days ?? [];
@@ -552,7 +546,7 @@ export function RiskDashboard() {
       const url = `/api/weather/risk-probe?source=${source}${productQs}&day=${selectedDay}&lat=${ll.lat}&lon=${ll.lng}`;
       void (async () => {
         try {
-          const res = await fetch(url, { cache: "no-store" });
+          const res = await fetch(url, { cache: "default" });
           if (!res.ok) throw new Error("Could not inspect this point");
           const json = (await res.json()) as RiskInspectPoint;
           let aiThermo = null as RiskInspectPoint["aiThermo"];
@@ -567,7 +561,7 @@ export function RiskDashboard() {
                 lon: String(ll.lng),
               });
               const soundRes = await fetch(`/api/weather/sounding?${qs}`, {
-                cache: "no-store",
+                cache: "default",
               });
               if (soundRes.ok) {
                 const sounding = (await soundRes.json()) as SoundingPayload;
@@ -790,14 +784,9 @@ export function RiskDashboard() {
                     setSelectedDay(null);
                     setCatalog(null);
                     setData(null);
-                    const productQs =
-                      isModelSource(source) && product !== "risk"
-                        ? `&product=${product}`
-                        : "";
-                    void fetch(
-                      `/api/weather/risk?source=${source}${productQs}&t=${Date.now()}`,
-                      { cache: "no-store" },
-                    )
+                    void fetch(`/api/weather/risk?source=${source}`, {
+                      cache: "reload",
+                    })
                       .then(async (res) => {
                         if (!res.ok) throw new Error("Could not load risk outlook");
                         const json = (await res.json()) as RiskCatalog;

@@ -212,6 +212,7 @@ def predict_from_levels(
     hemisphere: str = "S",
     time_iso: Optional[str] = None,
     teacher_model: str = "pulse",
+    teacher: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     from . import compute_diagnostics
 
@@ -223,68 +224,78 @@ def predict_from_levels(
     teacher_mode = "open-meteo"
     teacher_history = None
     spatial_step = None
-    try:
-        from .etl.openmeteo_teacher import (
-            fetch_teacher_window,
-            spatial_step_deg,
-            spatial_window_enabled,
-        )
-        from .synthetic import N_HIST, WINDOW
-
-        if spatial_window_enabled():
-            # Smaller window by default for latency; full WINDOW when step is coarse.
-            win_n = 5 if spatial_step_deg() <= 0.25 else WINDOW
-            win = fetch_teacher_window(
-                lat,
-                lon,
-                model=teacher_model,
-                time_iso=time_iso,
-                window=win_n,
-                n_hist=N_HIST,
-            )
-            teacher = win["center"]
-            teacher_history = win.get("history")
-            spatial_step = win.get("step_deg", spatial_step_deg())
-            teacher_meta = {
-                "source": teacher.get("source"),
-                "model": teacher.get("model"),
-                "valid_time": teacher.get("valid_time"),
-                "spatial": bool(win.get("spatial")),
-                "spatial_step_deg": spatial_step,
-                "spatial_window": win.get("window"),
-            }
-        else:
-            teacher = fetch_teacher_column(
-                lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
-            )
-            teacher_meta = {
-                "source": teacher.get("source"),
-                "model": teacher.get("model"),
-                "valid_time": teacher.get("valid_time"),
-                "spatial": False,
-            }
-    except Exception as exc:  # noqa: BLE001
+    # Reuse a pre-fetched teacher (point mode) — avoids a second Open-Meteo round-trip.
+    if teacher is not None and "p" in teacher and "T" in teacher:
+        teacher_meta = {
+            "source": teacher.get("source"),
+            "model": teacher.get("model"),
+            "valid_time": teacher.get("valid_time"),
+            "spatial": False,
+            "reused": True,
+        }
+    else:
         try:
-            teacher = fetch_teacher_column(
-                lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+            from .etl.openmeteo_teacher import (
+                fetch_teacher_window,
+                spatial_step_deg,
+                spatial_window_enabled,
             )
-            teacher_meta = {
-                "source": teacher.get("source"),
-                "model": teacher.get("model"),
-                "valid_time": teacher.get("valid_time"),
-                "spatial": False,
-                "window_error": str(exc),
-            }
-        except Exception as exc2:  # noqa: BLE001
-            # Offline / API failure — degrade to self-prior (documented).
-            teacher = dict(sonde)
-            teacher_mode = "self-prior-fallback"
-            teacher_meta = {
-                "error": str(exc2),
-                "source": "self-prior-fallback",
-                "spatial": False,
-                "window_error": str(exc),
-            }
+            from .synthetic import N_HIST, WINDOW
+
+            if spatial_window_enabled():
+                # Smaller window by default for latency; full WINDOW when step is coarse.
+                win_n = 5 if spatial_step_deg() <= 0.25 else WINDOW
+                win = fetch_teacher_window(
+                    lat,
+                    lon,
+                    model=teacher_model,
+                    time_iso=time_iso,
+                    window=win_n,
+                    n_hist=N_HIST,
+                )
+                teacher = win["center"]
+                teacher_history = win.get("history")
+                spatial_step = win.get("step_deg", spatial_step_deg())
+                teacher_meta = {
+                    "source": teacher.get("source"),
+                    "model": teacher.get("model"),
+                    "valid_time": teacher.get("valid_time"),
+                    "spatial": bool(win.get("spatial")),
+                    "spatial_step_deg": spatial_step,
+                    "spatial_window": win.get("window"),
+                }
+            else:
+                teacher = fetch_teacher_column(
+                    lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+                )
+                teacher_meta = {
+                    "source": teacher.get("source"),
+                    "model": teacher.get("model"),
+                    "valid_time": teacher.get("valid_time"),
+                    "spatial": False,
+                }
+        except Exception as exc:  # noqa: BLE001
+            try:
+                teacher = fetch_teacher_column(
+                    lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
+                )
+                teacher_meta = {
+                    "source": teacher.get("source"),
+                    "model": teacher.get("model"),
+                    "valid_time": teacher.get("valid_time"),
+                    "spatial": False,
+                    "window_error": str(exc),
+                }
+            except Exception as exc2:  # noqa: BLE001
+                # Offline / API failure — degrade to self-prior (documented).
+                teacher = dict(sonde)
+                teacher_mode = "self-prior-fallback"
+                teacher_meta = {
+                    "error": str(exc2),
+                    "source": "self-prior-fallback",
+                    "spatial": False,
+                    "window_error": str(exc),
+                }
 
     sample = build_inference_sample(
         teacher,
@@ -387,6 +398,7 @@ def predict_from_location(
         lat, lon, model=teacher_model, time_iso=time_iso, prefer_archive=False
     )
     levels = _teacher_to_level_dicts(teacher)
+    # Pass teacher through so predict_from_levels does not re-fetch Open-Meteo.
     out = predict_from_levels(
         levels,
         lat=lat,
@@ -396,6 +408,7 @@ def predict_from_location(
         hemisphere=hemisphere,
         time_iso=time_iso or teacher.get("valid_time"),
         teacher_model=teacher_model,
+        teacher=teacher,
     )
     out["teacher_mode"] = "open-meteo-point"
     out["disclaimer"] = (
